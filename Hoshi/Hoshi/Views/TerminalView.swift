@@ -295,14 +295,18 @@ class SwiftTermContainerView: UIView {
     let toolbarAccessory: KeyboardToolbarAccessoryView
     private(set) var currentFontSize: CGFloat
     private weak var coordinator: SwiftTermView.Coordinator?
+    private var terminalBottomConstraint: NSLayoutConstraint?
 
     // Pinch-to-zoom state
     private var pinchStartFontSize: CGFloat = 14
     private var scrollbackConfigured = false
     private(set) var isKeyboardVisible: Bool
 
-    private var accessoryHeight: CGFloat {
-        toolbarAccessory.intrinsicContentSize.height
+    // Extra breathing room above the accessory bar to avoid clipping descenders.
+    // Keep it proportional to the active terminal font size so zoomed text still clears.
+    private var bottomClearanceCompensation: CGFloat {
+        let lineBased = ceil(terminalView.font.lineHeight * 1.0) + 2
+        return min(max(lineBased, 14), 24)
     }
 
     private static var didRegisterBundledNerdFonts = false
@@ -370,15 +374,19 @@ class SwiftTermContainerView: UIView {
         terminalView.caretColor = TerminalTheme.cursorColor
         terminalView.caretTextColor = TerminalTheme.cursorTextColor
 
+        // Prevent UIScrollView from adding safe area insets on top of our manual inset,
+        // which would cause SwiftTerm to miscalculate the visible row count.
+        terminalView.contentInsetAdjustmentBehavior = .never
+
         // Add terminal view as subview
         terminalView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(terminalView)
-        NSLayoutConstraint.activate([
-            terminalView.topAnchor.constraint(equalTo: topAnchor),
-            terminalView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            terminalView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            terminalView.trailingAnchor.constraint(equalTo: trailingAnchor),
-        ])
+        let top = terminalView.topAnchor.constraint(equalTo: topAnchor)
+        let bottom = terminalView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        let leading = terminalView.leadingAnchor.constraint(equalTo: leadingAnchor)
+        let trailing = terminalView.trailingAnchor.constraint(equalTo: trailingAnchor)
+        terminalBottomConstraint = bottom
+        NSLayoutConstraint.activate([top, bottom, leading, trailing])
         updateTerminalViewportInsets()
 
         // Pinch-to-zoom gesture for font size adjustment
@@ -430,13 +438,12 @@ class SwiftTermContainerView: UIView {
     }
 
     private func updateTerminalViewportInsets() {
-        let safeBottom = max(safeAreaInsets.bottom, terminalView.safeAreaInsets.bottom)
-        let bottomInset = isKeyboardVisible ? (accessoryHeight + safeBottom) : 0
-        if terminalView.contentInset.bottom != bottomInset {
-            var inset = terminalView.contentInset
-            inset.bottom = bottomInset
-            terminalView.contentInset = inset
-            terminalView.scrollIndicatorInsets = inset
+        let bottomInset = isKeyboardVisible ? bottomClearanceCompensation : 0
+        let newConstant = -bottomInset
+        if terminalBottomConstraint?.constant != newConstant {
+            terminalBottomConstraint?.constant = newConstant
+            setNeedsLayout()
+            layoutIfNeeded()
             terminalView.repositionVisibleFrame()
         }
     }
