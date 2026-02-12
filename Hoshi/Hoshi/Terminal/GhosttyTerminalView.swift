@@ -403,13 +403,36 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         if let renderLayer, renderLayer.contentsScale != scale {
             renderLayer.contentsScale = scale
         }
-        let width = UInt32(max(1, Int((bounds.width * scale).rounded())))
-        let height = UInt32(max(1, Int((bounds.height * scale).rounded())))
+        // Never round up framebuffer pixels: requesting a larger surface than the
+        // visible view can clip the last row on 3x devices.
+        let widthPx = max(1, Int((bounds.width * scale).rounded(.down)))
+        let heightPx = max(1, Int((bounds.height * scale).rounded(.down)))
+        var width = UInt32(widthPx)
+        var height = UInt32(heightPx)
 
         ghostty_surface_set_content_scale(surface, scale, scale)
         ghostty_surface_set_size(surface, width, height)
 
-        let grid = ghostty_surface_size(surface)
+        var grid = ghostty_surface_size(surface)
+
+        // Defensive correction: if Ghostty reports a grid that would overflow
+        // the current framebuffer, resize to a whole-cell framebuffer that fits.
+        if grid.cell_width_px > 0, grid.cell_height_px > 0 {
+            let cellWidth = Int(grid.cell_width_px)
+            let cellHeight = Int(grid.cell_height_px)
+            let gridWidth = Int(grid.columns) * cellWidth
+            let gridHeight = Int(grid.rows) * cellHeight
+
+            if gridWidth > widthPx || gridHeight > heightPx {
+                let safeCols = max(1, min(Int(grid.columns), widthPx / cellWidth))
+                let safeRows = max(1, min(Int(grid.rows), heightPx / cellHeight))
+                width = UInt32(max(cellWidth, safeCols * cellWidth))
+                height = UInt32(max(cellHeight, safeRows * cellHeight))
+                ghostty_surface_set_size(surface, width, height)
+                grid = ghostty_surface_size(surface)
+            }
+        }
+
         let cols = Int(grid.columns)
         let rows = Int(grid.rows)
 
