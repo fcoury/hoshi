@@ -161,6 +161,7 @@ struct MoshTransportInstruction {
     var ackNum: UInt64 = 0
     var throwawayNum: UInt64 = 0
     var diff: Data = Data()
+    var chaff: Data = Data()
 
     // Encode as a simple length-prefixed binary format for transport
     // Format: Each field is a 1-byte tag + varint length + value
@@ -193,6 +194,13 @@ struct MoshTransportInstruction {
             data.append(0x32)
             appendVarint(&data, UInt64(diff.count))
             data.append(diff)
+        }
+
+        // Field 7: chaff (length-delimited bytes, tag = 0x3A)
+        if !chaff.isEmpty {
+            data.append(0x3A)
+            appendVarint(&data, UInt64(chaff.count))
+            data.append(chaff)
         }
 
         return data
@@ -245,7 +253,12 @@ struct MoshTransportInstruction {
 
             case 0x3A: // chaff (field 7, length-delimited) - skip
                 let (length, newOffset) = try readVarint(bytes, offset: offset)
-                offset = newOffset + Int(length)
+                let end = newOffset + Int(length)
+                guard end <= bytes.count else {
+                    throw MoshTransportError.invalidInstruction
+                }
+                instruction.chaff = Data(bytes[newOffset..<end])
+                offset = end
 
             default:
                 // Skip unknown fields based on wire type
@@ -269,39 +282,45 @@ struct MoshTransportInstruction {
 
 // User input instruction (keystroke or resize) encoded as protobuf
 struct MoshUserInput {
-    // Encode keystrokes as a ClientBuffers.UserMessage
-    // Field structure: UserMessage { repeated Instruction { keys(4), width(5), height(6) } }
+    // Encode keystrokes as:
+    // UserMessage.instruction(1) -> Instruction.keystroke extension(2) -> Keystroke.keys(4)
     static func encodeKeystroke(_ keys: Data) -> Data {
-        var inner = Data()
-        // Instruction.keys (field 4, length-delimited, tag = 0x22)
-        inner.append(0x22)
-        appendVarint(&inner, UInt64(keys.count))
-        inner.append(keys)
+        var keystroke = Data()
+        keystroke.append(0x22) // Keystroke.keys (field 4, length-delimited)
+        appendVarint(&keystroke, UInt64(keys.count))
+        keystroke.append(keys)
+
+        var instruction = Data()
+        instruction.append(0x12) // Instruction.keystroke extension (field 2, length-delimited)
+        appendVarint(&instruction, UInt64(keystroke.count))
+        instruction.append(keystroke)
 
         var outer = Data()
-        // UserMessage.instruction (field 1, length-delimited, tag = 0x0A)
-        outer.append(0x0A)
-        appendVarint(&outer, UInt64(inner.count))
-        outer.append(inner)
+        outer.append(0x0A) // UserMessage.instruction (field 1, length-delimited)
+        appendVarint(&outer, UInt64(instruction.count))
+        outer.append(instruction)
 
         return outer
     }
 
-    // Encode a terminal resize as a ClientBuffers.UserMessage
+    // Encode resize as:
+    // UserMessage.instruction(1) -> Instruction.resize extension(3) -> ResizeMessage.width(5),height(6)
     static func encodeResize(width: Int32, height: Int32) -> Data {
-        var inner = Data()
-        // Instruction.width (field 5, varint, tag = 0x28)
-        inner.append(0x28)
-        appendVarint(&inner, UInt64(bitPattern: Int64(width)))
-        // Instruction.height (field 6, varint, tag = 0x30)
-        inner.append(0x30)
-        appendVarint(&inner, UInt64(bitPattern: Int64(height)))
+        var resize = Data()
+        resize.append(0x28) // ResizeMessage.width (field 5, varint)
+        appendVarint(&resize, UInt64(bitPattern: Int64(width)))
+        resize.append(0x30) // ResizeMessage.height (field 6, varint)
+        appendVarint(&resize, UInt64(bitPattern: Int64(height)))
+
+        var instruction = Data()
+        instruction.append(0x1A) // Instruction.resize extension (field 3, length-delimited)
+        appendVarint(&instruction, UInt64(resize.count))
+        instruction.append(resize)
 
         var outer = Data()
-        // UserMessage.instruction (field 1, length-delimited, tag = 0x0A)
-        outer.append(0x0A)
-        appendVarint(&outer, UInt64(inner.count))
-        outer.append(inner)
+        outer.append(0x0A) // UserMessage.instruction (field 1, length-delimited)
+        appendVarint(&outer, UInt64(instruction.count))
+        outer.append(instruction)
 
         return outer
     }
@@ -361,17 +380,19 @@ struct MoshHostOutput {
             offset += 1
 
             switch tag {
-            case 0x22: // hoststring (field 4, length-delimited)
-                let (length, newOffset) = try readVarint(bytes, offset: offset)
-                let end = newOffset + Int(length)
+            case 0x12: // Instruction.hostbytes extension (field 2, length-delimited)
+                let (length, start) = try readVarint(bytes, offset: offset)
+                let end = start + Int(length)
                 guard end <= bytes.count else { break }
-                hostString = Data(bytes[newOffset..<end])
+                hostString = decodeHostBytes(Array(bytes[start..<end]))
                 offset = end
 
-            case 0x38: // echo_ack (field 7, varint)
-                let (value, newOffset) = try readVarint(bytes, offset: offset)
-                echoAck = Int64(bitPattern: value)
-                offset = newOffset
+            case 0x3A: // Instruction.echoack extension (field 7, length-delimited)
+                let (length, start) = try readVarint(bytes, offset: offset)
+                let end = start + Int(length)
+                guard end <= bytes.count else { break }
+                echoAck = decodeEchoAck(Array(bytes[start..<end]))
+                offset = end
 
             default:
                 let wireType = tag & 0x07
@@ -389,6 +410,63 @@ struct MoshHostOutput {
         }
 
         return MoshHostOutput(hostString: hostString, echoAck: echoAck)
+    }
+
+    private static func decodeHostBytes(_ bytes: [UInt8]) -> Data? {
+        var offset = 0
+        while offset < bytes.count {
+            let tag = bytes[offset]
+            offset += 1
+
+            switch tag {
+            case 0x22: // HostBytes.hoststring (field 4, length-delimited)
+                let lengthResult = try? readVarint(bytes, offset: offset)
+                guard let (length, start) = lengthResult else { return nil }
+                let end = start + Int(length)
+                guard end <= bytes.count else { return nil }
+                return Data(bytes[start..<end])
+            default:
+                let wireType = tag & 0x07
+                switch wireType {
+                case 0:
+                    guard let (_, newOffset) = try? readVarint(bytes, offset: offset) else { return nil }
+                    offset = newOffset
+                case 2:
+                    guard let (length, newOffset) = try? readVarint(bytes, offset: offset) else { return nil }
+                    offset = newOffset + Int(length)
+                default:
+                    return nil
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func decodeEchoAck(_ bytes: [UInt8]) -> Int64? {
+        var offset = 0
+        while offset < bytes.count {
+            let tag = bytes[offset]
+            offset += 1
+
+            switch tag {
+            case 0x40: // EchoAck.echo_ack_num (field 8, varint)
+                guard let (value, _) = try? readVarint(bytes, offset: offset) else { return nil }
+                return Int64(bitPattern: value)
+            default:
+                let wireType = tag & 0x07
+                switch wireType {
+                case 0:
+                    guard let (_, newOffset) = try? readVarint(bytes, offset: offset) else { return nil }
+                    offset = newOffset
+                case 2:
+                    guard let (length, newOffset) = try? readVarint(bytes, offset: offset) else { return nil }
+                    offset = newOffset + Int(length)
+                default:
+                    return nil
+                }
+            }
+        }
+        return nil
     }
 }
 

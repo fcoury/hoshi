@@ -36,10 +36,10 @@ targets:
           - FantasqueSansMNerdFontMono-Italic.ttf
           - FantasqueSansMNerdFontMono-Bold.ttf
           - FantasqueSansMNerdFontMono-BoldItalic.ttf
-        PRODUCT_BUNDLE_IDENTIFIER: com.hoshi.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.hoshi.app.dev
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
-        DEVELOPMENT_TEAM: WF9V2566LH
+        DEVELOPMENT_TEAM: N3HRK533Y8
         CODE_SIGN_STYLE: Automatic
     dependencies:
       - package: Citadel

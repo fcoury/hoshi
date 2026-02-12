@@ -32,7 +32,8 @@ struct MoshNonce {
         self.bytes = nonce
     }
 
-    // Reconstruct a nonce from the 8-byte wire representation + known direction
+    // Reconstruct a nonce from the 8-byte wire representation.
+    // Wire bytes already include the direction bit (MSB of the first byte).
     init(wireBytes: [UInt8], direction: MoshDirection) {
         precondition(wireBytes.count == MoshNonce.wireLength)
         var nonce = [UInt8](repeating: 0, count: MoshNonce.length)
@@ -40,6 +41,7 @@ struct MoshNonce {
         for i in 0..<8 {
             nonce[4 + i] = wireBytes[i]
         }
+        _ = direction
         self.bytes = nonce
     }
 
@@ -74,10 +76,14 @@ final class MoshCryptoSession {
     // Encrypt plaintext into a wire datagram
     // Wire format: nonce_cc (8 bytes) + ciphertext + tag (16 bytes)
     func encrypt(plaintext: Data, nonce: MoshNonce) throws -> Data {
-        let ocb = OCB(nonce: nonce.bytes, tagLength: MoshCryptoSession.tagLength)
+        let ocb = OCB(
+            nonce: nonce.bytes,
+            tagLength: MoshCryptoSession.tagLength,
+            mode: .combined
+        )
         let aes = try AES(key: key, blockMode: ocb, padding: .noPadding)
         let encrypted = try aes.encrypt(Array(plaintext))
-        // encrypted includes ciphertext + tag appended by CryptoSwift OCB
+        // In .combined mode this includes ciphertext + tag.
         var result = Data()
         result.append(contentsOf: nonce.wireBytes)
         result.append(contentsOf: encrypted)
@@ -97,7 +103,11 @@ final class MoshCryptoSession {
 
         let nonce = MoshNonce(wireBytes: wireBytes, direction: direction)
 
-        let ocb = OCB(nonce: nonce.bytes, tagLength: MoshCryptoSession.tagLength)
+        let ocb = OCB(
+            nonce: nonce.bytes,
+            tagLength: MoshCryptoSession.tagLength,
+            mode: .combined
+        )
         let aes = try AES(key: key, blockMode: ocb, padding: .noPadding)
         let decrypted = try aes.decrypt(cipherAndTag)
 
