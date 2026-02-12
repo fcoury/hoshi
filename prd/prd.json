@@ -1,0 +1,184 @@
+{
+  "name": "hoshi",
+  "description": "Hoshi (星) — Open-source iOS terminal app for monitoring AI coding agents via SSH/Mosh with tmux integration",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "SSH Connection",
+      "description": "As a developer, I want to connect to a remote server via SSH, so that I can access my terminal remotely.",
+      "acceptanceCriteria": [
+        "User can add a server with hostname, port, and username",
+        "App supports password authentication",
+        "App supports SSH key authentication (Ed25519, RSA)",
+        "App can generate and store SSH key pairs in the iOS Keychain",
+        "Connection establishes and presents an interactive terminal session",
+        "Connection errors display a clear, actionable error message"
+      ],
+      "priority": 1,
+      "passes": true,
+      "complexity": "L",
+      "notes": "Research SSH library first: NMSSH, Shout, or libssh2 wrapper",
+      "dependsOn": [],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-002",
+      "title": "Mosh Connection",
+      "description": "As a developer, I want to connect to a remote server via Mosh, so that my session survives network switches, sleep, and poor connectivity.",
+      "acceptanceCriteria": [
+        "User can toggle Mosh on/off per server connection",
+        "Mosh connection uses UDP and syncs terminal state on wake",
+        "Session resumes without manual reconnection after device sleep or network change",
+        "If mosh-server is not found on the remote host, the app offers to install it via SSH (apt/brew/yum)",
+        "Falls back gracefully if mosh-server install is declined or fails"
+      ],
+      "priority": 1,
+      "passes": true,
+      "complexity": "XL",
+      "notes": "Highest technical risk. May need to compile mosh-client C++ for iOS. Research feasibility first.",
+      "dependsOn": [
+        "US-001"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-003",
+      "title": "tmux Session Auto-Detection",
+      "description": "As a developer, I want the app to detect my existing tmux sessions on connection, so that I can quickly attach to the right one.",
+      "acceptanceCriteria": [
+        "On every connection, the app runs tmux list-sessions and parses the output",
+        "A session picker UI appears showing session name, window count, and attached status",
+        "User can tap a session to attach to it",
+        "User can choose New session to create a fresh tmux session",
+        "User can choose Skip to go directly to the shell without tmux",
+        "If no tmux sessions exist, the picker shows No sessions found with options to create one or skip"
+      ],
+      "priority": 1,
+      "passes": true,
+      "complexity": "M",
+      "notes": "Parse output of tmux list-sessions -F format string for structured data",
+      "dependsOn": [
+        "US-001"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-004",
+      "title": "Terminal Emulation",
+      "description": "As a developer, I want a functional terminal emulator that renders correctly, so that I can read and interact with terminal output including TUI applications.",
+      "acceptanceCriteria": [
+        "Terminal supports VT100/xterm-256color escape sequences",
+        "Text renders in a monospace font with correct character grid alignment",
+        "Terminal supports scrollback buffer (minimum 10,000 lines)",
+        "Terminal handles ANSI color codes (16 colors + 256-color mode)",
+        "Copy/paste works via long-press gesture and iOS share sheet",
+        "Pinch-to-zoom adjusts font size",
+        "Terminal correctly renders box-drawing characters used by tmux pane borders and TUI apps"
+      ],
+      "priority": 1,
+      "passes": true,
+      "complexity": "XL",
+      "notes": "Research terminal library first: SwiftTerm is leading candidate",
+      "dependsOn": [],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-005",
+      "title": "Customizable Keyboard Toolbar",
+      "description": "As a developer, I want a fully customizable keyboard toolbar with all essential terminal keys visible, so that I never have to hunt for a key.",
+      "acceptanceCriteria": [
+        "A toolbar row appears above the iOS keyboard with terminal-specific keys",
+        "Default buttons include: Esc, Ctrl, Tab, arrow keys (all four), /, -, |, Ctrl+C",
+        "User can enter an edit mode to add, remove, and drag-to-reorder toolbar buttons",
+        "Available button palette includes: all modifier keys, F1-F12, common symbols, tmux prefix (Ctrl+B)",
+        "Toolbar configuration persists across app launches",
+        "Toolbar is scrollable if more buttons are added than fit on screen"
+      ],
+      "priority": 2,
+      "passes": true,
+      "complexity": "L",
+      "notes": "Use UIKit InputAccessoryView for reliable keyboard attachment, SwiftUI for button rendering",
+      "dependsOn": [
+        "US-004"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-006",
+      "title": "Server Connection Management",
+      "description": "As a developer, I want to save and manage multiple server connections, so that I can quickly connect to any of my machines.",
+      "acceptanceCriteria": [
+        "User can save a server with: name, hostname, port, username, auth method, and Mosh toggle",
+        "Server list shows all saved connections on the home screen",
+        "User can edit or delete saved servers",
+        "Each connection to a server with or without a specific tmux session is preserved as a distinct entry",
+        "Last-used connections appear at the top of the list"
+      ],
+      "priority": 2,
+      "passes": true,
+      "complexity": "M",
+      "notes": "Use SwiftData for persistence. iOS 17+ required.",
+      "dependsOn": [],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-007",
+      "title": "Dark-Only Theme",
+      "description": "As a developer, I want the app to use a dark terminal theme, so that it looks good and is easy on the eyes.",
+      "acceptanceCriteria": [
+        "App uses a dark color scheme throughout (no light mode)",
+        "Terminal uses a curated dark theme (e.g., Nord or Dracula palette)",
+        "Status bar, navigation, and modals all use dark backgrounds",
+        "Text contrast meets WCAG AA standards for readability"
+      ],
+      "priority": 3,
+      "passes": true,
+      "complexity": "S",
+      "notes": "Set UIUserInterfaceStyle to dark in Info.plist, define color palette as SwiftUI Color assets",
+      "dependsOn": [],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-008",
+      "title": "Session Persistence",
+      "description": "As a developer, I want my terminal sessions to persist when I switch apps or lock my phone, so that I don't lose my place.",
+      "acceptanceCriteria": [
+        "Switching to another app and back preserves the terminal session state",
+        "Mosh sessions resume automatically after device sleep",
+        "SSH sessions attempt reconnection if the TCP connection drops",
+        "A visual indicator shows connection status (connected, reconnecting, disconnected)"
+      ],
+      "priority": 2,
+      "passes": true,
+      "complexity": "M",
+      "notes": "Mosh handles this natively. SSH needs reconnection logic via UIScene lifecycle.",
+      "dependsOn": [
+        "US-001",
+        "US-002"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-009",
+      "title": "Connection Quick-Launch",
+      "description": "As a developer, I want to quickly reconnect to my most-used server+tmux combination, so that I spend minimal time navigating the app.",
+      "acceptanceCriteria": [
+        "Home screen shows recent connections with server name and tmux session name",
+        "Tapping a recent connection initiates the connection immediately",
+        "If the previous tmux session no longer exists, the app falls back to the tmux picker"
+      ],
+      "priority": 3,
+      "passes": true,
+      "complexity": "S",
+      "notes": "",
+      "dependsOn": [
+        "US-006",
+        "US-003"
+      ],
+      "completionNotes": "Completed by agent"
+    }
+  ],
+  "metadata": {
+    "updatedAt": "2026-02-12T03:01:03.083Z"
+  }
+}

@@ -1,0 +1,26 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+*.xcworkspace/xcuserdata/
+
+# Xcode scheme management (user-specific)
+xcschememanagement.plist
+
+# Swift Package Manager
+.build/
+Packages/
+
+# Font archives (extracted files are committed)
+*.zip
+
+# Ralph TUI tool state
+prd/.ralph-tui/
+
+# macOS
+.DS_Store
+*.swp
+*~
