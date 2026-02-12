@@ -2,13 +2,14 @@ name: Hoshi
 options:
   bundleIdPrefix: com.hoshi
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "18.0"
   xcodeVersion: "16.4"
   generateEmptyDirectories: true
 
 settings:
   base:
     SWIFT_VERSION: "5.9"
+    "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
 
 packages:
   Citadel:
@@ -17,9 +18,6 @@ packages:
   CryptoSwift:
     url: https://github.com/krzyzanowskim/CryptoSwift.git
     from: "1.8.0"
-  SwiftTerm:
-    url: https://github.com/migueldeicaza/SwiftTerm.git
-    from: "1.10.1"
 
 targets:
   Hoshi:
@@ -48,7 +46,7 @@ targets:
     dependencies:
       - package: Citadel
       - package: CryptoSwift
-      - package: SwiftTerm
+      - framework: Frameworks/GhosttyKit.xcframework
 
   HoshiTests:
     type: bundle.unit-test

@@ -1,0 +1,8 @@
+[submodule "vendor/libxev"]
+	path = vendor/libxev
+	url = https://github.com/eriklangille/libxev.git
+	branch = fix-ios-machport
+[submodule "vendor/ghostty"]
+	path = vendor/ghostty
+	url = https://github.com/eriklangille/ghostty.git
+	branch = clauntty

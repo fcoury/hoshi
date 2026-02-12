@@ -18,7 +18,7 @@ final class MoshSession: ObservableObject {
 
     let server: Server
 
-    // Raw data callback for feeding bytes directly to SwiftTerm
+    // Raw data callback for feeding bytes directly to the terminal renderer
     var onDataReceived: TerminalDataCallback?
 
     private var sshClient: SSHClient?
@@ -316,7 +316,7 @@ final class MoshSession: ObservableObject {
                 let outputs = try MoshHostOutput.decode(from: instruction.diff)
                 for output in outputs {
                     if let hostString = output.hostString {
-                        // Feed raw bytes to SwiftTerm if callback is set
+                        // Feed raw bytes to terminal renderer if callback is set
                         if let callback = onDataReceived {
                             callback(Array(hostString))
                         } else if let text = String(data: hostString, encoding: .utf8) {
