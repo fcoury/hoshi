@@ -1,0 +1,7 @@
+schemaVersion: 1
+enabledWorkflows:
+  - simulator
+  - project-discovery
+  - device
+  - utilities
+  - logging
