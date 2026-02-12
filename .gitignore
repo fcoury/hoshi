@@ -24,3 +24,6 @@ prd/.ralph-tui/
 .DS_Store
 *.swp
 *~
+
+# Local Ghostty build artifacts
+Hoshi/Frameworks/GhosttyKit.xcframework

@@ -52,13 +52,13 @@ final class ConnectionViewModel {
         }
     }
 
-    // Set the raw data callback on the active session for SwiftTerm integration
+    // Set the raw data callback on the active session for terminal rendering
     func setDataCallback(_ callback: TerminalDataCallback?) {
         sshSession?.onDataReceived = callback
         moshSession?.onDataReceived = callback
     }
 
-    // Send raw bytes from SwiftTerm keystrokes to the active session
+    // Send raw keystroke bytes to the active session
     func sendBytes(_ bytes: ArraySlice<UInt8>) async {
         let data = Data(bytes)
         if let moshSession { await moshSession.send(data) }

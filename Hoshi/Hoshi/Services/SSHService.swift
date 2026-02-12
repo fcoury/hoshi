@@ -14,11 +14,12 @@ final class SSHSession: ObservableObject {
     private(set) var client: SSHClient?
     private var stdinWriter: TTYStdinWriter?
     private var sessionTask: Task<Void, Never>?
+    private var pendingTerminalSize: (cols: Int, rows: Int)?
 
     // Command to run inside the PTY after it opens (e.g. tmux attach)
     var initialCommand: String?
 
-    // Raw data callback for feeding bytes directly to SwiftTerm
+    // Raw data callback for feeding bytes directly to the terminal renderer
     var onDataReceived: TerminalDataCallback?
 
     // Stored credentials for reconnection after disconnect
@@ -143,7 +144,9 @@ final class SSHSession: ObservableObject {
 
     // Resize the terminal
     func resize(cols: Int, rows: Int) async {
-        try? await stdinWriter?.changeSize(
+        pendingTerminalSize = (cols, rows)
+        guard let stdinWriter else { return }
+        try? await stdinWriter.changeSize(
             cols: cols,
             rows: rows,
             pixelWidth: 0,
@@ -254,12 +257,16 @@ final class SSHSession: ObservableObject {
             guard let self else { return }
 
             do {
+                let initialSize = await MainActor.run {
+                    self.pendingTerminalSize ?? (cols: 80, rows: 24)
+                }
+
                 // Open a PTY with xterm-256color for full color support
                 let ptyRequest = SSHChannelRequestEvent.PseudoTerminalRequest(
                     wantReply: true,
                     term: "xterm-256color",
-                    terminalCharacterWidth: 80,
-                    terminalRowHeight: 24,
+                    terminalCharacterWidth: initialSize.cols,
+                    terminalRowHeight: initialSize.rows,
                     terminalPixelWidth: 0,
                     terminalPixelHeight: 0,
                     terminalModes: SSHTerminalModes([
@@ -280,6 +287,16 @@ final class SSHSession: ObservableObject {
                         self.stdinWriter = outbound
                     }
 
+                    // Re-apply latest requested size in case it changed after PTY request creation.
+                    if let size = await MainActor.run(body: { self.pendingTerminalSize }) {
+                        try? await outbound.changeSize(
+                            cols: size.cols,
+                            rows: size.rows,
+                            pixelWidth: 0,
+                            pixelHeight: 0
+                        )
+                    }
+
                     // Send initial command if set (e.g. tmux attach/new)
                     if let cmd = await MainActor.run(body: { self.initialCommand }) {
                         var cmdBuffer = ByteBuffer()
@@ -293,7 +310,7 @@ final class SSHSession: ObservableObject {
                         case .stdout(let buffer):
                             if let bytes = buffer.getBytes(at: buffer.readerIndex, length: buffer.readableBytes) {
                                 let callback = await MainActor.run { self.onDataReceived }
-                                // Feed raw bytes to SwiftTerm if callback is set
+                                // Feed raw bytes to terminal renderer if callback is set
                                 if let callback {
                                     callback(bytes)
                                 } else if let text = String(bytes: bytes, encoding: .utf8) {

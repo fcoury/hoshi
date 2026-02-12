@@ -11,7 +11,7 @@ enum ConnectionState: Equatable {
     case error(String)
 }
 
-// Callback for raw terminal data — SwiftTerm consumes bytes directly
+// Callback for raw terminal data consumed by the terminal renderer
 typealias TerminalDataCallback = @Sendable ([UInt8]) -> Void
 
 // Protocol that both SSHSession and MoshSession conform to,
@@ -21,7 +21,7 @@ protocol TerminalSession: AnyObject, ObservableObject {
     var connectionState: ConnectionState { get }
     var outputBuffer: String { get set }
 
-    // Raw data callback for feeding bytes directly to SwiftTerm
+    // Raw data callback for feeding bytes directly to the terminal renderer
     var onDataReceived: TerminalDataCallback? { get set }
 
     func send(_ data: Data) async
