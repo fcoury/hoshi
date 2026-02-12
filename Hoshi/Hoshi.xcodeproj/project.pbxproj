@@ -50,6 +50,7 @@
 		D3002045BC765B2F012820E6 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 263F27DE87745B6CBB01F9EC /* README.md */; };
 		D30A82B7CDD3B69DD4FF6FE8 /* SSHService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B73D4FAFF8219BC7CB25BA12 /* SSHService.swift */; };
 		D40D2600718331C91545FA29 /* NetworkMonitorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 319B6445E2EFF983D29F19B4 /* NetworkMonitorService.swift */; };
+		D5DE239A88348AB2CC5EB72D /* MoshIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41CF781D13ED19D76B0E662E /* MoshIntegrationTests.swift */; };
 		DAF481F02039E5DCF7BAFD08 /* SSHConnectionError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7B7A33C6D07387D9708017 /* SSHConnectionError.swift */; };
 		DF4201EF0C83E223DF1F69C0 /* GhosttyKit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 6E2EFDD79EC2C42851A8617C /* GhosttyKit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E293E5B88435EF600774A8DA /* KeychainServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C196748322C5769248D1E351 /* KeychainServiceTests.swift */; };
@@ -97,6 +98,7 @@
 		31A14278942E4B7AEFB3F1EB /* ToolbarEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarEditView.swift; sourceTree = "<group>"; };
 		3BE99C6A440F89020EFE0E55 /* KeyboardToolbarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardToolbarView.swift; sourceTree = "<group>"; };
 		414AB1CB023F8485D188ED5A /* MoshTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshTransport.swift; sourceTree = "<group>"; };
+		41CF781D13ED19D76B0E662E /* MoshIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshIntegrationTests.swift; sourceTree = "<group>"; };
 		5C7ACDBCAC51E50CC25A2E71 /* FantasqueSansMNerdFontPropo-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontPropo-Bold.ttf"; sourceTree = "<group>"; };
 		5EDBF8AB95AD1BD0632E9DC5 /* SSHKeyServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHKeyServiceTests.swift; sourceTree = "<group>"; };
 		68F7035092B0ACF1D4E67131 /* FantasqueSansMNerdFont-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFont-BoldItalic.ttf"; sourceTree = "<group>"; };
@@ -155,6 +157,7 @@
 			isa = PBXGroup;
 			children = (
 				C196748322C5769248D1E351 /* KeychainServiceTests.swift */,
+				41CF781D13ED19D76B0E662E /* MoshIntegrationTests.swift */,
 				B2DF4C2856D88394B594133C /* ServerModelTests.swift */,
 				5EDBF8AB95AD1BD0632E9DC5 /* SSHKeyServiceTests.swift */,
 			);
@@ -452,6 +455,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E293E5B88435EF600774A8DA /* KeychainServiceTests.swift in Sources */,
+				D5DE239A88348AB2CC5EB72D /* MoshIntegrationTests.swift in Sources */,
 				539569A7ADAF63A743137D9A /* SSHKeyServiceTests.swift in Sources */,
 				0F89014F48A47FBA641177C6 /* ServerModelTests.swift in Sources */,
 			);

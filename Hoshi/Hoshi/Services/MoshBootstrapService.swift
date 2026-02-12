@@ -5,6 +5,7 @@ import Citadel
 struct MoshConnectionInfo {
     let udpPort: UInt16
     let sessionKey: Data
+    let sessionKeyBase64: String
     let serverIP: String
 }
 
@@ -89,21 +90,28 @@ final class MoshBootstrapService {
     // Start mosh-server and parse connection info from its output
     // mosh-server prints: MOSH CONNECT <port> <base64-key>
     func startMoshServer() async throws -> MoshConnectionInfo {
-        // Start mosh-server with 256-color support
-        let output = try await runCommand("mosh-server new -s -c 256 -l LANG=en_US.UTF-8 2>&1")
+        // Match upstream behavior: emit SSH_CONNECTION so the client can pick
+        // the remote server IP on multihomed hosts.
+        let output = try await runCommand(
+            "sh -lc '[ -n \"$SSH_CONNECTION\" ] && printf \"\\nMOSH SSH_CONNECTION %s\\n\" \"$SSH_CONNECTION\"; mosh-server new -s -c 256 -l LANG=en_US.UTF-8' 2>&1"
+        )
 
         // Parse the MOSH CONNECT line
         let (port, keyString) = try MoshBootstrapService.parseMoshConnect(output)
+        // Use the user-provided host for UDP. In practice this is the route that
+        // succeeded for SSH from this client environment.
+        let serverIP = hostname
 
-        // Decode the base64 session key
-        guard let keyData = Data(base64Encoded: keyString), keyData.count == 16 else {
+        // mosh key on the wire is unpadded 22-char base64.
+        guard let keyData = MoshBootstrapService.decodeMoshSessionKey(keyString) else {
             throw MoshBootstrapError.invalidSessionKey
         }
 
         return MoshConnectionInfo(
             udpPort: port,
             sessionKey: keyData,
-            serverIP: hostname
+            sessionKeyBase64: keyString,
+            serverIP: serverIP
         )
     }
 
@@ -121,6 +129,27 @@ final class MoshBootstrapService {
             }
         }
         throw MoshBootstrapError.noConnectLine(output: String(output.prefix(500)))
+    }
+
+    // Parse server-side SSH_CONNECTION line emitted as:
+    // MOSH SSH_CONNECTION <client_ip> <client_port> <server_ip> <server_port>
+    static func parseServerIPFromSSHConnection(_ output: String) -> String? {
+        for line in output.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.hasPrefix("MOSH SSH_CONNECTION ") else { continue }
+            let parts = trimmed.components(separatedBy: " ")
+            guard parts.count == 6 else { continue }
+            return parts[4]
+        }
+        return nil
+    }
+
+    static func decodeMoshSessionKey(_ key: String) -> Data? {
+        guard key.count == 22 else { return nil }
+        guard key.range(of: #"^[A-Za-z0-9/+]{22}$"#, options: .regularExpression) != nil else {
+            return nil
+        }
+        return Data(base64Encoded: key + "==")
     }
 
     // MARK: - Private

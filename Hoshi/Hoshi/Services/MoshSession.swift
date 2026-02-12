@@ -4,6 +4,7 @@ import Crypto
 import NIOCore
 import NIOSSH
 import Network
+import zlib
 @preconcurrency import CCryptoBoringSSL
 
 // Full mosh session: SSH bootstrap -> mosh-server detection/launch -> UDP communication
@@ -36,7 +37,37 @@ final class MoshSession: ObservableObject {
     private var sendSequenceNumber: UInt64 = 0
     private var localStateNum: UInt64 = 0
     private var remoteStateNum: UInt64 = 0
-    private var pendingAckNum: UInt64 = 0
+    private var lastRemoteTimestamp: UInt16 = 0
+    private var consecutiveDatagramFailures = 0
+    private var debugSendInstructionCount = 0
+    private var debugSendDatagramCount = 0
+    private var debugReceiveDatagramCount = 0
+    private var debugDecryptSuccessCount = 0
+    private var debugInstructionDecodeCount = 0
+    private var debugHostOutputCount = 0
+    private var debugHostByteCount = 0
+
+    struct DebugStats {
+        let sendInstructions: Int
+        let sendDatagrams: Int
+        let receiveDatagrams: Int
+        let decryptSuccesses: Int
+        let decodedInstructions: Int
+        let decodedHostOutputs: Int
+        let decodedHostBytes: Int
+    }
+
+    var debugStats: DebugStats {
+        DebugStats(
+            sendInstructions: debugSendInstructionCount,
+            sendDatagrams: debugSendDatagramCount,
+            receiveDatagrams: debugReceiveDatagramCount,
+            decryptSuccesses: debugDecryptSuccessCount,
+            decodedInstructions: debugInstructionDecodeCount,
+            decodedHostOutputs: debugHostOutputCount,
+            decodedHostBytes: debugHostByteCount
+        )
+    }
 
     init(server: Server) {
         self.server = server
@@ -120,32 +151,20 @@ final class MoshSession: ObservableObject {
 
     // Send keystrokes via the SSP protocol over UDP
     func send(_ data: Data) async {
-        guard let cryptoSession, let udpConnection, udpConnection.isReady else { return }
-
         do {
             // Encode as user input protobuf
             let userInput = MoshUserInput.encodeKeystroke(data)
 
             // Wrap in a transport instruction
             var instruction = MoshTransportInstruction()
-            instruction.oldNum = remoteStateNum
+            instruction.oldNum = localStateNum
             localStateNum += 1
             instruction.newNum = localStateNum
             instruction.ackNum = remoteStateNum
             instruction.diff = userInput
-            let encoded = instruction.encode()
-
-            // Fragment and send each fragment as an encrypted datagram
-            let fragments = fragmenter.fragment(encoded)
-            for fragment in fragments {
-                let fragmentData = fragment.toData()
-                sendSequenceNumber += 1
-                let nonce = MoshNonce(direction: .toServer, sequenceNumber: sendSequenceNumber)
-                let datagram = try cryptoSession.encrypt(plaintext: fragmentData, nonce: nonce)
-                try await udpConnection.send(datagram)
-            }
+            try await sendTransportInstruction(instruction)
         } catch {
-            // Silently drop send errors (mosh is best-effort)
+            reportNonFatalError(error, context: "send keystroke")
         }
     }
 
@@ -157,28 +176,17 @@ final class MoshSession: ObservableObject {
 
     // Resize the remote terminal
     func resize(cols: Int, rows: Int) async {
-        guard let cryptoSession, let udpConnection, udpConnection.isReady else { return }
-
         do {
             let userInput = MoshUserInput.encodeResize(width: Int32(cols), height: Int32(rows))
             var instruction = MoshTransportInstruction()
-            instruction.oldNum = remoteStateNum
+            instruction.oldNum = localStateNum
             localStateNum += 1
             instruction.newNum = localStateNum
             instruction.ackNum = remoteStateNum
             instruction.diff = userInput
-            let encoded = instruction.encode()
-
-            let fragments = fragmenter.fragment(encoded)
-            for fragment in fragments {
-                let fragmentData = fragment.toData()
-                sendSequenceNumber += 1
-                let nonce = MoshNonce(direction: .toServer, sequenceNumber: sendSequenceNumber)
-                let datagram = try cryptoSession.encrypt(plaintext: fragmentData, nonce: nonce)
-                try await udpConnection.send(datagram)
-            }
+            try await sendTransportInstruction(instruction)
         } catch {
-            // Silently drop
+            reportNonFatalError(error, context: "send resize")
         }
     }
 
@@ -207,6 +215,15 @@ final class MoshSession: ObservableObject {
 
         networkMonitor.stop()
         cryptoSession = nil
+        lastRemoteTimestamp = 0
+        consecutiveDatagramFailures = 0
+        debugSendInstructionCount = 0
+        debugSendDatagramCount = 0
+        debugReceiveDatagramCount = 0
+        debugDecryptSuccessCount = 0
+        debugInstructionDecodeCount = 0
+        debugHostOutputCount = 0
+        debugHostByteCount = 0
         connectionState = .disconnected
     }
 
@@ -237,6 +254,19 @@ final class MoshSession: ObservableObject {
         // Create UDP connection
         let udp = MoshUDPConnection(host: info.serverIP, port: info.udpPort)
         self.udpConnection = udp
+        sendSequenceNumber = 0
+        localStateNum = 0
+        remoteStateNum = 0
+        lastRemoteTimestamp = 0
+        consecutiveDatagramFailures = 0
+        fragmentAssembly.reset()
+        debugSendInstructionCount = 0
+        debugSendDatagramCount = 0
+        debugReceiveDatagramCount = 0
+        debugDecryptSuccessCount = 0
+        debugInstructionDecodeCount = 0
+        debugHostOutputCount = 0
+        debugHostByteCount = 0
 
         // Connect and wait for ready state
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -286,6 +316,7 @@ final class MoshSession: ObservableObject {
     // Decrypt, reassemble, and decode a received datagram
     private func processDatagram(_ datagram: Data) async {
         guard let cryptoSession else { return }
+        debugReceiveDatagramCount += 1
 
         do {
             // Decrypt
@@ -293,29 +324,33 @@ final class MoshSession: ObservableObject {
                 datagram: datagram,
                 direction: .toClient
             )
+            debugDecryptSuccessCount += 1
+            let packetPayload = try depacketize(plaintext)
 
             // Parse transport fragment
-            let fragment = try MoshFragment(fromPayload: plaintext)
+            let fragment = try MoshFragment(fromPayload: packetPayload)
 
             // Reassemble (most messages are single-fragment)
             guard let completeInstruction = fragmentAssembly.addFragment(fragment) else {
                 return // Waiting for more fragments
             }
 
-            // Decode transport instruction
-            let instruction = try MoshTransportInstruction.decode(from: completeInstruction)
+            // Transport instruction payload is zlib-compressed.
+            let instructionBytes = try decompressInstruction(completeInstruction)
+            let instruction = try MoshTransportInstruction.decode(from: instructionBytes)
+            debugInstructionDecodeCount += 1
 
             // Update SSP state
             if instruction.newNum > remoteStateNum {
                 remoteStateNum = instruction.newNum
             }
-            pendingAckNum = instruction.ackNum
-
             // Decode the diff as host output
             if !instruction.diff.isEmpty {
                 let outputs = try MoshHostOutput.decode(from: instruction.diff)
+                debugHostOutputCount += outputs.count
                 for output in outputs {
                     if let hostString = output.hostString {
+                        debugHostByteCount += hostString.count
                         // Feed raw bytes to terminal renderer if callback is set
                         if let callback = onDataReceived {
                             callback(Array(hostString))
@@ -325,8 +360,13 @@ final class MoshSession: ObservableObject {
                     }
                 }
             }
+            consecutiveDatagramFailures = 0
         } catch {
-            // Silently ignore malformed datagrams (mosh is resilient)
+            consecutiveDatagramFailures += 1
+            reportNonFatalError(error, context: "process datagram")
+            if consecutiveDatagramFailures >= 5 {
+                connectionState = .error("Mosh protocol error: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -339,19 +379,13 @@ final class MoshSession: ObservableObject {
 
                 // Send a no-op transport instruction (empty diff)
                 var instruction = MoshTransportInstruction()
-                instruction.oldNum = self.remoteStateNum
+                instruction.oldNum = self.localStateNum
                 instruction.newNum = self.localStateNum
                 instruction.ackNum = self.remoteStateNum
-                let encoded = instruction.encode()
-
-                let fragments = self.fragmenter.fragment(encoded)
-                for fragment in fragments {
-                    let fragmentData = fragment.toData()
-                    self.sendSequenceNumber += 1
-                    let nonce = MoshNonce(direction: .toServer, sequenceNumber: self.sendSequenceNumber)
-                    if let datagram = try? self.cryptoSession?.encrypt(plaintext: fragmentData, nonce: nonce) {
-                        try? await self.udpConnection?.send(datagram)
-                    }
+                do {
+                    try await self.sendTransportInstruction(instruction)
+                } catch {
+                    self.reportNonFatalError(error, context: "heartbeat")
                 }
             }
         }
@@ -394,6 +428,116 @@ final class MoshSession: ObservableObject {
         } else {
             connectionState = previousState
         }
+    }
+
+    private func sendTransportInstruction(_ instruction: MoshTransportInstruction) async throws {
+        guard let cryptoSession, let udpConnection, udpConnection.isReady else {
+            throw MoshSessionError.udpNotReady
+        }
+
+        let encoded = instruction.encode()
+        let compressed = try compressInstruction(encoded)
+        let fragments = fragmenter.fragment(compressed)
+        debugSendInstructionCount += 1
+
+        for fragment in fragments {
+            let fragmentData = fragment.toData()
+            let packet = packetize(fragmentData)
+            sendSequenceNumber += 1
+            let nonce = MoshNonce(direction: .toServer, sequenceNumber: sendSequenceNumber)
+            let datagram = try cryptoSession.encrypt(plaintext: packet, nonce: nonce)
+            try await udpConnection.send(datagram)
+            debugSendDatagramCount += 1
+        }
+    }
+
+    private func packetize(_ payload: Data) -> Data {
+        var packet = Data(capacity: 4 + payload.count)
+        let timestamp = currentTimestamp()
+        packet.append(UInt8((timestamp >> 8) & 0xFF))
+        packet.append(UInt8(timestamp & 0xFF))
+        packet.append(UInt8((lastRemoteTimestamp >> 8) & 0xFF))
+        packet.append(UInt8(lastRemoteTimestamp & 0xFF))
+        packet.append(payload)
+        return packet
+    }
+
+    private func depacketize(_ packet: Data) throws -> Data {
+        guard packet.count >= 4 else {
+            throw MoshSessionError.packetTooShort(packet.count)
+        }
+
+        let remoteTimestamp = (UInt16(packet[0]) << 8) | UInt16(packet[1])
+        lastRemoteTimestamp = remoteTimestamp
+        return Data(packet.dropFirst(4))
+    }
+
+    private func currentTimestamp() -> UInt16 {
+        let millis = UInt64(Date().timeIntervalSince1970 * 1000)
+        return UInt16(truncatingIfNeeded: millis)
+    }
+
+    private func reportNonFatalError(_ error: Error, context: String) {
+        print("[MoshSession] \(context): \(error.localizedDescription)")
+    }
+
+    private func compressInstruction(_ instruction: Data) throws -> Data {
+        var destinationLength = compressBound(uLong(instruction.count))
+        var destination = Data(count: Int(destinationLength))
+
+        let status = destination.withUnsafeMutableBytes { destinationBuffer in
+            instruction.withUnsafeBytes { sourceBuffer in
+                compress(
+                    destinationBuffer.bindMemory(to: Bytef.self).baseAddress,
+                    &destinationLength,
+                    sourceBuffer.bindMemory(to: Bytef.self).baseAddress,
+                    uLong(instruction.count)
+                )
+            }
+        }
+
+        guard status == Z_OK else {
+            throw MoshSessionError.compressionFailed(Int(status))
+        }
+
+        destination.removeSubrange(Int(destinationLength)..<destination.count)
+        return destination
+    }
+
+    private func decompressInstruction(_ compressedInstruction: Data) throws -> Data {
+        // Upstream mosh caps this at 2048 * 2048.
+        let maxBufferSize = 4 * 1024 * 1024
+        var bufferSize = max(1024, compressedInstruction.count * 8)
+
+        while bufferSize <= maxBufferSize {
+            var destinationLength = uLong(bufferSize)
+            var destination = Data(count: bufferSize)
+
+            let status = destination.withUnsafeMutableBytes { destinationBuffer in
+                compressedInstruction.withUnsafeBytes { sourceBuffer in
+                    uncompress(
+                        destinationBuffer.bindMemory(to: Bytef.self).baseAddress,
+                        &destinationLength,
+                        sourceBuffer.bindMemory(to: Bytef.self).baseAddress,
+                        uLong(compressedInstruction.count)
+                    )
+                }
+            }
+
+            if status == Z_OK {
+                destination.removeSubrange(Int(destinationLength)..<destination.count)
+                return destination
+            }
+
+            if status == Z_BUF_ERROR {
+                bufferSize *= 2
+                continue
+            }
+
+            throw MoshSessionError.decompressionFailed(Int(status))
+        }
+
+        throw MoshSessionError.decompressionOverflow
     }
 
     // Build SSH auth method (duplicated from SSHSession to avoid tight coupling)
@@ -442,3 +586,26 @@ final class MoshSession: ObservableObject {
 
 // Conform to TerminalSession protocol
 extension MoshSession: TerminalSession {}
+
+enum MoshSessionError: LocalizedError {
+    case udpNotReady
+    case packetTooShort(Int)
+    case compressionFailed(Int)
+    case decompressionFailed(Int)
+    case decompressionOverflow
+
+    var errorDescription: String? {
+        switch self {
+        case .udpNotReady:
+            return "Mosh UDP link is not ready"
+        case .packetTooShort(let length):
+            return "Mosh packet too short (\(length) bytes)"
+        case .compressionFailed(let status):
+            return "Failed to compress mosh instruction (zlib status \(status))"
+        case .decompressionFailed(let status):
+            return "Failed to decompress mosh instruction (zlib status \(status))"
+        case .decompressionOverflow:
+            return "Decompressed mosh instruction exceeded maximum buffer size"
+        }
+    }
+}
