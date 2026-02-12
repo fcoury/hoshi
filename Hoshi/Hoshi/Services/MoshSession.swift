@@ -340,12 +340,16 @@ final class MoshSession: ObservableObject {
             let instruction = try MoshTransportInstruction.decode(from: instructionBytes)
             debugInstructionDecodeCount += 1
 
-            // Update SSP state
-            if instruction.newNum > remoteStateNum {
+            // Update SSP state. Only apply host output when we advance to a
+            // strictly newer state; duplicate/out-of-order states can arrive
+            // over UDP and must not be re-applied or text will be replayed.
+            let isNewRemoteState = instruction.newNum > remoteStateNum
+            if isNewRemoteState {
                 remoteStateNum = instruction.newNum
             }
-            // Decode the diff as host output
-            if !instruction.diff.isEmpty {
+
+            // Decode the diff as host output for newly observed states only.
+            if isNewRemoteState, !instruction.diff.isEmpty {
                 let outputs = try MoshHostOutput.decode(from: instruction.diff)
                 debugHostOutputCount += outputs.count
                 for output in outputs {

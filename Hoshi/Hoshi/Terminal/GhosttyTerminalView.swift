@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import GhosttyKit
+import QuartzCore
 
 struct GhosttyTerminalView: UIViewRepresentable {
     let connectionVM: ConnectionViewModel
@@ -100,6 +101,11 @@ struct GhosttyTerminalView: UIViewRepresentable {
 }
 
 final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
+    private enum InputSource {
+        case direct
+        case ptyCallback
+    }
+
     private final class WeakViewRef {
         weak var view: GhosttyTerminalSurfaceView?
 
@@ -119,6 +125,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
     private var isKeyboardVisible: Bool
     private var lastGridSize: (cols: Int, rows: Int) = (0, 0)
     private weak var renderLayer: CALayer?
+    private var recentDirectInputs: [(canonical: Data, time: CFTimeInterval)] = []
 
     let toolbarAccessory: KeyboardToolbarAccessoryView
 
@@ -227,6 +234,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
 
         for press in presses {
             guard let key = press.key else { continue }
+            guard shouldHandlePressDirectly(key) else { continue }
             guard let data = dataForKey(key) else { continue }
             sendInputData(data)
             handled = true
@@ -384,7 +392,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
             let view = Unmanaged<GhosttyTerminalSurfaceView>.fromOpaque(userdata).takeUnretainedValue()
             let input = Data(bytes: data, count: Int(len))
             DispatchQueue.main.async {
-                view.onInputData?(input)
+                view.handlePtyInputCallback(input)
             }
         }
     }
@@ -446,7 +454,73 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         guard !data.isEmpty else { return }
 
         let transformed = toolbarAccessory.applyCtrlModifierIfNeeded(to: ArraySlice(data))
-        onInputData?(Data(transformed))
+        forwardInputData(Data(transformed), source: .direct)
+    }
+
+    private func forwardInputData(_ data: Data, source: InputSource) {
+        guard !data.isEmpty else { return }
+
+        let now = CACurrentMediaTime()
+        let canonical = canonicalInputForDedup(data)
+        let duplicateWindow: CFTimeInterval = 1.0
+        recentDirectInputs.removeAll { now - $0.time > duplicateWindow }
+
+        switch source {
+        case .direct:
+            recentDirectInputs.append((canonical, now))
+            onInputData?(data)
+        case .ptyCallback:
+            // Ghostty can emit PTY input for the same key already sent through
+            // iOS keyboard APIs. Drop matching callbacks within the duplicate
+            // window to avoid repeated keystrokes from mirrored callback bursts.
+            if recentDirectInputs.contains(where: { $0.canonical == canonical }) {
+                return
+            }
+            onInputData?(data)
+        }
+    }
+
+    private func handlePtyInputCallback(_ data: Data) {
+        guard !data.isEmpty else { return }
+        // Preserve PTY callback-originated input paths while letting the
+        // dedup logic in `forwardInputData` suppress mirrored key events.
+        forwardInputData(data, source: .ptyCallback)
+    }
+
+    private func canonicalInputForDedup(_ data: Data) -> Data {
+        var canonical = data
+        canonical.withUnsafeMutableBytes { buffer in
+            for idx in 0..<buffer.count {
+                if buffer[idx] == 0x0a {
+                    buffer[idx] = 0x0d
+                }
+            }
+        }
+        return canonical
+    }
+
+    private func shouldHandlePressDirectly(_ key: UIKey) -> Bool {
+        if key.modifierFlags.contains(.control) || key.modifierFlags.contains(.alternate) {
+            return true
+        }
+
+        switch key.keyCode {
+        case .keyboardEscape,
+             .keyboardUpArrow,
+             .keyboardDownArrow,
+             .keyboardRightArrow,
+             .keyboardLeftArrow,
+             .keyboardDeleteForward,
+             .keyboardHome,
+             .keyboardEnd,
+             .keyboardPageUp,
+             .keyboardPageDown:
+            return true
+        default:
+            // Printable keys, Return, Tab, and Backspace should flow through the
+            // text input path (`insertText`/`deleteBackward`) to avoid duplicates.
+            return false
+        }
     }
 
     private func dataForKey(_ key: UIKey) -> Data? {
