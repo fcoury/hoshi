@@ -6,8 +6,13 @@ struct ConnectView: View {
     @Bindable var connectionVM: ConnectionViewModel
     @Environment(\.dismiss) private var dismiss
 
+    private enum Field: Hashable {
+        case credentials
+    }
+
     @State private var password = ""
     @State private var selectedKeyTag: String?
+    @FocusState private var focusedField: Field?
 
     var body: some View {
         NavigationStack {
@@ -26,6 +31,7 @@ struct ConnectView: View {
                     Section("Credentials") {
                         SecureField("Password", text: $password)
                             .textContentType(.password)
+                            .focused($focusedField, equals: .credentials)
                     }
                 } else {
                     Section("SSH Key") {
@@ -123,6 +129,12 @@ struct ConnectView: View {
                 if server.authMethod == .key {
                     selectedKeyTag = SSHKeyService.shared.listKeys().first
                 }
+
+                if shouldAutofocusCredentials {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        focusedField = .credentials
+                    }
+                }
             }
             // Auto-dismiss when connected (e.g. after install)
             .onChange(of: connectionVM.connectionState) { _, newState in
@@ -146,6 +158,13 @@ struct ConnectView: View {
         case .key:
             return selectedKeyTag != nil
         }
+    }
+
+    private var shouldAutofocusCredentials: Bool {
+        guard server.authMethod == .password else { return false }
+        return !server.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !server.hostname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !server.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     // Map error messages back to recovery suggestions
