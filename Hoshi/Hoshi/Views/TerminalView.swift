@@ -3,6 +3,8 @@ import SwiftUI
 // Full terminal emulator view using Ghostty.
 struct TerminalView: View {
     @Bindable var connectionVM: ConnectionViewModel
+    var managedSession: ManagedSession?
+    var onDismiss: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     private let appearanceSettings = AppearanceSettings.shared
@@ -50,7 +52,11 @@ struct TerminalView: View {
                 appearanceSettings: appearanceSettings,
                 fontSize: $fontSize,
                 showToolbarEditor: $showToolbarEditor,
-                keyboardVisible: $isKeyboardVisible
+                keyboardVisible: $isKeyboardVisible,
+                onSurfaceReady: { surfaceView in
+                    // Capture weak reference to the surface for thumbnail snapshots
+                    managedSession?.surfaceView = surfaceView
+                }
             )
         }
         .preferredColorScheme(.dark)
@@ -99,6 +105,7 @@ struct TerminalView: View {
             Button {
                 Task {
                     await connectionVM.disconnect()
+                    onDismiss?()
                     dismiss()
                 }
             } label: {
