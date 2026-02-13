@@ -5,6 +5,7 @@ import QuartzCore
 
 struct GhosttyTerminalView: UIViewRepresentable {
     let connectionVM: ConnectionViewModel
+    let appearanceSettings: AppearanceSettings
     @Binding var fontSize: CGFloat
     @Binding var showToolbarEditor: Bool
     @Binding var keyboardVisible: Bool
@@ -64,6 +65,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
 
         uiView.updateFontSize(fontSize)
         uiView.setKeyboardVisible(keyboardVisible)
+        uiView.applyAppearanceSettings(appearanceSettings)
 
         if !showToolbarEditor {
             uiView.reloadToolbarButtons()
@@ -134,6 +136,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
     // when both paths fire for the same keystroke.
     private var lastPressSend: (data: Data, time: CFTimeInterval)?
     private let pressInsertOverlap: CFTimeInterval = 0.05
+    private var lastAppliedSettingsHash: Int = 0
 
     let toolbarAccessory: KeyboardToolbarAccessoryView
 
@@ -169,7 +172,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
 
         super.init(frame: .zero)
 
-        backgroundColor = TerminalTheme.backgroundColor
+        backgroundColor = AppearanceSettings.shared.currentTheme.background
         clipsToBounds = true
 
         toolbarAccessory.onButtonTap = { [weak self] bytes in
@@ -352,6 +355,32 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         toolbarAccessory.reloadButtons()
     }
 
+    // Apply appearance settings to the live surface, skipping if nothing changed
+    func applyAppearanceSettings(_ settings: AppearanceSettings) {
+        let hash = settings.settingsHash
+        guard hash != lastAppliedSettingsHash else { return }
+        lastAppliedSettingsHash = hash
+
+        guard let surface else { return }
+
+        // Build a new config and push it to the surface
+        if let cfg = GhosttyRuntimeController.shared.buildConfig(for: settings) {
+            ghostty_surface_update_config(surface, cfg)
+            ghostty_config_free(cfg)
+        }
+
+        // Apply color scheme
+        let scheme: ghostty_color_scheme_e = switch settings.colorScheme {
+        case .dark: GHOSTTY_COLOR_SCHEME_DARK
+        case .light: GHOSTTY_COLOR_SCHEME_LIGHT
+        case .system: GHOSTTY_COLOR_SCHEME_DARK
+        }
+        ghostty_surface_set_color_scheme(surface, scheme)
+
+        // Update background color to match theme
+        backgroundColor = settings.currentTheme.background
+    }
+
     func updateFontSize(_ size: CGFloat) {
         guard abs(size - currentFontSize) >= 0.25 else { return }
         guard let surface else {
@@ -425,7 +454,12 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         self.surface = surface
         Self.register(surface: surface, view: self)
 
-        ghostty_surface_set_color_scheme(surface, GHOSTTY_COLOR_SCHEME_DARK)
+        let scheme: ghostty_color_scheme_e = switch AppearanceSettings.shared.colorScheme {
+        case .dark: GHOSTTY_COLOR_SCHEME_DARK
+        case .light: GHOSTTY_COLOR_SCHEME_LIGHT
+        case .system: GHOSTTY_COLOR_SCHEME_DARK
+        }
+        ghostty_surface_set_color_scheme(surface, scheme)
         ghostty_surface_set_focus(surface, isKeyboardVisible)
         ghostty_surface_set_occlusion(surface, true)
 
