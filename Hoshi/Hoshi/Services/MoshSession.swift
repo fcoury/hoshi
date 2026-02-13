@@ -33,6 +33,7 @@ final class MoshSession: ObservableObject {
     private var receiveTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var networkWatchTask: Task<Void, Never>?
+    private var isReconnecting = false
 
     // SSP state tracking
     private var sendSequenceNumber: UInt64 = 0
@@ -417,13 +418,19 @@ final class MoshSession: ObservableObject {
         }
     }
 
-    // Handle network change: reconnect UDP (mosh-server keeps session alive)
+    // Handle network change: reconnect UDP (mosh-server keeps session alive).
+    // Guarded to prevent overlapping calls from scene activation + network change.
     private func handleNetworkChange() async {
+        guard !isReconnecting else { return }
+        isReconnecting = true
+        defer { isReconnecting = false }
+
         let previousState = connectionState
         connectionState = .reconnecting
 
-        // Cancel and restart the receive loop
+        // Cancel the receive loop and discard stale partial fragments
         receiveTask?.cancel()
+        fragmentAssembly.reset()
 
         // Reconnect the UDP socket (new local port, same remote endpoint)
         udpConnection?.reconnect()
