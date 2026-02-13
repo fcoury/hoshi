@@ -101,6 +101,8 @@ struct GhosttyTerminalView: UIViewRepresentable {
 }
 
 final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
+    private static let inputTraceEnabled = ProcessInfo.processInfo.environment["HOSHI_INPUT_TRACE"] == "1"
+
     private enum InputSource {
         case direct
         case ptyCallback
@@ -126,6 +128,8 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
     private var lastGridSize: (cols: Int, rows: Int) = (0, 0)
     private weak var renderLayer: CALayer?
     private var recentDirectInputs: [(canonical: Data, time: CFTimeInterval)] = []
+    private let mirroredInputWindow: CFTimeInterval = 0.08
+    private let callbackDeferral: CFTimeInterval = 0.012
 
     let toolbarAccessory: KeyboardToolbarAccessoryView
 
@@ -222,10 +226,16 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
 
     func insertText(_ text: String) {
         let terminalText = text.replacingOccurrences(of: "\n", with: "\r")
+        if Self.inputTraceEnabled {
+            print("[INPUT_TRACE] insertText text=\(String(reflecting: text)) terminal=\(String(reflecting: terminalText))")
+        }
         sendInputData(Data(terminalText.utf8))
     }
 
     func deleteBackward() {
+        if Self.inputTraceEnabled {
+            print("[INPUT_TRACE] deleteBackward")
+        }
         sendInputData(Data([0x7f]))
     }
 
@@ -233,11 +243,27 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         var handled = false
 
         for press in presses {
-            guard let key = press.key else { continue }
-            guard shouldHandlePressDirectly(key) else { continue }
-            guard let data = dataForKey(key) else { continue }
-            sendInputData(data)
-            handled = true
+            guard let key = press.key else {
+                // Soft-keyboard generated presses frequently carry no `UIKey`.
+                // Forwarding those to `super` can trigger Ghostty's PTY callback
+                // while `insertText` also fires, duplicating user input.
+                handled = true
+                continue
+            }
+
+            if shouldHandlePressDirectly(key) {
+                guard let data = dataForKey(key) else { continue }
+                if Self.inputTraceEnabled {
+                    print("[INPUT_TRACE] pressesBegan direct keyCode=\(key.keyCode.rawValue) chars=\(String(reflecting: key.characters)) bytes=\(Self.hexBytes(data))")
+                }
+                sendInputData(data)
+                handled = true
+            } else {
+                // Printable keys should be delivered by UITextInput (`insertText`).
+                // Forwarding these presses to `super` can trigger an additional
+                // Ghostty PTY callback path and duplicate the input.
+                handled = true
+            }
         }
 
         if !handled {
@@ -454,6 +480,9 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         guard !data.isEmpty else { return }
 
         let transformed = toolbarAccessory.applyCtrlModifierIfNeeded(to: ArraySlice(data))
+        if Self.inputTraceEnabled {
+            print("[INPUT_TRACE] sendInputData direct bytes=\(Self.hexBytes(Data(transformed)))")
+        }
         forwardInputData(Data(transformed), source: .direct)
     }
 
@@ -462,29 +491,48 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
 
         let now = CACurrentMediaTime()
         let canonical = canonicalInputForDedup(data)
-        let duplicateWindow: CFTimeInterval = 1.0
-        recentDirectInputs.removeAll { now - $0.time > duplicateWindow }
+        recentDirectInputs.removeAll { now - $0.time > mirroredInputWindow }
 
         switch source {
         case .direct:
             recentDirectInputs.append((canonical, now))
-            onInputData?(data)
-        case .ptyCallback:
-            // Ghostty can emit PTY input for the same key already sent through
-            // iOS keyboard APIs. Drop matching callbacks within the duplicate
-            // window to avoid repeated keystrokes from mirrored callback bursts.
-            if recentDirectInputs.contains(where: { $0.canonical == canonical }) {
-                return
+            if Self.inputTraceEnabled {
+                print("[INPUT_TRACE] forward direct bytes=\(Self.hexBytes(data)) canonical=\(Self.hexBytes(canonical))")
             }
             onInputData?(data)
+        case .ptyCallback:
+            // The callback can race with UITextInput events and arrive first.
+            // Defer briefly so mirrored direct input can land, then suppress
+            // only closely-time-matched equivalent callbacks.
+            DispatchQueue.main.asyncAfter(deadline: .now() + callbackDeferral) { [weak self] in
+                guard let self else { return }
+                let checkTime = CACurrentMediaTime()
+                self.recentDirectInputs.removeAll { checkTime - $0.time > self.mirroredInputWindow }
+                let hasMirroredDirect = self.recentDirectInputs.contains {
+                    $0.canonical == canonical && abs($0.time - now) <= self.mirroredInputWindow
+                }
+                if Self.inputTraceEnabled {
+                    print("[INPUT_TRACE] forward pty bytes=\(Self.hexBytes(data)) canonical=\(Self.hexBytes(canonical)) mirrored=\(hasMirroredDirect)")
+                }
+                if !hasMirroredDirect {
+                    self.onInputData?(data)
+                }
+            }
         }
     }
 
     private func handlePtyInputCallback(_ data: Data) {
         guard !data.isEmpty else { return }
+        if Self.inputTraceEnabled {
+            print("[INPUT_TRACE] ptyCallback bytes=\(Self.hexBytes(data))")
+        }
         // Preserve PTY callback-originated input paths while letting the
         // dedup logic in `forwardInputData` suppress mirrored key events.
         forwardInputData(data, source: .ptyCallback)
+    }
+
+    private static func hexBytes(_ data: Data) -> String {
+        data.map { String(format: "%02x", $0) }.joined(separator: " ")
     }
 
     private func canonicalInputForDedup(_ data: Data) -> Data {

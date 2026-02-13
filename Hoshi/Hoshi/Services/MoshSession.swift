@@ -10,6 +10,7 @@ import zlib
 // Full mosh session: SSH bootstrap -> mosh-server detection/launch -> UDP communication
 @MainActor
 final class MoshSession: ObservableObject {
+    private static let inputTraceEnabled = ProcessInfo.processInfo.environment["HOSHI_INPUT_TRACE"] == "1"
     @Published var connectionState: ConnectionState = .disconnected
     @Published var outputBuffer: String = ""
 
@@ -152,6 +153,10 @@ final class MoshSession: ObservableObject {
     // Send keystrokes via the SSP protocol over UDP
     func send(_ data: Data) async {
         do {
+            if Self.inputTraceEnabled {
+                let hex = data.map { String(format: "%02x", $0) }.joined(separator: " ")
+                print("[INPUT_TRACE] moshSend bytes=\(hex)")
+            }
             // Encode as user input protobuf
             let userInput = MoshUserInput.encodeKeystroke(data)
 

@@ -1,7 +1,15 @@
 schemaVersion: 1
 enabledWorkflows:
+  - doctor
   - simulator
+  - simulator-management
+  - ui-automation
   - project-discovery
+  - project-scaffolding
   - device
+  - debugging
+  - macos
+  - swift-package
   - utilities
   - logging
+  - xcode-ide
