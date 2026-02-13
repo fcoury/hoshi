@@ -1,31 +1,59 @@
 import UIKit
 import GhosttyKit
 
-// Applies the app's terminal theme to Ghostty configuration.
+// Builds Ghostty configuration strings from AppearanceSettings.
+@MainActor
 enum GhosttyThemeAdapter {
-    static func apply(to config: ghostty_config_t, fontSize: CGFloat) {
-        var lines: [String] = []
 
-        lines.append("background = \(hex(TerminalTheme.backgroundColor, includeHash: false))")
-        lines.append("foreground = \(hex(TerminalTheme.foregroundColor, includeHash: false))")
-        lines.append("cursor-color = \(hex(TerminalTheme.cursorColor, includeHash: false))")
-        lines.append("cursor-text = \(hex(TerminalTheme.cursorTextColor, includeHash: false))")
-
-        for (index, color) in TerminalTheme.ansiColors.enumerated() {
-            lines.append("palette = \(index)=\(hex(color, includeHash: true))")
-        }
-
-        lines.append("font-family = \"FantasqueSansM Nerd Font Mono\"")
-        lines.append("font-size = \(Double(fontSize))")
-        lines.append("window-inherit-font-size = false")
-
-        let configString = lines.joined(separator: "\n")
+    // Apply current AppearanceSettings to a Ghostty config (used at init time)
+    static func apply(to config: ghostty_config_t) {
+        let configString = buildConfigString(from: AppearanceSettings.shared)
         configString.withCString { ptr in
             ghostty_config_load_string(config, ptr, UInt(configString.utf8.count))
         }
     }
 
-    private static func hex(_ color: UIColor, includeHash: Bool) -> String {
+    // Build the full Ghostty config string from the given settings
+    static func buildConfigString(from settings: AppearanceSettings) -> String {
+        let theme = settings.currentTheme
+        var lines: [String] = []
+
+        // Colors
+        lines.append("background = \(hex(theme.background, includeHash: false))")
+        lines.append("foreground = \(hex(theme.foreground, includeHash: false))")
+        lines.append("cursor-color = \(hex(theme.cursorColor, includeHash: false))")
+        lines.append("cursor-text = \(hex(theme.cursorText, includeHash: false))")
+        lines.append("selection-background = \(hex(theme.selectionBackground, includeHash: false))")
+        lines.append("selection-foreground = \(hex(theme.selectionForeground, includeHash: false))")
+
+        // ANSI palette
+        for (index, color) in theme.palette.enumerated() {
+            lines.append("palette = \(index)=\(hex(color, includeHash: true))")
+        }
+
+        // Font
+        lines.append("font-family = \"\(settings.fontFamily)\"")
+        lines.append("font-size = \(Double(settings.fontSize))")
+        lines.append("window-inherit-font-size = false")
+
+        // Cursor style
+        lines.append("cursor-style = \(settings.cursorStyle.configValue)")
+
+        // Background opacity
+        lines.append("background-opacity = \(settings.backgroundOpacity)")
+
+        return lines.joined(separator: "\n")
+    }
+
+    // Apply settings to an existing Ghostty config object
+    static func apply(to config: ghostty_config_t, settings: AppearanceSettings) {
+        let configString = buildConfigString(from: settings)
+        configString.withCString { ptr in
+            ghostty_config_load_string(config, ptr, UInt(configString.utf8.count))
+        }
+    }
+
+    static func hex(_ color: UIColor, includeHash: Bool) -> String {
         var red: CGFloat = 0
         var green: CGFloat = 0
         var blue: CGFloat = 0

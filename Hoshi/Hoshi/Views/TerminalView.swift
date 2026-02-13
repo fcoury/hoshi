@@ -5,8 +5,10 @@ struct TerminalView: View {
     @Bindable var connectionVM: ConnectionViewModel
     @Environment(\.dismiss) private var dismiss
 
-    // Font size state for pinch-to-zoom
-    @State private var fontSize: CGFloat = 14
+    private let appearanceSettings = AppearanceSettings.shared
+
+    // Font size state for pinch-to-zoom (initialized from settings)
+    @State private var fontSize: CGFloat = AppearanceSettings.shared.fontSize
 
     // Toolbar edit sheet
     @State private var showToolbarEditor = false
@@ -45,6 +47,7 @@ struct TerminalView: View {
 
             GhosttyTerminalView(
                 connectionVM: connectionVM,
+                appearanceSettings: appearanceSettings,
                 fontSize: $fontSize,
                 showToolbarEditor: $showToolbarEditor,
                 keyboardVisible: $isKeyboardVisible
@@ -105,7 +108,7 @@ struct TerminalView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(SwiftUI.Color(TerminalTheme.chromeSurface))
+        .background(SwiftUI.Color(appearanceSettings.currentTheme.chromeSurface))
     }
 
     private var reconnectingBanner: some View {

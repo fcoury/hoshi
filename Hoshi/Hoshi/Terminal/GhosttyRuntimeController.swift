@@ -44,7 +44,7 @@ final class GhosttyRuntimeController: ObservableObject {
             return
         }
 
-        GhosttyThemeAdapter.apply(to: cfg, fontSize: 14)
+        GhosttyThemeAdapter.apply(to: cfg)
         ghostty_config_finalize(cfg)
         config = cfg
 
@@ -76,8 +76,21 @@ final class GhosttyRuntimeController: ObservableObject {
         }
 
         app = createdApp
-        ghostty_app_set_color_scheme(createdApp, GHOSTTY_COLOR_SCHEME_DARK)
+        let scheme: ghostty_color_scheme_e = switch AppearanceSettings.shared.colorScheme {
+        case .dark: GHOSTTY_COLOR_SCHEME_DARK
+        case .light: GHOSTTY_COLOR_SCHEME_LIGHT
+        case .system: GHOSTTY_COLOR_SCHEME_DARK
+        }
+        ghostty_app_set_color_scheme(createdApp, scheme)
         isReady = true
+    }
+
+    // Build a fresh config from the given appearance settings (for live surface updates)
+    func buildConfig(for settings: AppearanceSettings) -> ghostty_config_t? {
+        guard let cfg = ghostty_config_new() else { return nil }
+        GhosttyThemeAdapter.apply(to: cfg, settings: settings)
+        ghostty_config_finalize(cfg)
+        return cfg
     }
 
     private static func wakeup(_ userdata: UnsafeMutableRawPointer?) {

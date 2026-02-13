@@ -11,6 +11,7 @@ struct ServerListView: View {
     @State private var editingServer: Server?
     @State private var connectionVM = ConnectionViewModel()
     @State private var quickLaunching = false
+    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
@@ -23,6 +24,13 @@ struct ServerListView: View {
             }
             .navigationTitle("Hoshi")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showAddServer = true
@@ -33,6 +41,9 @@ struct ServerListView: View {
             }
             .sheet(isPresented: $showAddServer) {
                 AddServerView()
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
             }
             .sheet(item: $editingServer) { server in
                 AddServerView(existingServer: server)
