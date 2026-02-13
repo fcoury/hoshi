@@ -5,12 +5,16 @@ import NIOCore
 import NIOSSH
 import Network
 import zlib
+import os.log
 @preconcurrency import CCryptoBoringSSL
+
+private let sspLog = Logger(subsystem: "com.hoshi.app.dev", category: "SSP")
 
 // Full mosh session: SSH bootstrap -> mosh-server detection/launch -> UDP communication
 @MainActor
 final class MoshSession: ObservableObject {
     private static let inputTraceEnabled = ProcessInfo.processInfo.environment["HOSHI_INPUT_TRACE"] == "1"
+    private static let sspTraceEnabled = false
     @Published var connectionState: ConnectionState = .disconnected
     @Published var outputBuffer: String = ""
 
@@ -41,6 +45,17 @@ final class MoshSession: ObservableObject {
     private var remoteStateNum: UInt64 = 0
     private var lastRemoteTimestamp: UInt16 = 0
     private var consecutiveDatagramFailures = 0
+    // When we skip diffs due to base mismatch, we send an immediate
+    // ack so the server retransmits from our actual state quickly
+    // (~100ms RTT) instead of waiting for the 3s heartbeat cycle.
+    private var needsImmediateAck = false
+
+    // Track whether a full-screen app (nvim, etc.) has enabled mouse
+    // tracking. When it disables tracking on exit, we inject a screen
+    // clear because the mosh server's terminal emulator handles the
+    // alternate-screen switch internally (\x1b[?1049h/l) and never
+    // sends those sequences to us.
+    private var mouseTrackingActive = false
     private var debugSendInstructionCount = 0
     private var debugSendDatagramCount = 0
     private var debugReceiveDatagramCount = 0
@@ -265,6 +280,8 @@ final class MoshSession: ObservableObject {
         sendSequenceNumber = 0
         localStateNum = 0
         remoteStateNum = 0
+        needsImmediateAck = false
+        mouseTrackingActive = false
         lastRemoteTimestamp = 0
         consecutiveDatagramFailures = 0
         fragmentAssembly.reset()
@@ -348,37 +365,113 @@ final class MoshSession: ObservableObject {
             let instruction = try MoshTransportInstruction.decode(from: instructionBytes)
             debugInstructionDecodeCount += 1
 
-            // SSP overlap guard: the server sends cumulative diffs from the
-            // last-acked base state. When two packets share the same oldNum
-            // (e.g. old=21→22 and old=21→23), the second contains everything
-            // the first already delivered. Because the display diff uses
-            // relative cursor positioning, replaying the overlapping bytes
-            // writes characters twice. Fix: only apply a diff whose base
-            // (oldNum) is at or beyond our current state. If it overlaps,
-            // skip it entirely and leave remoteStateNum unchanged so the
-            // server retransmits from our actual state.
+            // SSP overlap guard with exact-base matching.
+            //
+            // Only deliver diffs whose oldNum matches our current
+            // remoteStateNum exactly. This safely skips:
+            //  - Overlapping diffs (oldNum < remoteStateNum)
+            //  - Gap diffs (oldNum > remoteStateNum from an intermediate
+            //    base we never reached)
+            //  - Stale diffs (newNum <= remoteStateNum)
+            //
+            // When we skip, we flag needsImmediateAck so the heartbeat
+            // loop sends our acked state right away (~100ms RTT) instead
+            // of waiting for the normal 3-second heartbeat cycle.
             let prevRemote = remoteStateNum
             let isNewRemoteState = instruction.newNum > remoteStateNum
-            let isOverlap = instruction.oldNum < prevRemote
+            let isExactBase = instruction.oldNum == prevRemote
 
-            // Apply output only when the state is new AND the diff doesn't
-            // start from a base we've already moved past.
-            if isNewRemoteState, !isOverlap {
+            if Self.sspTraceEnabled {
+                sspLog.notice("[SSP] old=\(instruction.oldNum)→\(instruction.newNum) prevRemote=\(prevRemote) new=\(isNewRemoteState) exact=\(isExactBase) diffBytes=\(instruction.diff.count)")
+            }
+
+            if isNewRemoteState, isExactBase {
+                // Base matches our state exactly — deliver all bytes.
                 remoteStateNum = instruction.newNum
+                // Tell the server our new state immediately so it can
+                // send the next diff from the correct base without
+                // waiting for the 3-second heartbeat.
+                needsImmediateAck = true
 
                 if !instruction.diff.isEmpty {
                     let outputs = try MoshHostOutput.decode(from: instruction.diff)
                     debugHostOutputCount += outputs.count
-                    for output in outputs {
+                    for (idx, output) in outputs.enumerated() {
                         if let hostString = output.hostString {
                             debugHostByteCount += hostString.count
+
+                            // Mosh's server-side terminal emulator consumes
+                            // alternate screen sequences (\x1b[?1049h/l)
+                            // internally, so the diff may not fully clear
+                            // Ghostty's display on screen transitions.
+                            // Detect full-screen repaints (many erase-to-EOL
+                            // sequences) and prepend a screen clear.
+                            let needsClear = isFullScreenRepaint(hostString)
+
+                            if Self.sspTraceEnabled {
+                                let hex = hostString.prefix(64).map { String(format: "%02x", $0) }.joined(separator: " ")
+                                sspLog.notice("[SSP]   output[\(idx)] \(hostString.count)B clear=\(needsClear) hex=\(hex, privacy: .public)")
+                            }
+
                             if let callback = onDataReceived {
-                                callback(Array(hostString))
+                                if needsClear {
+                                    // Prepend cursor-home + erase-display so
+                                    // the full repaint starts on a clean screen.
+                                    var buf = Data(capacity: 7 + hostString.count)
+                                    buf.append(contentsOf: [0x1b, 0x5b, 0x48,        // \x1b[H  (cursor home)
+                                                            0x1b, 0x5b, 0x32, 0x4a]) // \x1b[2J (erase display)
+                                    buf.append(hostString)
+                                    callback(Array(buf))
+                                } else {
+                                    callback(Array(hostString))
+                                }
+
+                                // Detect full-screen app exit via mouse tracking
+                                // + bracketed paste disable in the same output.
+                                // Apps like nvim enable \x1b[?1002h on start and
+                                // disable it on exit alongside \x1b[?2004l. We
+                                // require BOTH to avoid false positives when nvim
+                                // briefly toggles mouse mode (e.g. command entry).
+                                let mouseEnable  = Data([0x1b, 0x5b, 0x3f, 0x31, 0x30, 0x30, 0x32, 0x68])  // \x1b[?1002h
+                                let mouseDisable = Data([0x1b, 0x5b, 0x3f, 0x31, 0x30, 0x30, 0x32, 0x6c])  // \x1b[?1002l
+                                let pasteDisable = Data([0x1b, 0x5b, 0x3f, 0x32, 0x30, 0x30, 0x34, 0x6c])  // \x1b[?2004l
+
+                                if hostString.range(of: mouseEnable) != nil {
+                                    mouseTrackingActive = true
+                                }
+                                let hasMouseOff = hostString.range(of: mouseDisable) != nil
+                                let hasPasteOff = hostString.range(of: pasteDisable) != nil
+                                if hasMouseOff, hasPasteOff, mouseTrackingActive {
+                                    mouseTrackingActive = false
+                                    callback([0x1b, 0x5b, 0x48,        // \x1b[H  (cursor home)
+                                              0x1b, 0x5b, 0x32, 0x4a]) // \x1b[2J (erase display)
+                                    if Self.sspTraceEnabled {
+                                        sspLog.notice("[SSP]   → INJECTED screen clear (app exit: mouse+paste disabled)")
+                                    }
+                                }
                             } else if let text = String(data: hostString, encoding: .utf8) {
                                 outputBuffer.append(text)
                             }
+                        } else if Self.sspTraceEnabled {
+                            sspLog.notice("[SSP]   output[\(idx)] nil hostString (echoAck=\(output.echoAck ?? -1))")
                         }
                     }
+                    if Self.sspTraceEnabled {
+                        sspLog.notice("[SSP]   → DELIVER \(outputs.count) outputs (new state \(self.remoteStateNum))")
+                    }
+                }
+            } else if isNewRemoteState {
+                // Base mismatch — skip and request immediate retransmit.
+                needsImmediateAck = true
+                if Self.sspTraceEnabled {
+                    sspLog.notice("[SSP]   → SKIP base≠ oldNum=\(instruction.oldNum) prevRemote=\(prevRemote), ack queued")
+                }
+            } else {
+                // Stale diff: server is retransmitting because it
+                // doesn't know our current state yet. Ack immediately.
+                needsImmediateAck = true
+                if Self.sspTraceEnabled {
+                    sspLog.notice("[SSP]   → SKIP stale newNum=\(instruction.newNum) <= remoteStateNum=\(self.remoteStateNum)")
                 }
             }
             consecutiveDatagramFailures = 0
@@ -391,14 +484,36 @@ final class MoshSession: ObservableObject {
         }
     }
 
-    // Send periodic keepalive datagrams to maintain NAT mapping
+    // Send periodic keepalive datagrams to maintain NAT mapping.
+    // Also polls for needsImmediateAck to fast-ack skipped diffs,
+    // prompting the server to retransmit from our actual state
+    // within ~100ms instead of waiting for the 3-second cycle.
     private func startHeartbeat() {
         heartbeatTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3))
-                guard let self, !Task.isCancelled else { break }
+            var ticksSinceLastHeartbeat = 0
+            let tickInterval = 50  // ms
+            let heartbeatTicks = 3000 / tickInterval  // 60 ticks = 3s
 
-                // Send a no-op transport instruction (empty diff)
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(tickInterval))
+                guard let self, !Task.isCancelled else { break }
+                ticksSinceLastHeartbeat += 1
+
+                // Send ack when overdue or when the overlap guard
+                // flagged a base-mismatch skip.
+                let sendNow = self.needsImmediateAck
+                    || ticksSinceLastHeartbeat >= heartbeatTicks
+
+                guard sendNow else { continue }
+
+                if self.needsImmediateAck {
+                    self.needsImmediateAck = false
+                    if Self.sspTraceEnabled {
+                        sspLog.notice("[SSP] Sending immediate ack (remoteState=\(self.remoteStateNum))")
+                    }
+                }
+
+                ticksSinceLastHeartbeat = 0
                 var instruction = MoshTransportInstruction()
                 instruction.oldNum = self.localStateNum
                 instruction.newNum = self.localStateNum
@@ -455,6 +570,29 @@ final class MoshSession: ObservableObject {
         } else {
             connectionState = previousState
         }
+    }
+
+    // Detect full-screen repaints by counting erase-to-end-of-line
+    // (\x1b[K) sequences. Mosh's screen-diff algorithm emits \x1b[K
+    // for each changed line to clear remnants. A high count (≥10)
+    // signals a full-screen transition (entering/exiting nvim, etc.)
+    // where we need to prepend a screen clear because the mosh server
+    // handles alternate-screen switching internally.
+    private func isFullScreenRepaint(_ data: Data) -> Bool {
+        let target: [UInt8] = [0x1b, 0x5b, 0x4b]  // \x1b[K
+        var count = 0
+        var i = data.startIndex
+
+        while i <= data.endIndex - 3 {
+            if data[i] == target[0], data[i+1] == target[1], data[i+2] == target[2] {
+                count += 1
+                if count >= 10 { return true }
+                i += 3
+            } else {
+                i += 1
+            }
+        }
+        return false
     }
 
     private func sendTransportInstruction(_ instruction: MoshTransportInstruction) async throws {
