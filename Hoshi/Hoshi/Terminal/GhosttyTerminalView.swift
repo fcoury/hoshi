@@ -238,15 +238,9 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
            last.data == data,
            CACurrentMediaTime() - last.time <= pressInsertOverlap {
             lastPressSend = nil
-            if Self.inputTraceEnabled {
-                print("[INPUT_TRACE] insertText SUPPRESSED (sent via pressesBegan) text=\(String(reflecting: text))")
-            }
             return
         }
 
-        if Self.inputTraceEnabled {
-            print("[INPUT_TRACE] insertText text=\(String(reflecting: text)) terminal=\(String(reflecting: terminalText))")
-        }
         sendInputData(data)
     }
 
@@ -271,9 +265,6 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
 
             if shouldHandlePressDirectly(key) {
                 guard let data = dataForKey(key) else { continue }
-                if Self.inputTraceEnabled {
-                    print("[INPUT_TRACE] pressesBegan direct keyCode=\(key.keyCode.rawValue) chars=\(String(reflecting: key.characters)) bytes=\(Self.hexBytes(data))")
-                }
                 sendInputData(data)
                 handled = true
             } else {
@@ -284,9 +275,6 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
                 if !chars.isEmpty {
                     let terminalChars = chars.replacingOccurrences(of: "\n", with: "\r")
                     let data = Data(terminalChars.utf8)
-                    if Self.inputTraceEnabled {
-                        print("[INPUT_TRACE] pressesBegan printable keyCode=\(key.keyCode.rawValue) chars=\(String(reflecting: chars)) bytes=\(Self.hexBytes(data))")
-                    }
                     lastPressSend = (data, CACurrentMediaTime())
                     sendInputData(data)
                 }
@@ -524,9 +512,6 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         switch source {
         case .direct:
             recentDirectInputs.append((canonical, now))
-            if Self.inputTraceEnabled {
-                print("[INPUT_TRACE] forward direct bytes=\(Self.hexBytes(data)) canonical=\(Self.hexBytes(canonical))")
-            }
             onInputData?(data)
         case .ptyCallback:
             // The callback can race with UITextInput events and arrive first.
@@ -539,9 +524,6 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
                 let hasMirroredDirect = self.recentDirectInputs.contains {
                     $0.canonical == canonical && abs($0.time - now) <= self.mirroredInputWindow
                 }
-                if Self.inputTraceEnabled {
-                    print("[INPUT_TRACE] forward pty bytes=\(Self.hexBytes(data)) canonical=\(Self.hexBytes(canonical)) mirrored=\(hasMirroredDirect)")
-                }
                 if !hasMirroredDirect {
                     self.onInputData?(data)
                 }
@@ -551,24 +533,32 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
 
     private func handlePtyInputCallback(_ data: Data) {
         guard !data.isEmpty else { return }
-        if Self.inputTraceEnabled {
-            print("[INPUT_TRACE] ptyCallback bytes=\(Self.hexBytes(data))")
-        }
-        // Preserve PTY callback-originated input paths while letting the
-        // dedup logic in `forwardInputData` suppress mirrored key events.
         forwardInputData(data, source: .ptyCallback)
     }
 
+    // Collapse newlines for dedup comparison: CRLF → CR, lone LF → CR.
+    // The old byte-swap turned \r\n into \r\r, which never matched a
+    // direct \r and let double-enters slip through.
     private func canonicalInputForDedup(_ data: Data) -> Data {
-        var canonical = data
-        canonical.withUnsafeMutableBytes { buffer in
-            for idx in 0..<buffer.count {
-                if buffer[idx] == 0x0a {
-                    buffer[idx] = 0x0d
+        var out = Data()
+        out.reserveCapacity(data.count)
+        var prev: UInt8? = nil
+        for b in data {
+            if b == 0x0A {
+                if prev == 0x0D {
+                    // CRLF → CR (drop the LF, CR already emitted)
+                    prev = 0x0D
+                    continue
                 }
+                // Lone LF → CR
+                out.append(0x0D)
+                prev = 0x0D
+            } else {
+                out.append(b)
+                prev = b
             }
         }
-        return canonical
+        return out
     }
 
     private static func hexBytes(_ data: Data) -> String {

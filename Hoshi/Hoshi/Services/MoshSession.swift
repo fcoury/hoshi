@@ -154,10 +154,6 @@ final class MoshSession: ObservableObject {
     // Send keystrokes via the SSP protocol over UDP
     func send(_ data: Data) async {
         do {
-            if Self.inputTraceEnabled {
-                let hex = data.map { String(format: "%02x", $0) }.joined(separator: " ")
-                print("[INPUT_TRACE] moshSend bytes=\(hex)")
-            }
             // Encode as user input protobuf
             let userInput = MoshUserInput.encodeKeystroke(data)
 
@@ -168,6 +164,12 @@ final class MoshSession: ObservableObject {
             instruction.newNum = localStateNum
             instruction.ackNum = remoteStateNum
             instruction.diff = userInput
+
+            if Self.inputTraceEnabled {
+                let preview = data.prefix(4).map { String(format: "%02x", $0) }.joined(separator: " ")
+                print("[INPUT_TRACE] moshSend state=\(instruction.oldNum)→\(instruction.newNum) ack=\(instruction.ackNum) diffLen=\(userInput.count) preview=\(preview)")
+            }
+
             try await sendTransportInstruction(instruction)
         } catch {
             reportNonFatalError(error, context: "send keystroke")
@@ -346,26 +348,35 @@ final class MoshSession: ObservableObject {
             let instruction = try MoshTransportInstruction.decode(from: instructionBytes)
             debugInstructionDecodeCount += 1
 
-            // Update SSP state. Only apply host output when we advance to a
-            // strictly newer state; duplicate/out-of-order states can arrive
-            // over UDP and must not be re-applied or text will be replayed.
+            // SSP overlap guard: the server sends cumulative diffs from the
+            // last-acked base state. When two packets share the same oldNum
+            // (e.g. old=21→22 and old=21→23), the second contains everything
+            // the first already delivered. Because the display diff uses
+            // relative cursor positioning, replaying the overlapping bytes
+            // writes characters twice. Fix: only apply a diff whose base
+            // (oldNum) is at or beyond our current state. If it overlaps,
+            // skip it entirely and leave remoteStateNum unchanged so the
+            // server retransmits from our actual state.
+            let prevRemote = remoteStateNum
             let isNewRemoteState = instruction.newNum > remoteStateNum
-            if isNewRemoteState {
-                remoteStateNum = instruction.newNum
-            }
+            let isOverlap = instruction.oldNum < prevRemote
 
-            // Decode the diff as host output for newly observed states only.
-            if isNewRemoteState, !instruction.diff.isEmpty {
-                let outputs = try MoshHostOutput.decode(from: instruction.diff)
-                debugHostOutputCount += outputs.count
-                for output in outputs {
-                    if let hostString = output.hostString {
-                        debugHostByteCount += hostString.count
-                        // Feed raw bytes to terminal renderer if callback is set
-                        if let callback = onDataReceived {
-                            callback(Array(hostString))
-                        } else if let text = String(data: hostString, encoding: .utf8) {
-                            outputBuffer.append(text)
+            // Apply output only when the state is new AND the diff doesn't
+            // start from a base we've already moved past.
+            if isNewRemoteState, !isOverlap {
+                remoteStateNum = instruction.newNum
+
+                if !instruction.diff.isEmpty {
+                    let outputs = try MoshHostOutput.decode(from: instruction.diff)
+                    debugHostOutputCount += outputs.count
+                    for output in outputs {
+                        if let hostString = output.hostString {
+                            debugHostByteCount += hostString.count
+                            if let callback = onDataReceived {
+                                callback(Array(hostString))
+                            } else if let text = String(data: hostString, encoding: .utf8) {
+                                outputBuffer.append(text)
+                            }
                         }
                     }
                 }
