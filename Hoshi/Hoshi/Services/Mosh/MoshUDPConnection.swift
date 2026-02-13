@@ -80,21 +80,25 @@ final class MoshUDPConnection {
         }
     }
 
-    // Create an async stream of incoming datagrams
+    // Create an async stream of incoming datagrams.
+    // The inner task is cancelled via onTermination so that cancelling the
+    // outer consumer (receiveTask in MoshSession) actually stops the loop.
     func receiveStream() -> AsyncStream<Data> {
         AsyncStream { continuation in
-            Task {
+            let task = Task {
                 while !Task.isCancelled {
                     do {
                         let data = try await self.receive()
                         continuation.yield(data)
                     } catch {
                         if Task.isCancelled { break }
-                        // Brief pause before retrying on transient errors
                         try? await Task.sleep(for: .milliseconds(100))
                     }
                 }
                 continuation.finish()
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
             }
         }
     }
