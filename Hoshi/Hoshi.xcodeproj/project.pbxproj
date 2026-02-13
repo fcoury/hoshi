@@ -65,6 +65,10 @@
 		D4E5F60718293A4BC5D6E7F8 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5E6F708192A3B4C5D6E7F8 /* SettingsView.swift */; };
 		E5F60718293A4B5CD6E7F809 /* AppearanceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E6F708192A3B4C5D6E7F809 /* AppearanceSettingsView.swift */; };
 		F60718293A4B5C6DE7F8091A /* FontPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F708192A3B4C5D6E7F8091A /* FontPickerView.swift */; };
+		AA11223344556677BB990011 /* ManagedSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11223344556677AA990011 /* ManagedSession.swift */; };
+		AA22334455667788BB001122 /* SessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA22334455667788AA001122 /* SessionManager.swift */; };
+		AA33445566778899BB112233 /* SessionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA33445566778899AA112233 /* SessionCardView.swift */; };
+		AA44556677889900BB223344 /* SessionCarouselView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA44556677889900AA223344 /* SessionCarouselView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -149,6 +153,10 @@
 		4D5E6F708192A3B4C5D6E7F8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		5E6F708192A3B4C5D6E7F809 /* AppearanceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettingsView.swift; sourceTree = "<group>"; };
 		6F708192A3B4C5D6E7F8091A /* FontPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontPickerView.swift; sourceTree = "<group>"; };
+		AA11223344556677AA990011 /* ManagedSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedSession.swift; sourceTree = "<group>"; };
+		AA22334455667788AA001122 /* SessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionManager.swift; sourceTree = "<group>"; };
+		AA33445566778899AA112233 /* SessionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCardView.swift; sourceTree = "<group>"; };
+		AA44556677889900AA223344 /* SessionCarouselView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCarouselView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -200,6 +208,8 @@
 			isa = PBXGroup;
 			children = (
 				935710390BD542E213897400 /* ConnectionViewModel.swift */,
+				AA11223344556677AA990011 /* ManagedSession.swift */,
+				AA22334455667788AA001122 /* SessionManager.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -259,6 +269,8 @@
 				3BE99C6A440F89020EFE0E55 /* KeyboardToolbarView.swift */,
 				9917D156528C1F234C6AE282 /* KeyGeneratorView.swift */,
 				F70A34682A15DD67521724FD /* ServerListView.swift */,
+				AA33445566778899AA112233 /* SessionCardView.swift */,
+				AA44556677889900AA223344 /* SessionCarouselView.swift */,
 				4D5E6F708192A3B4C5D6E7F8 /* SettingsView.swift */,
 				C5B1099C69E83AC319C5CAA1 /* TerminalView.swift */,
 				DCE7EC1DDE1A89967CD4B68A /* TmuxSessionPickerView.swift */,
@@ -471,6 +483,10 @@
 				AF9EE0A1C454D8C738E075E4 /* ToolbarButton.swift in Sources */,
 				6877532658972A191D5982CB /* ToolbarConfigurationService.swift in Sources */,
 				E6435FDC851D363CAD5BB75D /* ToolbarEditView.swift in Sources */,
+				AA11223344556677BB990011 /* ManagedSession.swift in Sources */,
+				AA22334455667788BB001122 /* SessionManager.swift in Sources */,
+				AA33445566778899BB112233 /* SessionCardView.swift in Sources */,
+				AA44556677889900BB223344 /* SessionCarouselView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -9,9 +9,13 @@ struct ServerListView: View {
     @State private var showAddServer = false
     @State private var selectedServer: Server?
     @State private var editingServer: Server?
-    @State private var connectionVM = ConnectionViewModel()
-    @State private var quickLaunching = false
     @State private var showSettings = false
+
+    // Multi-session state
+    @State private var sessionManager = SessionManager()
+    @State private var quickLaunching = false
+    @State private var connectingSession: ManagedSession?
+    @State private var showMaxSessionsAlert = false
 
     var body: some View {
         NavigationStack {
@@ -48,64 +52,76 @@ struct ServerListView: View {
             .sheet(item: $editingServer) { server in
                 AddServerView(existingServer: server)
             }
+            // ConnectView — credentials entry for the session being connected
             .sheet(item: $selectedServer) { server in
-                ConnectView(server: server, connectionVM: connectionVM)
+                if let session = connectingSession {
+                    ConnectView(server: server, connectionVM: session.connectionVM)
+                }
             }
-            // tmux session picker — shown after SSH connects, before terminal opens
-            .sheet(isPresented: Binding(
-                get: { connectionVM.showTmuxPicker },
-                set: { connectionVM.showTmuxPicker = $0 }
-            )) {
+            // Tmux session picker — shown per-session after SSH connects
+            .sheet(item: $sessionManager.tmuxPickerSession) { session in
                 TmuxSessionPickerView(
-                    sessions: connectionVM.detectedTmuxSessions
+                    sessions: session.connectionVM.detectedTmuxSessions
                 ) { choice in
                     Task {
-                        await connectionVM.completeTmuxChoice(choice, modelContext: modelContext)
+                        await session.connectionVM.completeTmuxChoice(choice, modelContext: modelContext)
+                        sessionManager.tmuxPickerSession = nil
+                        // Open the session full-screen after tmux attach
+                        sessionManager.switchTo(sessionID: session.id)
                     }
                 }
             }
+            // Full-screen terminal — shown when a session is active
             .fullScreenCover(isPresented: Binding(
-                get: {
-                    // Keep the terminal open during connected, reconnecting, and disconnected states
-                    // (disconnected here means the session dropped but we may reconnect)
-                    switch connectionVM.connectionState {
-                    case .connected, .reconnecting:
-                        return true
-                    case .disconnected:
-                        // Only show terminal if a session object still exists (awaiting reconnect)
-                        return connectionVM.hasActiveSession
-                    default:
-                        return false
-                    }
-                },
-                set: { if !$0 { Task { await connectionVM.disconnect() } } }
+                get: { sessionManager.activeSessionID != nil },
+                set: { if !$0 { sessionManager.returnToServerList() } }
             )) {
-                TerminalView(connectionVM: connectionVM)
+                if let session = sessionManager.activeSession {
+                    TerminalView(
+                        connectionVM: session.connectionVM,
+                        managedSession: session,
+                        onDismiss: {
+                            sessionManager.returnToServerList()
+                        }
+                    )
+                }
             }
         }
-        // Quick-launch error alert — shown if auto-connect fails
+        // Max sessions alert
+        .alert("Session Limit Reached", isPresented: $showMaxSessionsAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("You can have up to \(SessionManager.maxSessions) active sessions. Close an existing session to open a new one.")
+        }
+        // Quick-launch error alert
         .alert("Connection Failed", isPresented: Binding(
-            get: { connectionVM.showError && !quickLaunching },
-            set: { if !$0 { connectionVM.showError = false; connectionVM.errorMessage = nil } }
+            get: {
+                guard let session = connectingSession else { return false }
+                return session.connectionVM.showError && !quickLaunching
+            },
+            set: { if !$0 {
+                connectingSession?.connectionVM.showError = false
+                connectingSession?.connectionVM.errorMessage = nil
+            }}
         )) {
             Button("OK", role: .cancel) {}
         } message: {
-            if let error = connectionVM.errorMessage {
+            if let error = connectingSession?.connectionVM.errorMessage {
                 Text(error)
             }
         }
         // Quick-launch connecting overlay
         .overlay {
-            if quickLaunching {
+            if quickLaunching, let session = connectingSession {
                 ZStack {
                     SwiftUI.Color.black.opacity(0.4)
                         .ignoresSafeArea()
                     VStack(spacing: 12) {
                         ProgressView()
                             .controlSize(.large)
-                        Text(connectionVM.connectionPhase.isEmpty
+                        Text(session.connectionVM.connectionPhase.isEmpty
                              ? "Connecting..."
-                             : connectionVM.connectionPhase)
+                             : session.connectionVM.connectionPhase)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -116,9 +132,13 @@ struct ServerListView: View {
         }
         .preferredColorScheme(.dark)
         .onChange(of: scenePhase) { _, newPhase in
-            // When app returns to foreground, check session health and reconnect if needed
-            if newPhase == .active {
-                connectionVM.handleSceneActive()
+            switch newPhase {
+            case .active:
+                sessionManager.handleSceneActive()
+            case .background:
+                sessionManager.handleSceneBackground()
+            default:
+                break
             }
         }
     }
@@ -138,20 +158,31 @@ struct ServerListView: View {
 
     private var serverList: some View {
         List {
+            // Active sessions carousel
+            if sessionManager.hasActiveSessions {
+                Section {
+                    SessionCarouselView(
+                        sessions: sessionManager.sessions,
+                        onTap: { sessionID in
+                            sessionManager.switchTo(sessionID: sessionID)
+                        },
+                        onClose: { sessionID in
+                            Task {
+                                await sessionManager.closeSession(id: sessionID)
+                            }
+                        }
+                    )
+                }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+            }
+
+            // Server list
             ForEach(servers) { server in
                 ServerRow(server: server)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        // Quick-launch if stored credentials are available
-                        if ConnectionViewModel.hasStoredCredentials(for: server) {
-                            quickLaunching = true
-                            Task {
-                                await connectionVM.quickLaunch(server: server)
-                                quickLaunching = false
-                            }
-                        } else {
-                            selectedServer = server
-                        }
+                        connectToServer(server)
                     }
                     .contextMenu {
                         Button {
@@ -180,6 +211,70 @@ struct ServerListView: View {
                         }
                         .tint(.blue)
                     }
+            }
+        }
+    }
+
+    // Create a session and connect to the server
+    private func connectToServer(_ server: Server) {
+        guard let session = sessionManager.createSession(for: server) else {
+            showMaxSessionsAlert = true
+            return
+        }
+
+        connectingSession = session
+
+        // Watch for tmux picker or connection success on this session
+        observeSessionState(for: session)
+
+        if ConnectionViewModel.hasStoredCredentials(for: server) {
+            // Quick-launch with stored credentials
+            quickLaunching = true
+            Task {
+                await session.connectionVM.quickLaunch(server: server)
+                quickLaunching = false
+
+                // If connected (no tmux picker), open full-screen
+                if session.connectionVM.connectionState == .connected {
+                    sessionManager.switchTo(sessionID: session.id)
+                    connectingSession = nil
+                }
+
+                // If connection failed, clean up
+                if session.connectionVM.showError {
+                    await sessionManager.closeSession(id: session.id)
+                }
+            }
+        } else {
+            // Show ConnectView for credential entry
+            selectedServer = server
+        }
+    }
+
+    // Watch a session's connectionVM for tmux picker or connection success.
+    // Runs alongside ConnectView — handles transitions that ConnectView can't.
+    private func observeSessionState(for session: ManagedSession) {
+        Task { @MainActor in
+            while sessionManager.sessions.contains(where: { $0.id == session.id }) {
+                // Tmux picker triggered — dismiss ConnectView, show tmux picker
+                if session.connectionVM.showTmuxPicker {
+                    // Let ConnectView's onChange dismiss it first, then clear
+                    try? await Task.sleep(for: .milliseconds(200))
+                    session.connectionVM.showTmuxPicker = false
+                    sessionManager.tmuxPickerSession = session
+                    selectedServer = nil
+                    connectingSession = nil
+                    break
+                }
+                // Connected — open full-screen terminal
+                if session.connectionVM.connectionState == .connected
+                    && sessionManager.activeSessionID != session.id {
+                    selectedServer = nil
+                    connectingSession = nil
+                    sessionManager.switchTo(sessionID: session.id)
+                    break
+                }
+                try? await Task.sleep(for: .milliseconds(100))
             }
         }
     }

@@ -9,6 +9,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
     @Binding var fontSize: CGFloat
     @Binding var showToolbarEditor: Bool
     @Binding var keyboardVisible: Bool
+    var onSurfaceReady: ((GhosttyTerminalSurfaceView) -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -41,6 +42,8 @@ struct GhosttyTerminalView: UIViewRepresentable {
                 view?.writeRemoteOutput(bytes)
             }
         }
+
+        onSurfaceReady?(view)
 
         return view
     }
@@ -379,6 +382,18 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
 
         // Update background color to match theme
         backgroundColor = settings.currentTheme.background
+    }
+
+    // Snapshot the terminal for thumbnail use, downscaled to ~400pt wide
+    func captureSnapshot() -> UIImage? {
+        guard let renderLayer, renderLayer.bounds.width > 0 else { return nil }
+        let renderer = UIGraphicsImageRenderer(bounds: bounds)
+        let fullImage = renderer.image { ctx in
+            layer.render(in: ctx.cgContext)
+        }
+        let scale = min(1.0, 400.0 / bounds.width)
+        let targetSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+        return fullImage.preparingThumbnail(of: targetSize)
     }
 
     func updateFontSize(_ size: CGFloat) {
