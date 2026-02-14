@@ -59,6 +59,9 @@ struct TerminalView: View {
                 }
             )
         }
+        .onChange(of: fontSize) { _, newSize in
+            appearanceSettings.fontSize = newSize
+        }
         .onChange(of: connectionVM.connectionState) { oldState, newState in
             // Auto-dismiss when session ends naturally (user typed 'exit')
             if oldState == .connected {
