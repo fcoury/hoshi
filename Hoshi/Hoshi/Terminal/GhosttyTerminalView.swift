@@ -141,6 +141,17 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
     private let pressInsertOverlap: CFTimeInterval = 0.05
     private var lastAppliedSettingsHash: Int = 0
 
+    // Scrollbar indicator (added to superview so it composites above Metal)
+    private let scrollbarOverlay: UIView = {
+        let view = UIView()
+        view.backgroundColor = UIColor.white.withAlphaComponent(0.4)
+        view.layer.cornerRadius = 1.5
+        view.alpha = 0
+        view.isUserInteractionEnabled = false
+        return view
+    }()
+    private var scrollbarFadeTimer: Timer?
+
     let toolbarAccessory: KeyboardToolbarAccessoryView
 
     var onInputData: ((Data) -> Void)?
@@ -186,8 +197,26 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
             createSurface(app: app, fontSize: fontSize)
         }
 
+        // Pinch to change font size
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
         addGestureRecognizer(pinch)
+
+        // Single tap for mouse clicks (vim, htop, URLs)
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        addGestureRecognizer(tap)
+
+        // One-finger pan for scrolling the terminal buffer
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        pan.maximumNumberOfTouches = 1
+        addGestureRecognizer(pan)
+
+        // Long press + drag for mouse selection in terminal apps
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        longPress.minimumPressDuration = 0.3
+        addGestureRecognizer(longPress)
+
+        // Pan should not fire while a long press is active
+        pan.require(toFail: longPress)
 
         if keyboardVisible {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -202,6 +231,8 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
     }
 
     deinit {
+        scrollbarFadeTimer?.invalidate()
+        scrollbarOverlay.removeFromSuperview()
         if let surface {
             Self.unregister(surface: surface)
             ghostty_surface_free(surface)
@@ -302,6 +333,17 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
             CATransaction.commit()
         }
         updateSurfaceSizeIfNeeded()
+    }
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        // Add scrollbar as a sibling so it composites above the Metal layer
+        if let superview {
+            scrollbarOverlay.removeFromSuperview()
+            superview.addSubview(scrollbarOverlay)
+        } else {
+            scrollbarOverlay.removeFromSuperview()
+        }
     }
 
     override func didMoveToWindow() {
@@ -452,6 +494,66 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         }
     }
 
+    static func updateScrollbar(for surface: ghostty_surface_t, total: UInt64, offset: UInt64, len: UInt64) {
+        let ptr = UnsafeRawPointer(surface)
+
+        registryLock.lock()
+        let view = surfaceRegistry[ptr]?.view
+        registryLock.unlock()
+
+        guard let view else { return }
+        DispatchQueue.main.async {
+            view.updateScrollbarIndicator(total: total, offset: offset, len: len)
+        }
+    }
+
+    // Position and show the scrollbar thumb based on Ghostty's scrollback state
+    private func updateScrollbarIndicator(total: UInt64, offset: UInt64, len: UInt64) {
+        // All content fits on screen — hide the scrollbar
+        guard total > len else {
+            hideScrollbar()
+            return
+        }
+
+        let trackInset: CGFloat = 4
+        let scrollbarWidth: CGFloat = 3
+        let trackHeight = frame.height - trackInset * 2
+
+        let thumbHeight = max(20, CGFloat(len) / CGFloat(total) * trackHeight)
+        let thumbY = trackInset + CGFloat(offset) / CGFloat(total) * trackHeight
+
+        // Position in superview coordinates
+        scrollbarOverlay.frame = CGRect(
+            x: frame.maxX - scrollbarWidth - 2,
+            y: frame.minY + thumbY,
+            width: scrollbarWidth,
+            height: thumbHeight
+        )
+
+        // Fade in
+        if scrollbarOverlay.alpha < 1 {
+            UIView.animate(withDuration: 0.15) {
+                self.scrollbarOverlay.alpha = 1
+            }
+        }
+
+        // Reset the fade-out timer
+        scrollbarFadeTimer?.invalidate()
+        scrollbarFadeTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.hideScrollbar()
+            }
+        }
+    }
+
+    private func hideScrollbar() {
+        scrollbarFadeTimer?.invalidate()
+        scrollbarFadeTimer = nil
+        UIView.animate(withDuration: 0.3) {
+            self.scrollbarOverlay.alpha = 0
+        }
+    }
+
     private func createSurface(app: ghostty_app_t, fontSize: CGFloat) {
         var config = ghostty_surface_config_new()
         config.userdata = Unmanaged.passUnretained(self).toOpaque()
@@ -543,6 +645,14 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
 
     private func sendInputData(_ data: Data) {
         guard !data.isEmpty else { return }
+
+        // Snap viewport to bottom on any user keystroke
+        if let surface {
+            let action = "scroll_to_bottom"
+            action.withCString { cAction in
+                _ = ghostty_surface_binding_action(surface, cAction, UInt(action.utf8.count))
+            }
+        }
 
         let transformed = toolbarAccessory.applyCtrlModifierIfNeeded(to: ArraySlice(data))
         if Self.inputTraceEnabled {
@@ -694,46 +804,46 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         return data
     }
 
-    // MARK: - Touch → Ghostty Mouse Events
+    // MARK: - Gesture → Ghostty Mouse/Scroll Events
 
-    // Forward single-finger taps to Ghostty so terminal apps with mouse
-    // reporting (vim, htop, click-on-URL) receive pointer input.
-
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let surface, let touch = touches.first else {
-            super.touchesBegan(touches, with: event)
-            return
-        }
-        let pos = touch.location(in: self)
+    // Tap sends a click at the tap location for mouse-aware apps (vim, htop, URLs)
+    @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
+        guard let surface else { return }
+        let pos = gesture.location(in: self)
         ghostty_surface_mouse_pos(surface, pos.x, pos.y, GHOSTTY_MODS_NONE)
         ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
-    }
-
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let surface, let touch = touches.first else {
-            super.touchesMoved(touches, with: event)
-            return
-        }
-        let pos = touch.location(in: self)
-        ghostty_surface_mouse_pos(surface, pos.x, pos.y, GHOSTTY_MODS_NONE)
-    }
-
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let surface, let touch = touches.first else {
-            super.touchesEnded(touches, with: event)
-            return
-        }
-        let pos = touch.location(in: self)
-        ghostty_surface_mouse_pos(surface, pos.x, pos.y, GHOSTTY_MODS_NONE)
         ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
     }
 
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let surface else {
-            super.touchesCancelled(touches, with: event)
-            return
+    // Pan scrolls the terminal buffer using natural scrolling (swipe down = see history)
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        guard let surface else { return }
+        if gesture.state == .changed {
+            let delta = gesture.translation(in: self)
+            // Natural scrolling: iOS pan Y positive = finger moves down = content moves down
+            // Ghostty positive Y = scroll up into history, which matches pulling content down
+            ghostty_surface_mouse_scroll(surface, 0, delta.y, 1)
+            gesture.setTranslation(.zero, in: self)
         }
-        ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
+    }
+
+    // Long press + drag for mouse selection in terminal apps
+    @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+        guard let surface else { return }
+        let pos = gesture.location(in: self)
+
+        switch gesture.state {
+        case .began:
+            ghostty_surface_mouse_pos(surface, pos.x, pos.y, GHOSTTY_MODS_NONE)
+            ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
+        case .changed:
+            ghostty_surface_mouse_pos(surface, pos.x, pos.y, GHOSTTY_MODS_NONE)
+        case .ended, .cancelled:
+            ghostty_surface_mouse_pos(surface, pos.x, pos.y, GHOSTTY_MODS_NONE)
+            ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
+        default:
+            break
+        }
     }
 
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
