@@ -59,6 +59,12 @@ struct TerminalView: View {
                 }
             )
         }
+        .onChange(of: connectionVM.connectionState) { oldState, newState in
+            // Auto-dismiss when session ends naturally (user typed 'exit')
+            if newState == .disconnected && oldState == .connected {
+                onDismiss?()
+            }
+        }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showToolbarEditor) {
             ToolbarEditView(onSave: {
@@ -102,14 +108,11 @@ struct TerminalView: View {
             }
             .accessibilityLabel(isKeyboardVisible ? "Hide keyboard" : "Show keyboard")
 
+            // Minimize — return to server list, keep session alive in carousel
             Button {
-                Task {
-                    await connectionVM.disconnect()
-                    onDismiss?()
-                    dismiss()
-                }
+                onDismiss?()
             } label: {
-                Image(systemName: "xmark.circle.fill")
+                Image(systemName: "rectangle.compress.vertical")
                     .foregroundStyle(.secondary)
             }
         }

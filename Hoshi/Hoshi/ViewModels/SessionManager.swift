@@ -51,12 +51,22 @@ final class SessionManager {
         activeSessionID = sessionID
     }
 
-    // Return to the server list: capture thumbnail and clear active session
+    // Return to the server list: capture thumbnail and clear active session.
+    // If the session is disconnected (user typed 'exit'), remove it from
+    // the carousel. If still connected (X button minimize), keep it alive.
     func returnToServerList() {
+        let shouldRemove: Bool
         if let current = activeSession {
             current.captureThumbnail()
+            shouldRemove = (current.connectionState == .disconnected)
+        } else {
+            shouldRemove = false
         }
+        let removingID = activeSessionID
         activeSessionID = nil
+        if shouldRemove, let id = removingID {
+            sessions.removeAll { $0.id == id }
+        }
     }
 
     // Forward scene-active to all sessions for reconnect handling
