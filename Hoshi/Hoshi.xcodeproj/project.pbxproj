@@ -8,68 +8,104 @@
 
 /* Begin PBXBuildFile section */
 		00022D11F851BDF7B2E6A9E2 /* GhosttyRuntimeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A17CA7267266FF635755CD /* GhosttyRuntimeController.swift */; };
+		04891F707B323D36FB701009 /* SauceCodeProNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = EE74F42FC3581FBD6835FEE6 /* SauceCodeProNerdFontMono-Regular.ttf */; };
+		097940E5568A3DFD23FFF996 /* MononokiNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3E541CA9B24D14C5D80302FE /* MononokiNerdFontMono-Bold.ttf */; };
+		0D0E8495B636DEB6E54CEAAB /* JetBrainsMonoNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CD6FB75DC159A221A4041B52 /* JetBrainsMonoNerdFontMono-BoldItalic.ttf */; };
+		0E67B26E17276804E96120A4 /* ManagedSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9EF90FB6D788D4D56A623D2 /* ManagedSession.swift */; };
 		0F89014F48A47FBA641177C6 /* ServerModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2DF4C2856D88394B594133C /* ServerModelTests.swift */; };
+		145A0B43D15635B9F8DE36AA /* GeistMonoNerdFontMono-Bold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 305DDC61B0427C4D22B89881 /* GeistMonoNerdFontMono-Bold.otf */; };
 		1A9B8654E8CE7175BE93587A /* GhosttyKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6E2EFDD79EC2C42851A8617C /* GhosttyKit.xcframework */; };
 		1C4F264585232B5664F22A6C /* GhosttyTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F434FC2C5E00789F32E7BF2D /* GhosttyTerminalView.swift */; };
 		22613851A3F744A04F16757C /* FantasqueSansMNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 29E5F4DB92838EA72B678F2E /* FantasqueSansMNerdFontMono-BoldItalic.ttf */; };
 		2302287519D2121C10555F48 /* ConnectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 935710390BD542E213897400 /* ConnectionViewModel.swift */; };
+		23AF2EAE8F7FC17F54CFC285 /* JetBrainsMonoNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E31F018D17922A0C005CF1D8 /* JetBrainsMonoNerdFontMono-Italic.ttf */; };
+		2674EBF76DC02237EEECE271 /* IosevkaNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A80A6C5FDC7BE7A082E500A3 /* IosevkaNerdFontMono-BoldItalic.ttf */; };
 		26B826D28D58615A4D882013 /* SessionProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1DC7C7A978ED3F3F629164 /* SessionProtocol.swift */; };
 		2A1A92E8FA84A48C2699FBD7 /* CryptoSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 23601A7F4BFE209BC6330B3D /* CryptoSwift */; };
+		2BD23A315F1E6A041008F973 /* VictorMonoNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 780724516B4EA0B83F0F4B64 /* VictorMonoNerdFontMono-Bold.ttf */; };
+		302F1BC48FEFC232FF9D178A /* SessionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB95500B7D399772F2FB8BD8 /* SessionCardView.swift */; };
 		3ADE4D5AB0F163B3CF8730A4 /* ConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F89DF94786BEA2C04C961E48 /* ConnectView.swift */; };
+		3C42FB85D6E594C7AE94E8D3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19D8FFFF3A11114D6122B6B0 /* SettingsView.swift */; };
+		3CEDE7E2BC017FF0B0F4BCA8 /* SauceCodeProNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3B435EC866C75FBFAD2A187A /* SauceCodeProNerdFontMono-Italic.ttf */; };
+		3DB8554D34703B4030A3D1C5 /* IosevkaNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9F9491AA10E831DE136F59B4 /* IosevkaNerdFontMono-Regular.ttf */; };
 		3E029F824C3064012225F9AA /* FantasqueSansMNerdFontPropo-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C83888891E5AE09F121D7AE0 /* FantasqueSansMNerdFontPropo-BoldItalic.ttf */; };
+		3EB4E284979DF2AE9760C4D2 /* CaskaydiaCoveNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 33888AFC72D34C285C0A9D8F /* CaskaydiaCoveNerdFontMono-Regular.ttf */; };
+		4225E87F4DB501BCD1B821A0 /* IosevkaNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 672045AE06E29F24916A802F /* IosevkaNerdFontMono-Bold.ttf */; };
 		42EC5C294A912C3284C5864E /* KeyGeneratorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9917D156528C1F234C6AE282 /* KeyGeneratorView.swift */; };
 		4870A95EBDA37102D6FCE1DD /* MoshUDPConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 308F44F8EECB3F7443B190ED /* MoshUDPConnection.swift */; };
+		48CBC07AA858212D8D7A4B2F /* HackNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 881C5E9A75631AA85261C1E3 /* HackNerdFontMono-Bold.ttf */; };
+		5248EE3B3EA2C454D927D269 /* CaskaydiaCoveNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D59BA3DFAA3F29B0B2D61DD8 /* CaskaydiaCoveNerdFontMono-BoldItalic.ttf */; };
+		538D8E0977B2ACCA89F408C6 /* SessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 496577E7FB5E979F6E5DC1F8 /* SessionManager.swift */; };
 		539569A7ADAF63A743137D9A /* SSHKeyServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EDBF8AB95AD1BD0632E9DC5 /* SSHKeyServiceTests.swift */; };
 		557852416FD2A54EFC66DE88 /* ServerListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F70A34682A15DD67521724FD /* ServerListView.swift */; };
 		5CF07FF1FE024A5759336ECC /* HoshiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D2E28A5EA11F0126B55C42C /* HoshiApp.swift */; };
+		65B494BB42FEEC879D910B4B /* SessionCarouselView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969B9307CAA607A311D3067C /* SessionCarouselView.swift */; };
 		65F0E59F2EFC44654BF5B1D6 /* MoshTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 414AB1CB023F8485D188ED5A /* MoshTransport.swift */; };
 		6673BE4456E9276448591DD4 /* MoshSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2A47D4DB71EA9D072DD91AE /* MoshSession.swift */; };
+		67B5BA7CACC871826A1FED19 /* FiraCodeNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = AEF9701024C6D382B7B17573 /* FiraCodeNerdFontMono-Regular.ttf */; };
 		67EAFC8D2724CE7CF28F3D21 /* FantasqueSansMNerdFont-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = BCD0BDA1F9E260CA9BF0B371 /* FantasqueSansMNerdFont-Italic.ttf */; };
 		684F293C0A36B5C949433B39 /* AddServerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE48E5AF93A14D87CB077564 /* AddServerView.swift */; };
 		6877532658972A191D5982CB /* ToolbarConfigurationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEEF1DFBFD9A93E3AFE91086 /* ToolbarConfigurationService.swift */; };
 		6A2CB034BF21A9A113232907 /* FantasqueSansMNerdFontPropo-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D11B78874807368F1E546709 /* FantasqueSansMNerdFontPropo-Italic.ttf */; };
+		6B1F0E9D5D5C109BBEAE01F3 /* GeistMonoNerdFontMono-Regular.otf in Resources */ = {isa = PBXBuildFile; fileRef = F446ED424D69451050AA8120 /* GeistMonoNerdFontMono-Regular.otf */; };
 		6C4011DD0427000483B9DC76 /* MoshCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B6C0D92DFAE29A99A64E6AF /* MoshCrypto.swift */; };
 		71C6EE46A566E725287FA4AA /* TmuxSessionPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCE7EC1DDE1A89967CD4B68A /* TmuxSessionPickerView.swift */; };
+		7457ECA03F102D7AE06FD427 /* CursorStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AEDC4750F347303ED02613A /* CursorStyle.swift */; };
 		74BDDAA9CBDA058C1B8B0DA5 /* FantasqueSansMNerdFont-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CBCD39EB73247795B564239E /* FantasqueSansMNerdFont-Regular.ttf */; };
+		7B56E49F91FD048AECE71B08 /* VictorMonoNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 405617842535DD42813E4158 /* VictorMonoNerdFontMono-Italic.ttf */; };
+		7BA09D7B29B1E1612C638411 /* FontPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C0FA717B1413451034834BC /* FontPickerView.swift */; };
+		7DAA33FF1C9007496B2F156C /* FiraCodeNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D5EAC9D34A60A274CF4CF826 /* FiraCodeNerdFontMono-Bold.ttf */; };
+		800C2C75D46524DAE1A3D654 /* HackNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 10FDF8B29671EE2FA1E35DCE /* HackNerdFontMono-BoldItalic.ttf */; };
+		82E093096115FAE2667FBD39 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 33023FFA322E011C5EB6887A /* Assets.xcassets */; };
+		8638C1A18C9661397A239797 /* MesloLGSNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 168EE5B0051233375A63B33F /* MesloLGSNerdFontMono-BoldItalic.ttf */; };
+		881A8187BD93A78441937C3F /* VictorMonoNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 056BD9A1394B7DE2DC974461 /* VictorMonoNerdFontMono-Regular.ttf */; };
 		94CBC132B31327A12B197002 /* FantasqueSansMNerdFont-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 68F7035092B0ACF1D4E67131 /* FantasqueSansMNerdFont-BoldItalic.ttf */; };
 		95531096D22C7C0FFF5640E7 /* FantasqueSansMNerdFontPropo-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 5C7ACDBCAC51E50CC25A2E71 /* FantasqueSansMNerdFontPropo-Bold.ttf */; };
 		961B9C2272D0AB6E9B8C66C8 /* KeyboardToolbarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BE99C6A440F89020EFE0E55 /* KeyboardToolbarView.swift */; };
+		96E76FE7CC9CAE73972F40B2 /* CaskaydiaCoveNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E2754427187BAEC4DF26A643 /* CaskaydiaCoveNerdFontMono-Bold.ttf */; };
 		9E6DC72DB95786D85B40FA19 /* Server.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83584445F7F64462E791CA50 /* Server.swift */; };
 		A08BCE350D681A0F24BF8B26 /* TerminalTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C69A192CB8090D193F9BAE37 /* TerminalTheme.swift */; };
+		A0FE2122C735C41905DCA16A /* HackNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3AB81882420AC6713271614D /* HackNerdFontMono-Regular.ttf */; };
+		A59D11FA75665308D57A3BFC /* MononokiNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 597645D8BB146FA9A0AD9EEF /* MononokiNerdFontMono-BoldItalic.ttf */; };
+		A9C3AB3C26ADAC862984E17F /* AppearanceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3C0967B1ACAC663233E2CC /* AppearanceSettingsView.swift */; };
 		AA960FEEACDD73F7D7DC36F3 /* MoshBootstrapService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2B9B11940723B9C53B4410C /* MoshBootstrapService.swift */; };
 		AC48C12B2115A175C1467711 /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = D93629C5FA7BBEDDD78D5478 /* OFL.txt */; };
+		AE6A859A8E7ED9210A37428C /* MononokiNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 89E70FBED6094022B4F5F8D4 /* MononokiNerdFontMono-Regular.ttf */; };
 		AF291D827FEF755F2DEA0436 /* FantasqueSansMNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D29A6455B627675930BDC4F5 /* FantasqueSansMNerdFontMono-Regular.ttf */; };
 		AF9EE0A1C454D8C738E075E4 /* ToolbarButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74C7E92165EDFEF3678813D9 /* ToolbarButton.swift */; };
 		B3E276B09DC8AC366CB189E2 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = B06240B1AC6C6DB7CD56CF5B /* Citadel */; };
 		B4FDD0DE6C57F34C5EA44BA1 /* FantasqueSansMNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 264595A326ED9BA0A3A786F1 /* FantasqueSansMNerdFontMono-Bold.ttf */; };
+		B6C1187C1ABC1ACC105F144B /* AppearanceSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FE236F7BE9FEA21ED9BBCBC /* AppearanceSettings.swift */; };
+		B6E12D938C3010070F5453F5 /* CaskaydiaCoveNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B23BAD806015AA69E0909C84 /* CaskaydiaCoveNerdFontMono-Italic.ttf */; };
+		B808A611369E149F6B0B8088 /* ColorSchemePreference.swift in Sources */ = {isa = PBXBuildFile; fileRef = 106EC4392C230C7D203D1769 /* ColorSchemePreference.swift */; };
 		B94D2D832E6A3E9262327483 /* GhosttyThemeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC5A0FB628B34BE815D797C /* GhosttyThemeAdapter.swift */; };
 		BA5C099D364504928A95C3C1 /* FantasqueSansMNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C660194F1BBB377A0242189A /* FantasqueSansMNerdFontMono-Italic.ttf */; };
+		BDEC5B34B7CC855EF5A4A194 /* SauceCodeProNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F7B8704BE7DEEC364B8E7530 /* SauceCodeProNerdFontMono-Bold.ttf */; };
+		CB925AEEE0A3FEA3532EE0E8 /* MesloLGSNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A807286CB8D9A08D5F3B2770 /* MesloLGSNerdFontMono-Regular.ttf */; };
+		CC04ED92E0B9D468CD6DEE1F /* SauceCodeProNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 80B2A4F86E488641E7497767 /* SauceCodeProNerdFontMono-BoldItalic.ttf */; };
 		CCBCF05E0F1E5A88BB203916 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1913DF729009DA8DC0A599B5 /* KeychainService.swift */; };
 		CD6AA781DD02976BD2D7F744 /* FantasqueSansMono.zip in Resources */ = {isa = PBXBuildFile; fileRef = CD4A11DB312AEDE9C67E3602 /* FantasqueSansMono.zip */; };
+		D040FAA5D3CC82EE6069117A /* JetBrainsMonoNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 6EF78C0050A2B5F4099C1DED /* JetBrainsMonoNerdFontMono-Regular.ttf */; };
 		D22DB61E421382204913A526 /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B1099C69E83AC319C5CAA1 /* TerminalView.swift */; };
 		D3002045BC765B2F012820E6 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 263F27DE87745B6CBB01F9EC /* README.md */; };
 		D30A82B7CDD3B69DD4FF6FE8 /* SSHService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B73D4FAFF8219BC7CB25BA12 /* SSHService.swift */; };
 		D40D2600718331C91545FA29 /* NetworkMonitorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 319B6445E2EFF983D29F19B4 /* NetworkMonitorService.swift */; };
 		D5DE239A88348AB2CC5EB72D /* MoshIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41CF781D13ED19D76B0E662E /* MoshIntegrationTests.swift */; };
+		D67EFEFDE027566BF7E0922E /* MononokiNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D493916FB8323A0BFDB051C4 /* MononokiNerdFontMono-Italic.ttf */; };
+		D9777936EE3EF82667021731 /* MesloLGSNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1774CA68622C03A3373FEB0 /* MesloLGSNerdFontMono-Bold.ttf */; };
 		DAF481F02039E5DCF7BAFD08 /* SSHConnectionError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7B7A33C6D07387D9708017 /* SSHConnectionError.swift */; };
+		DD3E1D9D00916701F11A6762 /* VictorMonoNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C76E633109B9B1EEB493CC99 /* VictorMonoNerdFontMono-BoldItalic.ttf */; };
 		DF4201EF0C83E223DF1F69C0 /* GhosttyKit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 6E2EFDD79EC2C42851A8617C /* GhosttyKit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E293E5B88435EF600774A8DA /* KeychainServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C196748322C5769248D1E351 /* KeychainServiceTests.swift */; };
+		E40620E37450D2328A81C58E /* IosevkaNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0BC8F5D874B7A64368CA4634 /* IosevkaNerdFontMono-Italic.ttf */; };
 		E6435FDC851D363CAD5BB75D /* ToolbarEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31A14278942E4B7AEFB3F1EB /* ToolbarEditView.swift */; };
+		F3916F8D9A261E1AEB1AF07A /* MesloLGSNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = ECD6E3400C759BA2E5459CC7 /* MesloLGSNerdFontMono-Italic.ttf */; };
+		F39E77B57049A76E1A27CF86 /* JetBrainsMonoNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 958FD6277EBAC3147453F610 /* JetBrainsMonoNerdFontMono-Bold.ttf */; };
 		F790EE3A7563497AE3278AF3 /* FantasqueSansMNerdFontPropo-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D9B7E45B20EC880BBE410431 /* FantasqueSansMNerdFontPropo-Regular.ttf */; };
 		FA6D6D0F0BE1C90760857339 /* SSHKeyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98A8C6B94D769B9D7B243F28 /* SSHKeyService.swift */; };
+		FC1F742A4A1749522703ED51 /* HackNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 22E727DDBEDCCBA321258007 /* HackNerdFontMono-Italic.ttf */; };
 		FDE89BC33C51F278FE9F5403 /* FantasqueSansMNerdFont-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1317C1167CDFEB8F24854E5E /* FantasqueSansMNerdFont-Bold.ttf */; };
 		FE7F8E8100652F86991C5D88 /* TmuxDetectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08326AEDEEBE494F5026A5FD /* TmuxDetectionService.swift */; };
-		A1B2C3D4E5F60718293A4B5C /* CursorStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F708192A3B4C5 /* CursorStyle.swift */; };
-		B2C3D4E5F6071829A3B4C5D6 /* ColorSchemePreference.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B3C4D5E6F708192A3B4C5D6 /* ColorSchemePreference.swift */; };
-		C3D4E5F60718293AB4C5D6E7 /* AppearanceSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4D5E6F708192A3B4C5D6E7 /* AppearanceSettings.swift */; };
-		D4E5F60718293A4BC5D6E7F8 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5E6F708192A3B4C5D6E7F8 /* SettingsView.swift */; };
-		E5F60718293A4B5CD6E7F809 /* AppearanceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E6F708192A3B4C5D6E7F809 /* AppearanceSettingsView.swift */; };
-		F60718293A4B5C6DE7F8091A /* FontPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F708192A3B4C5D6E7F8091A /* FontPickerView.swift */; };
-		AA11223344556677BB990011 /* ManagedSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11223344556677AA990011 /* ManagedSession.swift */; };
-		AA22334455667788BB001122 /* SessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA22334455667788AA001122 /* SessionManager.swift */; };
-		AA33445566778899BB112233 /* SessionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA33445566778899AA112233 /* SessionCardView.swift */; };
-		AA44556677889900BB223344 /* SessionCarouselView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA44556677889900AA223344 /* SessionCarouselView.swift */; };
-		AABB22334455667788990011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AABB11223344556677889900 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -97,68 +133,104 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		056BD9A1394B7DE2DC974461 /* VictorMonoNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "VictorMonoNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		08326AEDEEBE494F5026A5FD /* TmuxDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxDetectionService.swift; sourceTree = "<group>"; };
+		0BC8F5D874B7A64368CA4634 /* IosevkaNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IosevkaNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
+		106EC4392C230C7D203D1769 /* ColorSchemePreference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorSchemePreference.swift; sourceTree = "<group>"; };
+		10FDF8B29671EE2FA1E35DCE /* HackNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HackNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		1317C1167CDFEB8F24854E5E /* FantasqueSansMNerdFont-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFont-Bold.ttf"; sourceTree = "<group>"; };
+		168EE5B0051233375A63B33F /* MesloLGSNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MesloLGSNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		1913DF729009DA8DC0A599B5 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
+		19D8FFFF3A11114D6122B6B0 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		22E727DDBEDCCBA321258007 /* HackNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HackNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
 		263F27DE87745B6CBB01F9EC /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		264595A326ED9BA0A3A786F1 /* FantasqueSansMNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
 		29E5F4DB92838EA72B678F2E /* FantasqueSansMNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		2D2E28A5EA11F0126B55C42C /* HoshiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoshiApp.swift; sourceTree = "<group>"; };
+		305DDC61B0427C4D22B89881 /* GeistMonoNerdFontMono-Bold.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "GeistMonoNerdFontMono-Bold.otf"; sourceTree = "<group>"; };
 		308F44F8EECB3F7443B190ED /* MoshUDPConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshUDPConnection.swift; sourceTree = "<group>"; };
 		319B6445E2EFF983D29F19B4 /* NetworkMonitorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitorService.swift; sourceTree = "<group>"; };
 		31A14278942E4B7AEFB3F1EB /* ToolbarEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarEditView.swift; sourceTree = "<group>"; };
+		33023FFA322E011C5EB6887A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		33888AFC72D34C285C0A9D8F /* CaskaydiaCoveNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "CaskaydiaCoveNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
+		3AB81882420AC6713271614D /* HackNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HackNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
+		3B435EC866C75FBFAD2A187A /* SauceCodeProNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "SauceCodeProNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
 		3BE99C6A440F89020EFE0E55 /* KeyboardToolbarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardToolbarView.swift; sourceTree = "<group>"; };
+		3E541CA9B24D14C5D80302FE /* MononokiNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MononokiNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
+		3FE236F7BE9FEA21ED9BBCBC /* AppearanceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettings.swift; sourceTree = "<group>"; };
+		405617842535DD42813E4158 /* VictorMonoNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "VictorMonoNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
 		414AB1CB023F8485D188ED5A /* MoshTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshTransport.swift; sourceTree = "<group>"; };
 		41CF781D13ED19D76B0E662E /* MoshIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshIntegrationTests.swift; sourceTree = "<group>"; };
+		496577E7FB5E979F6E5DC1F8 /* SessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionManager.swift; sourceTree = "<group>"; };
+		597645D8BB146FA9A0AD9EEF /* MononokiNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MononokiNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		5C7ACDBCAC51E50CC25A2E71 /* FantasqueSansMNerdFontPropo-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontPropo-Bold.ttf"; sourceTree = "<group>"; };
 		5EDBF8AB95AD1BD0632E9DC5 /* SSHKeyServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHKeyServiceTests.swift; sourceTree = "<group>"; };
+		672045AE06E29F24916A802F /* IosevkaNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IosevkaNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
 		68F7035092B0ACF1D4E67131 /* FantasqueSansMNerdFont-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFont-BoldItalic.ttf"; sourceTree = "<group>"; };
+		6AEDC4750F347303ED02613A /* CursorStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorStyle.swift; sourceTree = "<group>"; };
 		6B6C0D92DFAE29A99A64E6AF /* MoshCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshCrypto.swift; sourceTree = "<group>"; };
 		6E2EFDD79EC2C42851A8617C /* GhosttyKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GhosttyKit.xcframework; path = Frameworks/GhosttyKit.xcframework; sourceTree = "<group>"; };
+		6EF78C0050A2B5F4099C1DED /* JetBrainsMonoNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		74C7E92165EDFEF3678813D9 /* ToolbarButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarButton.swift; sourceTree = "<group>"; };
+		780724516B4EA0B83F0F4B64 /* VictorMonoNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "VictorMonoNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
+		7C3C0967B1ACAC663233E2CC /* AppearanceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettingsView.swift; sourceTree = "<group>"; };
 		7E7B7A33C6D07387D9708017 /* SSHConnectionError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHConnectionError.swift; sourceTree = "<group>"; };
+		80B2A4F86E488641E7497767 /* SauceCodeProNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "SauceCodeProNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		83584445F7F64462E791CA50 /* Server.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Server.swift; sourceTree = "<group>"; };
+		881C5E9A75631AA85261C1E3 /* HackNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HackNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
+		89E70FBED6094022B4F5F8D4 /* MononokiNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MononokiNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		8EBCF88BEC5956AC0E157B37 /* Hoshi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Hoshi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		935710390BD542E213897400 /* ConnectionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionViewModel.swift; sourceTree = "<group>"; };
+		958FD6277EBAC3147453F610 /* JetBrainsMonoNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
+		969B9307CAA607A311D3067C /* SessionCarouselView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCarouselView.swift; sourceTree = "<group>"; };
 		98A8C6B94D769B9D7B243F28 /* SSHKeyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHKeyService.swift; sourceTree = "<group>"; };
 		9917D156528C1F234C6AE282 /* KeyGeneratorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyGeneratorView.swift; sourceTree = "<group>"; };
+		9C0FA717B1413451034834BC /* FontPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontPickerView.swift; sourceTree = "<group>"; };
+		9F9491AA10E831DE136F59B4 /* IosevkaNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IosevkaNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		9FC5A0FB628B34BE815D797C /* GhosttyThemeAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyThemeAdapter.swift; sourceTree = "<group>"; };
+		A807286CB8D9A08D5F3B2770 /* MesloLGSNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MesloLGSNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
+		A80A6C5FDC7BE7A082E500A3 /* IosevkaNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IosevkaNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		AE48E5AF93A14D87CB077564 /* AddServerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddServerView.swift; sourceTree = "<group>"; };
+		AEF9701024C6D382B7B17573 /* FiraCodeNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FiraCodeNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
+		B1774CA68622C03A3373FEB0 /* MesloLGSNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MesloLGSNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
+		B23BAD806015AA69E0909C84 /* CaskaydiaCoveNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "CaskaydiaCoveNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
 		B2DF4C2856D88394B594133C /* ServerModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerModelTests.swift; sourceTree = "<group>"; };
 		B73D4FAFF8219BC7CB25BA12 /* SSHService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHService.swift; sourceTree = "<group>"; };
+		BB95500B7D399772F2FB8BD8 /* SessionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCardView.swift; sourceTree = "<group>"; };
 		BCD0BDA1F9E260CA9BF0B371 /* FantasqueSansMNerdFont-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFont-Italic.ttf"; sourceTree = "<group>"; };
 		C196748322C5769248D1E351 /* KeychainServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainServiceTests.swift; sourceTree = "<group>"; };
 		C5B1099C69E83AC319C5CAA1 /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
 		C660194F1BBB377A0242189A /* FantasqueSansMNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
 		C69A192CB8090D193F9BAE37 /* TerminalTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTheme.swift; sourceTree = "<group>"; };
+		C76E633109B9B1EEB493CC99 /* VictorMonoNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "VictorMonoNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		C83888891E5AE09F121D7AE0 /* FantasqueSansMNerdFontPropo-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontPropo-BoldItalic.ttf"; sourceTree = "<group>"; };
 		CBCD39EB73247795B564239E /* FantasqueSansMNerdFont-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFont-Regular.ttf"; sourceTree = "<group>"; };
 		CD4A11DB312AEDE9C67E3602 /* FantasqueSansMono.zip */ = {isa = PBXFileReference; lastKnownFileType = archive.zip; path = FantasqueSansMono.zip; sourceTree = "<group>"; };
+		CD6FB75DC159A221A4041B52 /* JetBrainsMonoNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		D11B78874807368F1E546709 /* FantasqueSansMNerdFontPropo-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontPropo-Italic.ttf"; sourceTree = "<group>"; };
 		D29A6455B627675930BDC4F5 /* FantasqueSansMNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		D2A47D4DB71EA9D072DD91AE /* MoshSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshSession.swift; sourceTree = "<group>"; };
+		D493916FB8323A0BFDB051C4 /* MononokiNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MononokiNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
+		D59BA3DFAA3F29B0B2D61DD8 /* CaskaydiaCoveNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "CaskaydiaCoveNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
+		D5EAC9D34A60A274CF4CF826 /* FiraCodeNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FiraCodeNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
 		D93629C5FA7BBEDDD78D5478 /* OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = OFL.txt; sourceTree = "<group>"; };
 		D9B7E45B20EC880BBE410431 /* FantasqueSansMNerdFontPropo-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontPropo-Regular.ttf"; sourceTree = "<group>"; };
+		D9EF90FB6D788D4D56A623D2 /* ManagedSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedSession.swift; sourceTree = "<group>"; };
 		DCE7EC1DDE1A89967CD4B68A /* TmuxSessionPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxSessionPickerView.swift; sourceTree = "<group>"; };
 		DE1DC7C7A978ED3F3F629164 /* SessionProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionProtocol.swift; sourceTree = "<group>"; };
 		DEEF1DFBFD9A93E3AFE91086 /* ToolbarConfigurationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarConfigurationService.swift; sourceTree = "<group>"; };
 		E1A17CA7267266FF635755CD /* GhosttyRuntimeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyRuntimeController.swift; sourceTree = "<group>"; };
+		E2754427187BAEC4DF26A643 /* CaskaydiaCoveNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "CaskaydiaCoveNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
 		E2B9B11940723B9C53B4410C /* MoshBootstrapService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshBootstrapService.swift; sourceTree = "<group>"; };
+		E31F018D17922A0C005CF1D8 /* JetBrainsMonoNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
+		ECD6E3400C759BA2E5459CC7 /* MesloLGSNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MesloLGSNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
+		EE74F42FC3581FBD6835FEE6 /* SauceCodeProNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "SauceCodeProNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		F434FC2C5E00789F32E7BF2D /* GhosttyTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyTerminalView.swift; sourceTree = "<group>"; };
+		F446ED424D69451050AA8120 /* GeistMonoNerdFontMono-Regular.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "GeistMonoNerdFontMono-Regular.otf"; sourceTree = "<group>"; };
 		F70A34682A15DD67521724FD /* ServerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerListView.swift; sourceTree = "<group>"; };
+		F7B8704BE7DEEC364B8E7530 /* SauceCodeProNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "SauceCodeProNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
 		F89DF94786BEA2C04C961E48 /* ConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectView.swift; sourceTree = "<group>"; };
 		FA0657BD71280F76D8693BDC /* HoshiTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HoshiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		1A2B3C4D5E6F708192A3B4C5 /* CursorStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorStyle.swift; sourceTree = "<group>"; };
-		2B3C4D5E6F708192A3B4C5D6 /* ColorSchemePreference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorSchemePreference.swift; sourceTree = "<group>"; };
-		3C4D5E6F708192A3B4C5D6E7 /* AppearanceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettings.swift; sourceTree = "<group>"; };
-		4D5E6F708192A3B4C5D6E7F8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		5E6F708192A3B4C5D6E7F809 /* AppearanceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettingsView.swift; sourceTree = "<group>"; };
-		6F708192A3B4C5D6E7F8091A /* FontPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontPickerView.swift; sourceTree = "<group>"; };
-		AA11223344556677AA990011 /* ManagedSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedSession.swift; sourceTree = "<group>"; };
-		AA22334455667788AA001122 /* SessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionManager.swift; sourceTree = "<group>"; };
-		AA33445566778899AA112233 /* SessionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCardView.swift; sourceTree = "<group>"; };
-		AA44556677889900AA223344 /* SessionCarouselView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCarouselView.swift; sourceTree = "<group>"; };
-		AABB11223344556677889900 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -197,7 +269,7 @@
 		281FC90208060B37F1AD6A98 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				AABB11223344556677889900 /* Assets.xcassets */,
+				33023FFA322E011C5EB6887A /* Assets.xcassets */,
 				264595A326ED9BA0A3A786F1 /* FantasqueSansMNerdFontMono-Bold.ttf */,
 				29E5F4DB92838EA72B678F2E /* FantasqueSansMNerdFontMono-BoldItalic.ttf */,
 				C660194F1BBB377A0242189A /* FantasqueSansMNerdFontMono-Italic.ttf */,
@@ -211,8 +283,8 @@
 			isa = PBXGroup;
 			children = (
 				935710390BD542E213897400 /* ConnectionViewModel.swift */,
-				AA11223344556677AA990011 /* ManagedSession.swift */,
-				AA22334455667788AA001122 /* SessionManager.swift */,
+				D9EF90FB6D788D4D56A623D2 /* ManagedSession.swift */,
+				496577E7FB5E979F6E5DC1F8 /* SessionManager.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -220,8 +292,8 @@
 		422FF24486D56FC0E604E287 /* Models */ = {
 			isa = PBXGroup;
 			children = (
-				2B3C4D5E6F708192A3B4C5D6 /* ColorSchemePreference.swift */,
-				1A2B3C4D5E6F708192A3B4C5 /* CursorStyle.swift */,
+				106EC4392C230C7D203D1769 /* ColorSchemePreference.swift */,
+				6AEDC4750F347303ED02613A /* CursorStyle.swift */,
 				83584445F7F64462E791CA50 /* Server.swift */,
 				7E7B7A33C6D07387D9708017 /* SSHConnectionError.swift */,
 				C69A192CB8090D193F9BAE37 /* TerminalTheme.swift */,
@@ -233,6 +305,10 @@
 		4FC697AB2FE144B55B83B4F9 /* Fonts */ = {
 			isa = PBXGroup;
 			children = (
+				E2754427187BAEC4DF26A643 /* CaskaydiaCoveNerdFontMono-Bold.ttf */,
+				D59BA3DFAA3F29B0B2D61DD8 /* CaskaydiaCoveNerdFontMono-BoldItalic.ttf */,
+				B23BAD806015AA69E0909C84 /* CaskaydiaCoveNerdFontMono-Italic.ttf */,
+				33888AFC72D34C285C0A9D8F /* CaskaydiaCoveNerdFontMono-Regular.ttf */,
 				1317C1167CDFEB8F24854E5E /* FantasqueSansMNerdFont-Bold.ttf */,
 				68F7035092B0ACF1D4E67131 /* FantasqueSansMNerdFont-BoldItalic.ttf */,
 				BCD0BDA1F9E260CA9BF0B371 /* FantasqueSansMNerdFont-Italic.ttf */,
@@ -242,8 +318,40 @@
 				D11B78874807368F1E546709 /* FantasqueSansMNerdFontPropo-Italic.ttf */,
 				D9B7E45B20EC880BBE410431 /* FantasqueSansMNerdFontPropo-Regular.ttf */,
 				CD4A11DB312AEDE9C67E3602 /* FantasqueSansMono.zip */,
+				D5EAC9D34A60A274CF4CF826 /* FiraCodeNerdFontMono-Bold.ttf */,
+				AEF9701024C6D382B7B17573 /* FiraCodeNerdFontMono-Regular.ttf */,
+				305DDC61B0427C4D22B89881 /* GeistMonoNerdFontMono-Bold.otf */,
+				F446ED424D69451050AA8120 /* GeistMonoNerdFontMono-Regular.otf */,
+				881C5E9A75631AA85261C1E3 /* HackNerdFontMono-Bold.ttf */,
+				10FDF8B29671EE2FA1E35DCE /* HackNerdFontMono-BoldItalic.ttf */,
+				22E727DDBEDCCBA321258007 /* HackNerdFontMono-Italic.ttf */,
+				3AB81882420AC6713271614D /* HackNerdFontMono-Regular.ttf */,
+				672045AE06E29F24916A802F /* IosevkaNerdFontMono-Bold.ttf */,
+				A80A6C5FDC7BE7A082E500A3 /* IosevkaNerdFontMono-BoldItalic.ttf */,
+				0BC8F5D874B7A64368CA4634 /* IosevkaNerdFontMono-Italic.ttf */,
+				9F9491AA10E831DE136F59B4 /* IosevkaNerdFontMono-Regular.ttf */,
+				958FD6277EBAC3147453F610 /* JetBrainsMonoNerdFontMono-Bold.ttf */,
+				CD6FB75DC159A221A4041B52 /* JetBrainsMonoNerdFontMono-BoldItalic.ttf */,
+				E31F018D17922A0C005CF1D8 /* JetBrainsMonoNerdFontMono-Italic.ttf */,
+				6EF78C0050A2B5F4099C1DED /* JetBrainsMonoNerdFontMono-Regular.ttf */,
+				B1774CA68622C03A3373FEB0 /* MesloLGSNerdFontMono-Bold.ttf */,
+				168EE5B0051233375A63B33F /* MesloLGSNerdFontMono-BoldItalic.ttf */,
+				ECD6E3400C759BA2E5459CC7 /* MesloLGSNerdFontMono-Italic.ttf */,
+				A807286CB8D9A08D5F3B2770 /* MesloLGSNerdFontMono-Regular.ttf */,
+				3E541CA9B24D14C5D80302FE /* MononokiNerdFontMono-Bold.ttf */,
+				597645D8BB146FA9A0AD9EEF /* MononokiNerdFontMono-BoldItalic.ttf */,
+				D493916FB8323A0BFDB051C4 /* MononokiNerdFontMono-Italic.ttf */,
+				89E70FBED6094022B4F5F8D4 /* MononokiNerdFontMono-Regular.ttf */,
 				D93629C5FA7BBEDDD78D5478 /* OFL.txt */,
 				263F27DE87745B6CBB01F9EC /* README.md */,
+				F7B8704BE7DEEC364B8E7530 /* SauceCodeProNerdFontMono-Bold.ttf */,
+				80B2A4F86E488641E7497767 /* SauceCodeProNerdFontMono-BoldItalic.ttf */,
+				3B435EC866C75FBFAD2A187A /* SauceCodeProNerdFontMono-Italic.ttf */,
+				EE74F42FC3581FBD6835FEE6 /* SauceCodeProNerdFontMono-Regular.ttf */,
+				780724516B4EA0B83F0F4B64 /* VictorMonoNerdFontMono-Bold.ttf */,
+				C76E633109B9B1EEB493CC99 /* VictorMonoNerdFontMono-BoldItalic.ttf */,
+				405617842535DD42813E4158 /* VictorMonoNerdFontMono-Italic.ttf */,
+				056BD9A1394B7DE2DC974461 /* VictorMonoNerdFontMono-Regular.ttf */,
 			);
 			path = Fonts;
 			sourceTree = "<group>";
@@ -266,15 +374,15 @@
 			isa = PBXGroup;
 			children = (
 				AE48E5AF93A14D87CB077564 /* AddServerView.swift */,
-				5E6F708192A3B4C5D6E7F809 /* AppearanceSettingsView.swift */,
+				7C3C0967B1ACAC663233E2CC /* AppearanceSettingsView.swift */,
 				F89DF94786BEA2C04C961E48 /* ConnectView.swift */,
-				6F708192A3B4C5D6E7F8091A /* FontPickerView.swift */,
+				9C0FA717B1413451034834BC /* FontPickerView.swift */,
 				3BE99C6A440F89020EFE0E55 /* KeyboardToolbarView.swift */,
 				9917D156528C1F234C6AE282 /* KeyGeneratorView.swift */,
 				F70A34682A15DD67521724FD /* ServerListView.swift */,
-				AA33445566778899AA112233 /* SessionCardView.swift */,
-				AA44556677889900AA223344 /* SessionCarouselView.swift */,
-				4D5E6F708192A3B4C5D6E7F8 /* SettingsView.swift */,
+				BB95500B7D399772F2FB8BD8 /* SessionCardView.swift */,
+				969B9307CAA607A311D3067C /* SessionCarouselView.swift */,
+				19D8FFFF3A11114D6122B6B0 /* SettingsView.swift */,
 				C5B1099C69E83AC319C5CAA1 /* TerminalView.swift */,
 				DCE7EC1DDE1A89967CD4B68A /* TmuxSessionPickerView.swift */,
 				31A14278942E4B7AEFB3F1EB /* ToolbarEditView.swift */,
@@ -295,7 +403,7 @@
 		9AA6A90603744EBFBA0A6F2E /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				3C4D5E6F708192A3B4C5D6E7 /* AppearanceSettings.swift */,
+				3FE236F7BE9FEA21ED9BBCBC /* AppearanceSettings.swift */,
 				1913DF729009DA8DC0A599B5 /* KeychainService.swift */,
 				E2B9B11940723B9C53B4410C /* MoshBootstrapService.swift */,
 				D2A47D4DB71EA9D072DD91AE /* MoshSession.swift */,
@@ -426,6 +534,11 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				82E093096115FAE2667FBD39 /* Assets.xcassets in Resources */,
+				96E76FE7CC9CAE73972F40B2 /* CaskaydiaCoveNerdFontMono-Bold.ttf in Resources */,
+				5248EE3B3EA2C454D927D269 /* CaskaydiaCoveNerdFontMono-BoldItalic.ttf in Resources */,
+				B6E12D938C3010070F5453F5 /* CaskaydiaCoveNerdFontMono-Italic.ttf in Resources */,
+				3EB4E284979DF2AE9760C4D2 /* CaskaydiaCoveNerdFontMono-Regular.ttf in Resources */,
 				FDE89BC33C51F278FE9F5403 /* FantasqueSansMNerdFont-Bold.ttf in Resources */,
 				94CBC132B31327A12B197002 /* FantasqueSansMNerdFont-BoldItalic.ttf in Resources */,
 				67EAFC8D2724CE7CF28F3D21 /* FantasqueSansMNerdFont-Italic.ttf in Resources */,
@@ -439,9 +552,40 @@
 				6A2CB034BF21A9A113232907 /* FantasqueSansMNerdFontPropo-Italic.ttf in Resources */,
 				F790EE3A7563497AE3278AF3 /* FantasqueSansMNerdFontPropo-Regular.ttf in Resources */,
 				CD6AA781DD02976BD2D7F744 /* FantasqueSansMono.zip in Resources */,
+				7DAA33FF1C9007496B2F156C /* FiraCodeNerdFontMono-Bold.ttf in Resources */,
+				67B5BA7CACC871826A1FED19 /* FiraCodeNerdFontMono-Regular.ttf in Resources */,
+				145A0B43D15635B9F8DE36AA /* GeistMonoNerdFontMono-Bold.otf in Resources */,
+				6B1F0E9D5D5C109BBEAE01F3 /* GeistMonoNerdFontMono-Regular.otf in Resources */,
+				48CBC07AA858212D8D7A4B2F /* HackNerdFontMono-Bold.ttf in Resources */,
+				800C2C75D46524DAE1A3D654 /* HackNerdFontMono-BoldItalic.ttf in Resources */,
+				FC1F742A4A1749522703ED51 /* HackNerdFontMono-Italic.ttf in Resources */,
+				A0FE2122C735C41905DCA16A /* HackNerdFontMono-Regular.ttf in Resources */,
+				4225E87F4DB501BCD1B821A0 /* IosevkaNerdFontMono-Bold.ttf in Resources */,
+				2674EBF76DC02237EEECE271 /* IosevkaNerdFontMono-BoldItalic.ttf in Resources */,
+				E40620E37450D2328A81C58E /* IosevkaNerdFontMono-Italic.ttf in Resources */,
+				3DB8554D34703B4030A3D1C5 /* IosevkaNerdFontMono-Regular.ttf in Resources */,
+				F39E77B57049A76E1A27CF86 /* JetBrainsMonoNerdFontMono-Bold.ttf in Resources */,
+				0D0E8495B636DEB6E54CEAAB /* JetBrainsMonoNerdFontMono-BoldItalic.ttf in Resources */,
+				23AF2EAE8F7FC17F54CFC285 /* JetBrainsMonoNerdFontMono-Italic.ttf in Resources */,
+				D040FAA5D3CC82EE6069117A /* JetBrainsMonoNerdFontMono-Regular.ttf in Resources */,
+				D9777936EE3EF82667021731 /* MesloLGSNerdFontMono-Bold.ttf in Resources */,
+				8638C1A18C9661397A239797 /* MesloLGSNerdFontMono-BoldItalic.ttf in Resources */,
+				F3916F8D9A261E1AEB1AF07A /* MesloLGSNerdFontMono-Italic.ttf in Resources */,
+				CB925AEEE0A3FEA3532EE0E8 /* MesloLGSNerdFontMono-Regular.ttf in Resources */,
+				097940E5568A3DFD23FFF996 /* MononokiNerdFontMono-Bold.ttf in Resources */,
+				A59D11FA75665308D57A3BFC /* MononokiNerdFontMono-BoldItalic.ttf in Resources */,
+				D67EFEFDE027566BF7E0922E /* MononokiNerdFontMono-Italic.ttf in Resources */,
+				AE6A859A8E7ED9210A37428C /* MononokiNerdFontMono-Regular.ttf in Resources */,
 				AC48C12B2115A175C1467711 /* OFL.txt in Resources */,
 				D3002045BC765B2F012820E6 /* README.md in Resources */,
-				AABB22334455667788990011 /* Assets.xcassets in Resources */,
+				BDEC5B34B7CC855EF5A4A194 /* SauceCodeProNerdFontMono-Bold.ttf in Resources */,
+				CC04ED92E0B9D468CD6DEE1F /* SauceCodeProNerdFontMono-BoldItalic.ttf in Resources */,
+				3CEDE7E2BC017FF0B0F4BCA8 /* SauceCodeProNerdFontMono-Italic.ttf in Resources */,
+				04891F707B323D36FB701009 /* SauceCodeProNerdFontMono-Regular.ttf in Resources */,
+				2BD23A315F1E6A041008F973 /* VictorMonoNerdFontMono-Bold.ttf in Resources */,
+				DD3E1D9D00916701F11A6762 /* VictorMonoNerdFontMono-BoldItalic.ttf in Resources */,
+				7B56E49F91FD048AECE71B08 /* VictorMonoNerdFontMono-Italic.ttf in Resources */,
+				881A8187BD93A78441937C3F /* VictorMonoNerdFontMono-Regular.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -453,13 +597,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				684F293C0A36B5C949433B39 /* AddServerView.swift in Sources */,
-				E5F60718293A4B5CD6E7F809 /* AppearanceSettingsView.swift in Sources */,
-				C3D4E5F60718293AB4C5D6E7 /* AppearanceSettings.swift in Sources */,
-				B2C3D4E5F6071829A3B4C5D6 /* ColorSchemePreference.swift in Sources */,
+				B6C1187C1ABC1ACC105F144B /* AppearanceSettings.swift in Sources */,
+				A9C3AB3C26ADAC862984E17F /* AppearanceSettingsView.swift in Sources */,
+				B808A611369E149F6B0B8088 /* ColorSchemePreference.swift in Sources */,
 				3ADE4D5AB0F163B3CF8730A4 /* ConnectView.swift in Sources */,
-				A1B2C3D4E5F60718293A4B5C /* CursorStyle.swift in Sources */,
-				F60718293A4B5C6DE7F8091A /* FontPickerView.swift in Sources */,
 				2302287519D2121C10555F48 /* ConnectionViewModel.swift in Sources */,
+				7457ECA03F102D7AE06FD427 /* CursorStyle.swift in Sources */,
+				7BA09D7B29B1E1612C638411 /* FontPickerView.swift in Sources */,
 				00022D11F851BDF7B2E6A9E2 /* GhosttyRuntimeController.swift in Sources */,
 				1C4F264585232B5664F22A6C /* GhosttyTerminalView.swift in Sources */,
 				B94D2D832E6A3E9262327483 /* GhosttyThemeAdapter.swift in Sources */,
@@ -467,6 +611,7 @@
 				42EC5C294A912C3284C5864E /* KeyGeneratorView.swift in Sources */,
 				961B9C2272D0AB6E9B8C66C8 /* KeyboardToolbarView.swift in Sources */,
 				CCBCF05E0F1E5A88BB203916 /* KeychainService.swift in Sources */,
+				0E67B26E17276804E96120A4 /* ManagedSession.swift in Sources */,
 				AA960FEEACDD73F7D7DC36F3 /* MoshBootstrapService.swift in Sources */,
 				6C4011DD0427000483B9DC76 /* MoshCrypto.swift in Sources */,
 				6673BE4456E9276448591DD4 /* MoshSession.swift in Sources */,
@@ -478,8 +623,11 @@
 				D30A82B7CDD3B69DD4FF6FE8 /* SSHService.swift in Sources */,
 				9E6DC72DB95786D85B40FA19 /* Server.swift in Sources */,
 				557852416FD2A54EFC66DE88 /* ServerListView.swift in Sources */,
+				302F1BC48FEFC232FF9D178A /* SessionCardView.swift in Sources */,
+				65B494BB42FEEC879D910B4B /* SessionCarouselView.swift in Sources */,
+				538D8E0977B2ACCA89F408C6 /* SessionManager.swift in Sources */,
 				26B826D28D58615A4D882013 /* SessionProtocol.swift in Sources */,
-				D4E5F60718293A4BC5D6E7F8 /* SettingsView.swift in Sources */,
+				3C42FB85D6E594C7AE94E8D3 /* SettingsView.swift in Sources */,
 				A08BCE350D681A0F24BF8B26 /* TerminalTheme.swift in Sources */,
 				D22DB61E421382204913A526 /* TerminalView.swift in Sources */,
 				FE7F8E8100652F86991C5D88 /* TmuxDetectionService.swift in Sources */,
@@ -487,10 +635,6 @@
 				AF9EE0A1C454D8C738E075E4 /* ToolbarButton.swift in Sources */,
 				6877532658972A191D5982CB /* ToolbarConfigurationService.swift in Sources */,
 				E6435FDC851D363CAD5BB75D /* ToolbarEditView.swift in Sources */,
-				AA11223344556677BB990011 /* ManagedSession.swift in Sources */,
-				AA22334455667788BB001122 /* SessionManager.swift in Sources */,
-				AA33445566778899BB112233 /* SessionCardView.swift in Sources */,
-				AA44556677889900BB223344 /* SessionCarouselView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -535,6 +679,42 @@
 					"FantasqueSansMNerdFontMono-Italic.ttf",
 					"FantasqueSansMNerdFontMono-Bold.ttf",
 					"FantasqueSansMNerdFontMono-BoldItalic.ttf",
+					"JetBrainsMonoNerdFontMono-Regular.ttf",
+					"JetBrainsMonoNerdFontMono-Italic.ttf",
+					"JetBrainsMonoNerdFontMono-Bold.ttf",
+					"JetBrainsMonoNerdFontMono-BoldItalic.ttf",
+					"FiraCodeNerdFontMono-Regular.ttf",
+					"FiraCodeNerdFontMono-Bold.ttf",
+					"HackNerdFontMono-Regular.ttf",
+					"HackNerdFontMono-Italic.ttf",
+					"HackNerdFontMono-Bold.ttf",
+					"HackNerdFontMono-BoldItalic.ttf",
+					"MesloLGSNerdFontMono-Regular.ttf",
+					"MesloLGSNerdFontMono-Italic.ttf",
+					"MesloLGSNerdFontMono-Bold.ttf",
+					"MesloLGSNerdFontMono-BoldItalic.ttf",
+					"CaskaydiaCoveNerdFontMono-Regular.ttf",
+					"CaskaydiaCoveNerdFontMono-Italic.ttf",
+					"CaskaydiaCoveNerdFontMono-Bold.ttf",
+					"CaskaydiaCoveNerdFontMono-BoldItalic.ttf",
+					"SauceCodeProNerdFontMono-Regular.ttf",
+					"SauceCodeProNerdFontMono-Italic.ttf",
+					"SauceCodeProNerdFontMono-Bold.ttf",
+					"SauceCodeProNerdFontMono-BoldItalic.ttf",
+					"IosevkaNerdFontMono-Regular.ttf",
+					"IosevkaNerdFontMono-Italic.ttf",
+					"IosevkaNerdFontMono-Bold.ttf",
+					"IosevkaNerdFontMono-BoldItalic.ttf",
+					"VictorMonoNerdFontMono-Regular.ttf",
+					"VictorMonoNerdFontMono-Italic.ttf",
+					"VictorMonoNerdFontMono-Bold.ttf",
+					"VictorMonoNerdFontMono-BoldItalic.ttf",
+					"MononokiNerdFontMono-Regular.ttf",
+					"MononokiNerdFontMono-Italic.ttf",
+					"MononokiNerdFontMono-Bold.ttf",
+					"MononokiNerdFontMono-BoldItalic.ttf",
+					"GeistMonoNerdFontMono-Regular.otf",
+					"GeistMonoNerdFontMono-Bold.otf",
 				);
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
@@ -706,6 +886,42 @@
 					"FantasqueSansMNerdFontMono-Italic.ttf",
 					"FantasqueSansMNerdFontMono-Bold.ttf",
 					"FantasqueSansMNerdFontMono-BoldItalic.ttf",
+					"JetBrainsMonoNerdFontMono-Regular.ttf",
+					"JetBrainsMonoNerdFontMono-Italic.ttf",
+					"JetBrainsMonoNerdFontMono-Bold.ttf",
+					"JetBrainsMonoNerdFontMono-BoldItalic.ttf",
+					"FiraCodeNerdFontMono-Regular.ttf",
+					"FiraCodeNerdFontMono-Bold.ttf",
+					"HackNerdFontMono-Regular.ttf",
+					"HackNerdFontMono-Italic.ttf",
+					"HackNerdFontMono-Bold.ttf",
+					"HackNerdFontMono-BoldItalic.ttf",
+					"MesloLGSNerdFontMono-Regular.ttf",
+					"MesloLGSNerdFontMono-Italic.ttf",
+					"MesloLGSNerdFontMono-Bold.ttf",
+					"MesloLGSNerdFontMono-BoldItalic.ttf",
+					"CaskaydiaCoveNerdFontMono-Regular.ttf",
+					"CaskaydiaCoveNerdFontMono-Italic.ttf",
+					"CaskaydiaCoveNerdFontMono-Bold.ttf",
+					"CaskaydiaCoveNerdFontMono-BoldItalic.ttf",
+					"SauceCodeProNerdFontMono-Regular.ttf",
+					"SauceCodeProNerdFontMono-Italic.ttf",
+					"SauceCodeProNerdFontMono-Bold.ttf",
+					"SauceCodeProNerdFontMono-BoldItalic.ttf",
+					"IosevkaNerdFontMono-Regular.ttf",
+					"IosevkaNerdFontMono-Italic.ttf",
+					"IosevkaNerdFontMono-Bold.ttf",
+					"IosevkaNerdFontMono-BoldItalic.ttf",
+					"VictorMonoNerdFontMono-Regular.ttf",
+					"VictorMonoNerdFontMono-Italic.ttf",
+					"VictorMonoNerdFontMono-Bold.ttf",
+					"VictorMonoNerdFontMono-BoldItalic.ttf",
+					"MononokiNerdFontMono-Regular.ttf",
+					"MononokiNerdFontMono-Italic.ttf",
+					"MononokiNerdFontMono-Bold.ttf",
+					"MononokiNerdFontMono-BoldItalic.ttf",
+					"GeistMonoNerdFontMono-Regular.otf",
+					"GeistMonoNerdFontMono-Bold.otf",
 				);
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
