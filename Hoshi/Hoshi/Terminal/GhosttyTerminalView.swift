@@ -131,6 +131,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
     private var pinchStartFontSize: CGFloat = 14
     private var isKeyboardVisible: Bool
     private var lastGridSize: (cols: Int, rows: Int) = (0, 0)
+    private var snappedRenderSize: CGSize = .zero
     private weak var renderLayer: CALayer?
     private var recentDirectInputs: [(canonical: Data, time: CFTimeInterval)] = []
     private let mirroredInputWindow: CFTimeInterval = 0.08
@@ -251,10 +252,15 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
     // Forward it to our backing CALayer to avoid unrecognized selector crashes.
     @objc(addSublayer:)
     func addSublayerCompat(_ sublayer: CALayer) {
-        // Keep Ghostty's render layer matched to our view bounds.
+        // Use snapped (whole-cell) size when available so the Metal drawable
+        // never extends beyond the grid. Fall back to full bounds before
+        // cell metrics have been computed.
+        let frame = snappedRenderSize != .zero
+            ? CGRect(origin: .zero, size: snappedRenderSize)
+            : CGRect(origin: .zero, size: layer.bounds.size)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        sublayer.frame = layer.bounds
+        sublayer.frame = frame
         CATransaction.commit()
         layer.addSublayer(sublayer)
         renderLayer = sublayer
@@ -326,7 +332,10 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        if let renderLayer, renderLayer.superlayer === layer {
+        // Render layer frame is set by updateSurfaceSizeIfNeeded to the
+        // snapped (whole-cell) size. Only fall back to full bounds before
+        // the surface exists and cell metrics are available.
+        if surface == nil, let renderLayer, renderLayer.superlayer === layer {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             renderLayer.frame = layer.bounds
@@ -604,42 +613,52 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         if let renderLayer, renderLayer.contentsScale != scale {
             renderLayer.contentsScale = scale
         }
-        // Never round up framebuffer pixels: requesting a larger surface than the
-        // visible view can clip the last row on 3x devices.
+
+        // Pass full pixel dimensions so Ghostty can compute cell metrics
         let widthPx = max(1, Int((bounds.width * scale).rounded(.down)))
         let heightPx = max(1, Int((bounds.height * scale).rounded(.down)))
-        var width = UInt32(widthPx)
-        var height = UInt32(heightPx)
-
         ghostty_surface_set_content_scale(surface, scale, scale)
-        ghostty_surface_set_size(surface, width, height)
+        ghostty_surface_set_size(surface, UInt32(widthPx), UInt32(heightPx))
 
-        var grid = ghostty_surface_size(surface)
+        let grid = ghostty_surface_size(surface)
 
-        // Defensive correction: if Ghostty reports a grid that would overflow
-        // the current framebuffer, resize to a whole-cell framebuffer that fits.
+        // Snap the framebuffer to exact cell multiples so the Metal drawable
+        // never contains a partial row or column at the edges.
         if grid.cell_width_px > 0, grid.cell_height_px > 0 {
-            let cellWidth = Int(grid.cell_width_px)
-            let cellHeight = Int(grid.cell_height_px)
-            let gridWidth = Int(grid.columns) * cellWidth
-            let gridHeight = Int(grid.rows) * cellHeight
+            let cellW = Int(grid.cell_width_px)
+            let cellH = Int(grid.cell_height_px)
+            let cols = max(1, widthPx / cellW)
+            let rows = max(1, heightPx / cellH)
+            let snappedW = UInt32(cols * cellW)
+            let snappedH = UInt32(rows * cellH)
 
-            if gridWidth > widthPx || gridHeight > heightPx {
-                let safeCols = max(1, min(Int(grid.columns), widthPx / cellWidth))
-                let safeRows = max(1, min(Int(grid.rows), heightPx / cellHeight))
-                width = UInt32(max(cellWidth, safeCols * cellWidth))
-                height = UInt32(max(cellHeight, safeRows * cellHeight))
-                ghostty_surface_set_size(surface, width, height)
-                grid = ghostty_surface_size(surface)
+            // Re-set only when the snapped size differs from raw
+            if snappedW != UInt32(widthPx) || snappedH != UInt32(heightPx) {
+                ghostty_surface_set_size(surface, snappedW, snappedH)
+            }
+
+            // Size the render layer to the snapped dimensions (in points)
+            let snapped = CGSize(
+                width: CGFloat(snappedW) / scale,
+                height: CGFloat(snappedH) / scale
+            )
+            snappedRenderSize = snapped
+
+            if let renderLayer {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                renderLayer.frame = CGRect(origin: .zero, size: snapped)
+                CATransaction.commit()
             }
         }
 
-        let cols = Int(grid.columns)
-        let rows = Int(grid.rows)
+        let finalGrid = ghostty_surface_size(surface)
+        let finalCols = Int(finalGrid.columns)
+        let finalRows = Int(finalGrid.rows)
 
-        if forceResizeSignal || cols != lastGridSize.cols || rows != lastGridSize.rows {
-            lastGridSize = (cols, rows)
-            onTerminalSizeChanged?(cols, rows)
+        if forceResizeSignal || finalCols != lastGridSize.cols || finalRows != lastGridSize.rows {
+            lastGridSize = (finalCols, finalRows)
+            onTerminalSizeChanged?(finalCols, finalRows)
         }
     }
 
