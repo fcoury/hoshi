@@ -333,6 +333,11 @@ final class SSHSession: ObservableObject {
                         }
                     }
                 }
+
+                // PTY closed normally (user typed 'exit')
+                await MainActor.run {
+                    self.connectionState = .disconnected
+                }
             } catch {
                 if !Task.isCancelled {
                     await MainActor.run {
