@@ -694,6 +694,48 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         return data
     }
 
+    // MARK: - Touch → Ghostty Mouse Events
+
+    // Forward single-finger taps to Ghostty so terminal apps with mouse
+    // reporting (vim, htop, click-on-URL) receive pointer input.
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let surface, let touch = touches.first else {
+            super.touchesBegan(touches, with: event)
+            return
+        }
+        let pos = touch.location(in: self)
+        ghostty_surface_mouse_pos(surface, pos.x, pos.y, GHOSTTY_MODS_NONE)
+        ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let surface, let touch = touches.first else {
+            super.touchesMoved(touches, with: event)
+            return
+        }
+        let pos = touch.location(in: self)
+        ghostty_surface_mouse_pos(surface, pos.x, pos.y, GHOSTTY_MODS_NONE)
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let surface, let touch = touches.first else {
+            super.touchesEnded(touches, with: event)
+            return
+        }
+        let pos = touch.location(in: self)
+        ghostty_surface_mouse_pos(surface, pos.x, pos.y, GHOSTTY_MODS_NONE)
+        ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let surface else {
+            super.touchesCancelled(touches, with: event)
+            return
+        }
+        ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
+    }
+
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
         switch gesture.state {
         case .began:
