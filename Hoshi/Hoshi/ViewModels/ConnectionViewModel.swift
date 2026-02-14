@@ -1,12 +1,17 @@
 import Foundation
 import SwiftUI
+import Combine
 
 @MainActor
 @Observable
 final class ConnectionViewModel {
     // Active session — either SSH or Mosh
-    var sshSession: SSHSession?
-    var moshSession: MoshSession?
+    var sshSession: SSHSession? {
+        didSet { bindSessionState() }
+    }
+    var moshSession: MoshSession? {
+        didSet { bindSessionState() }
+    }
     var isConnecting = false
     var errorMessage: String?
     var showError = false
@@ -17,7 +22,9 @@ final class ConnectionViewModel {
     var detectedPackageManager: RemotePackageManager?
 
     // tmux session picker state
-    var showTmuxPicker = false
+    var showTmuxPicker = false {
+        didSet { bindSessionState() }
+    }
     var detectedTmuxSessions: [TmuxSessionInfo] = []
 
     // Stashed credentials for fallback/install retry
@@ -25,12 +32,47 @@ final class ConnectionViewModel {
     private var pendingPassword: String?
     private var pendingKeyTag: String?
 
+    // Bridged state from the active session's @Published connectionState.
+    // SSHSession/MoshSession use ObservableObject + @Published (Combine),
+    // but this class uses @Observable (Swift Observation). These two systems
+    // don't bridge automatically — changes to sshSession.connectionState
+    // don't trigger @Observable updates. This stored property is synced via
+    // a Combine subscription so SwiftUI sees changes.
+    private(set) var currentSessionState: ConnectionState = .disconnected
+
+    // Combine subscription that forwards session state changes
+    @ObservationIgnored
+    private var sessionStateCancellable: AnyCancellable?
+
     // The active session's connection state — suppress .connected until terminal is open
     var connectionState: ConnectionState {
         if showTmuxPicker { return .connecting }
-        if let moshSession { return moshSession.connectionState }
-        if let sshSession { return sshSession.connectionState }
-        return .disconnected
+        return currentSessionState
+    }
+
+    // Subscribe to the active session's @Published connectionState and
+    // mirror it into currentSessionState so @Observable can track it.
+    private func bindSessionState() {
+        sessionStateCancellable?.cancel()
+        sessionStateCancellable = nil
+
+        if showTmuxPicker {
+            currentSessionState = .connecting
+        } else if let moshSession {
+            currentSessionState = moshSession.connectionState
+            sessionStateCancellable = moshSession.$connectionState
+                .sink { [weak self] state in
+                    self?.currentSessionState = state
+                }
+        } else if let sshSession {
+            currentSessionState = sshSession.connectionState
+            sessionStateCancellable = sshSession.$connectionState
+                .sink { [weak self] state in
+                    self?.currentSessionState = state
+                }
+        } else {
+            currentSessionState = .disconnected
+        }
     }
 
     // Whether a session object exists (even if currently disconnected/reconnecting)
@@ -129,8 +171,9 @@ final class ConnectionViewModel {
         }
 
         if let sshSession {
-            // If the SSH session silently died while backgrounded, trigger reconnect
-            if sshSession.connectionState == .disconnected {
+            // If the SSH session silently died while backgrounded, trigger reconnect.
+            // Don't reconnect if the user typed 'exit' — that's an intentional end.
+            if sshSession.connectionState == .disconnected && !sshSession.sessionEndedNormally {
                 Task {
                     await sshSession.reconnect()
                 }
