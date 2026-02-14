@@ -32,10 +32,57 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: true
         INFOPLIST_KEY_CFBundleDisplayName: "Hoshi"
         INFOPLIST_KEY_UIAppFonts:
+          # FantasqueSansM
           - FantasqueSansMNerdFontMono-Regular.ttf
           - FantasqueSansMNerdFontMono-Italic.ttf
           - FantasqueSansMNerdFontMono-Bold.ttf
           - FantasqueSansMNerdFontMono-BoldItalic.ttf
+          # JetBrains Mono
+          - JetBrainsMonoNerdFontMono-Regular.ttf
+          - JetBrainsMonoNerdFontMono-Italic.ttf
+          - JetBrainsMonoNerdFontMono-Bold.ttf
+          - JetBrainsMonoNerdFontMono-BoldItalic.ttf
+          # Fira Code (no italic variants)
+          - FiraCodeNerdFontMono-Regular.ttf
+          - FiraCodeNerdFontMono-Bold.ttf
+          # Hack
+          - HackNerdFontMono-Regular.ttf
+          - HackNerdFontMono-Italic.ttf
+          - HackNerdFontMono-Bold.ttf
+          - HackNerdFontMono-BoldItalic.ttf
+          # MesloLGS
+          - MesloLGSNerdFontMono-Regular.ttf
+          - MesloLGSNerdFontMono-Italic.ttf
+          - MesloLGSNerdFontMono-Bold.ttf
+          - MesloLGSNerdFontMono-BoldItalic.ttf
+          # CaskaydiaCove (Cascadia Code)
+          - CaskaydiaCoveNerdFontMono-Regular.ttf
+          - CaskaydiaCoveNerdFontMono-Italic.ttf
+          - CaskaydiaCoveNerdFontMono-Bold.ttf
+          - CaskaydiaCoveNerdFontMono-BoldItalic.ttf
+          # SauceCodePro (Source Code Pro)
+          - SauceCodeProNerdFontMono-Regular.ttf
+          - SauceCodeProNerdFontMono-Italic.ttf
+          - SauceCodeProNerdFontMono-Bold.ttf
+          - SauceCodeProNerdFontMono-BoldItalic.ttf
+          # Iosevka
+          - IosevkaNerdFontMono-Regular.ttf
+          - IosevkaNerdFontMono-Italic.ttf
+          - IosevkaNerdFontMono-Bold.ttf
+          - IosevkaNerdFontMono-BoldItalic.ttf
+          # VictorMono
+          - VictorMonoNerdFontMono-Regular.ttf
+          - VictorMonoNerdFontMono-Italic.ttf
+          - VictorMonoNerdFontMono-Bold.ttf
+          - VictorMonoNerdFontMono-BoldItalic.ttf
+          # Mononoki
+          - MononokiNerdFontMono-Regular.ttf
+          - MononokiNerdFontMono-Italic.ttf
+          - MononokiNerdFontMono-Bold.ttf
+          - MononokiNerdFontMono-BoldItalic.ttf
+          # GeistMono (OTF, no italic variants)
+          - GeistMonoNerdFontMono-Regular.otf
+          - GeistMonoNerdFontMono-Bold.otf
         PRODUCT_BUNDLE_IDENTIFIER: com.hoshi.app.dev
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
