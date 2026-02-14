@@ -1,6 +1,5 @@
 import Foundation
 import SwiftUI
-import SwiftData
 
 @MainActor
 @Observable
@@ -90,17 +89,18 @@ final class ConnectionViewModel {
         }
     }
 
-    // Handle the user's tmux session choice, creating a distinct saved entry if needed
-    func completeTmuxChoice(_ choice: TmuxChoice, modelContext: ModelContext? = nil) async {
+    // Handle the user's tmux session choice — returns the chosen session name for display
+    func completeTmuxChoice(_ choice: TmuxChoice) async -> String? {
         showTmuxPicker = false
-        guard let sshSession else { return }
+        guard let sshSession else { return nil }
+
+        var chosenSession: String? = nil
 
         // Set the initial command based on user choice
         switch choice {
         case .attach(let session):
             sshSession.initialCommand = TmuxDetectionService.attachCommand(sessionName: session.name)
-            // Create or find a distinct entry for this server+tmux combo
-            ensureTmuxEntry(sessionName: session.name, modelContext: modelContext)
+            chosenSession = session.name
         case .newSession:
             sshSession.initialCommand = TmuxDetectionService.newSessionCommand()
         case .skip:
@@ -113,54 +113,8 @@ final class ConnectionViewModel {
         if connectionState == .connected {
             pendingServer?.lastConnected = Date()
         }
-    }
 
-    // Create a saved connection entry for a server+tmux combo if one doesn't already exist
-    private func ensureTmuxEntry(sessionName: String, modelContext: ModelContext?) {
-        guard let server = pendingServer, let modelContext else { return }
-
-        // If this server entry already targets this tmux session, just update it
-        if server.tmuxSession == sessionName {
-            return
-        }
-
-        // Check if a matching entry already exists
-        let hostname = server.hostname
-        let port = server.port
-        let username = server.username
-        let predicate = #Predicate<Server> {
-            $0.hostname == hostname &&
-            $0.port == port &&
-            $0.username == username &&
-            $0.tmuxSession == sessionName
-        }
-        let descriptor = FetchDescriptor<Server>(predicate: predicate)
-
-        if let existing = try? modelContext.fetch(descriptor).first {
-            // Entry already exists — switch to it for lastConnected tracking
-            pendingServer = existing
-            return
-        }
-
-        // Create a new entry for this server+tmux session combo
-        let newEntry = Server(
-            name: "\(server.name) (\(sessionName))",
-            hostname: server.hostname,
-            port: server.port,
-            username: server.username,
-            authMethod: server.authMethod,
-            useMosh: server.useMosh,
-            tmuxSession: sessionName
-        )
-        modelContext.insert(newEntry)
-
-        // Copy stored password to the new entry's Keychain slot
-        if server.authMethod == .password,
-           let password = try? KeychainService.shared.retrievePassword(forServer: server.id) {
-            try? KeychainService.shared.storePassword(password, forServer: newEntry.id)
-        }
-
-        pendingServer = newEntry
+        return chosenSession
     }
 
     // Handle app returning to foreground — check session health and reconnect if needed
