@@ -26,6 +26,10 @@ final class SSHSession: ObservableObject {
     private var storedPassword: String?
     private var storedKeyTag: String?
 
+    // Tracks whether the PTY stream ended normally (user typed 'exit')
+    // so onDisconnect doesn't race and trigger a reconnect
+    private(set) var sessionEndedNormally = false
+
     // Reconnection state
     private var isReconnecting = false
     private var reconnectTask: Task<Void, Never>?
@@ -176,6 +180,7 @@ final class SSHSession: ObservableObject {
 
     // Attempt to reconnect after an unexpected disconnect
     func reconnect() async {
+        guard !sessionEndedNormally else { return }
         guard !isReconnecting else { return }
         isReconnecting = true
         connectionState = .reconnecting
@@ -238,6 +243,8 @@ final class SSHSession: ObservableObject {
 
     // Called when the SSH connection drops unexpectedly
     private func handleDisconnect() {
+        // Shell exited normally (user typed 'exit') — don't reconnect
+        guard !sessionEndedNormally else { return }
         // Only auto-reconnect if we were previously connected (not user-initiated disconnect)
         guard connectionState == .connected || connectionState == .reconnecting else { return }
         guard !isReconnecting else { return }
@@ -252,6 +259,7 @@ final class SSHSession: ObservableObject {
 
     private func startTerminalSession() async {
         guard let client else { return }
+        sessionEndedNormally = false
 
         sessionTask = Task { [weak self] in
             guard let self else { return }
@@ -332,15 +340,23 @@ final class SSHSession: ObservableObject {
                             }
                         }
                     }
-                }
 
-                // PTY closed normally (user typed 'exit')
-                await MainActor.run {
-                    self.connectionState = .disconnected
+                    // PTY stream ended — shell exited normally.
+                    // Set the flag and state NOW, before withPTY does channel
+                    // cleanup and fires onDisconnect.
+                    await MainActor.run {
+                        self.sessionEndedNormally = true
+                        self.connectionState = .disconnected
+                    }
                 }
             } catch {
-                if !Task.isCancelled {
-                    await MainActor.run {
+                await MainActor.run {
+                    if self.sessionEndedNormally {
+                        // Cleanup error after normal exit — keep .disconnected
+                        if self.connectionState != .disconnected {
+                            self.connectionState = .disconnected
+                        }
+                    } else if !Task.isCancelled {
                         self.connectionState = .error("Terminal session ended: \(error.localizedDescription)")
                     }
                 }
