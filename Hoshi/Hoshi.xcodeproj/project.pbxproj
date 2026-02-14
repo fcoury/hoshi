@@ -69,6 +69,7 @@
 		AA22334455667788BB001122 /* SessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA22334455667788AA001122 /* SessionManager.swift */; };
 		AA33445566778899BB112233 /* SessionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA33445566778899AA112233 /* SessionCardView.swift */; };
 		AA44556677889900BB223344 /* SessionCarouselView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA44556677889900AA223344 /* SessionCarouselView.swift */; };
+		AABB22334455667788990011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AABB11223344556677889900 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -157,6 +158,7 @@
 		AA22334455667788AA001122 /* SessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionManager.swift; sourceTree = "<group>"; };
 		AA33445566778899AA112233 /* SessionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCardView.swift; sourceTree = "<group>"; };
 		AA44556677889900AA223344 /* SessionCarouselView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCarouselView.swift; sourceTree = "<group>"; };
+		AABB11223344556677889900 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -195,6 +197,7 @@
 		281FC90208060B37F1AD6A98 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				AABB11223344556677889900 /* Assets.xcassets */,
 				264595A326ED9BA0A3A786F1 /* FantasqueSansMNerdFontMono-Bold.ttf */,
 				29E5F4DB92838EA72B678F2E /* FantasqueSansMNerdFontMono-BoldItalic.ttf */,
 				C660194F1BBB377A0242189A /* FantasqueSansMNerdFontMono-Italic.ttf */,
@@ -438,6 +441,7 @@
 				CD6AA781DD02976BD2D7F744 /* FantasqueSansMono.zip in Resources */,
 				AC48C12B2115A175C1467711 /* OFL.txt in Resources */,
 				D3002045BC765B2F012820E6 /* README.md in Resources */,
+				AABB22334455667788990011 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
