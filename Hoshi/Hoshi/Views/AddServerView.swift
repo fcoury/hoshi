@@ -16,6 +16,7 @@ struct AddServerView: View {
     @State private var useMosh = false
     @State private var tmuxSession = ""
     @State private var errorMessage: String?
+    @FocusState private var isNameFocused: Bool
 
     // When editing an existing server
     var existingServer: Server?
@@ -25,6 +26,7 @@ struct AddServerView: View {
             Form {
                 Section("Server Details") {
                     TextField("Display Name", text: $name)
+                        .focused($isNameFocused)
                         .textContentType(.nickname)
                     TextField("Hostname or IP", text: $hostname)
                         .textContentType(.URL)
@@ -105,6 +107,7 @@ struct AddServerView: View {
                 if let server = existingServer {
                     populateFromServer(server)
                 }
+                isNameFocused = true
             }
         }
     }
