@@ -822,7 +822,8 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
             let delta = gesture.translation(in: self)
             // Natural scrolling: iOS pan Y positive = finger moves down = content moves down
             // Ghostty positive Y = scroll up into history, which matches pulling content down
-            ghostty_surface_mouse_scroll(surface, 0, delta.y, 1)
+            let multiplier = AppearanceSettings.shared.scrollMultiplier
+            ghostty_surface_mouse_scroll(surface, 0, delta.y * multiplier, 1)
             gesture.setTranslation(.zero, in: self)
         }
     }

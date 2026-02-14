@@ -69,7 +69,6 @@
 		A08BCE350D681A0F24BF8B26 /* TerminalTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C69A192CB8090D193F9BAE37 /* TerminalTheme.swift */; };
 		A0FE2122C735C41905DCA16A /* HackNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3AB81882420AC6713271614D /* HackNerdFontMono-Regular.ttf */; };
 		A59D11FA75665308D57A3BFC /* MononokiNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 597645D8BB146FA9A0AD9EEF /* MononokiNerdFontMono-BoldItalic.ttf */; };
-		A9C3AB3C26ADAC862984E17F /* AppearanceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3C0967B1ACAC663233E2CC /* AppearanceSettingsView.swift */; };
 		AA960FEEACDD73F7D7DC36F3 /* MoshBootstrapService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2B9B11940723B9C53B4410C /* MoshBootstrapService.swift */; };
 		AC48C12B2115A175C1467711 /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = D93629C5FA7BBEDDD78D5478 /* OFL.txt */; };
 		AE6A859A8E7ED9210A37428C /* MononokiNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 89E70FBED6094022B4F5F8D4 /* MononokiNerdFontMono-Regular.ttf */; };
@@ -172,7 +171,6 @@
 		6EF78C0050A2B5F4099C1DED /* JetBrainsMonoNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		74C7E92165EDFEF3678813D9 /* ToolbarButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarButton.swift; sourceTree = "<group>"; };
 		780724516B4EA0B83F0F4B64 /* VictorMonoNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "VictorMonoNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
-		7C3C0967B1ACAC663233E2CC /* AppearanceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettingsView.swift; sourceTree = "<group>"; };
 		7E7B7A33C6D07387D9708017 /* SSHConnectionError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHConnectionError.swift; sourceTree = "<group>"; };
 		80B2A4F86E488641E7497767 /* SauceCodeProNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "SauceCodeProNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		83584445F7F64462E791CA50 /* Server.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Server.swift; sourceTree = "<group>"; };
@@ -371,7 +369,6 @@
 			isa = PBXGroup;
 			children = (
 				AE48E5AF93A14D87CB077564 /* AddServerView.swift */,
-				7C3C0967B1ACAC663233E2CC /* AppearanceSettingsView.swift */,
 				F89DF94786BEA2C04C961E48 /* ConnectView.swift */,
 				9C0FA717B1413451034834BC /* FontPickerView.swift */,
 				3BE99C6A440F89020EFE0E55 /* KeyboardToolbarView.swift */,
@@ -594,7 +591,6 @@
 			files = (
 				684F293C0A36B5C949433B39 /* AddServerView.swift in Sources */,
 				B6C1187C1ABC1ACC105F144B /* AppearanceSettings.swift in Sources */,
-				A9C3AB3C26ADAC862984E17F /* AppearanceSettingsView.swift in Sources */,
 				B808A611369E149F6B0B8088 /* ColorSchemePreference.swift in Sources */,
 				3ADE4D5AB0F163B3CF8730A4 /* ConnectView.swift in Sources */,
 				2302287519D2121C10555F48 /* ConnectionViewModel.swift in Sources */,
