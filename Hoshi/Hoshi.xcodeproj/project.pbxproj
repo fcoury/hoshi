@@ -16,7 +16,6 @@
 		145A0B43D15635B9F8DE36AA /* GeistMonoNerdFontMono-Bold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 305DDC61B0427C4D22B89881 /* GeistMonoNerdFontMono-Bold.otf */; };
 		1A9B8654E8CE7175BE93587A /* GhosttyKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6E2EFDD79EC2C42851A8617C /* GhosttyKit.xcframework */; };
 		1C4F264585232B5664F22A6C /* GhosttyTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F434FC2C5E00789F32E7BF2D /* GhosttyTerminalView.swift */; };
-		22613851A3F744A04F16757C /* FantasqueSansMNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 29E5F4DB92838EA72B678F2E /* FantasqueSansMNerdFontMono-BoldItalic.ttf */; };
 		2302287519D2121C10555F48 /* ConnectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 935710390BD542E213897400 /* ConnectionViewModel.swift */; };
 		23AF2EAE8F7FC17F54CFC285 /* JetBrainsMonoNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E31F018D17922A0C005CF1D8 /* JetBrainsMonoNerdFontMono-Italic.ttf */; };
 		2674EBF76DC02237EEECE271 /* IosevkaNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A80A6C5FDC7BE7A082E500A3 /* IosevkaNerdFontMono-BoldItalic.ttf */; };
@@ -32,8 +31,11 @@
 		3EB4E284979DF2AE9760C4D2 /* CaskaydiaCoveNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 33888AFC72D34C285C0A9D8F /* CaskaydiaCoveNerdFontMono-Regular.ttf */; };
 		4225E87F4DB501BCD1B821A0 /* IosevkaNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 672045AE06E29F24916A802F /* IosevkaNerdFontMono-Bold.ttf */; };
 		42EC5C294A912C3284C5864E /* KeyGeneratorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9917D156528C1F234C6AE282 /* KeyGeneratorView.swift */; };
+		4348D738E6E90AE847181385 /* FantasqueSansMNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 00A59A42868A8B1623EA7ACC /* FantasqueSansMNerdFontMono-BoldItalic.ttf */; };
+		475FB7768A32B662FAC2D730 /* FantasqueSansMNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9754890B02212DFC67FD26EC /* FantasqueSansMNerdFontMono-Italic.ttf */; };
 		4870A95EBDA37102D6FCE1DD /* MoshUDPConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 308F44F8EECB3F7443B190ED /* MoshUDPConnection.swift */; };
 		48CBC07AA858212D8D7A4B2F /* HackNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 881C5E9A75631AA85261C1E3 /* HackNerdFontMono-Bold.ttf */; };
+		4C2254C1D1A0CE8B061B3048 /* FantasqueSansMNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D77927DA3E7A9D232FB2AF6E /* FantasqueSansMNerdFontMono-Bold.ttf */; };
 		5248EE3B3EA2C454D927D269 /* CaskaydiaCoveNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D59BA3DFAA3F29B0B2D61DD8 /* CaskaydiaCoveNerdFontMono-BoldItalic.ttf */; };
 		538D8E0977B2ACCA89F408C6 /* SessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 496577E7FB5E979F6E5DC1F8 /* SessionManager.swift */; };
 		539569A7ADAF63A743137D9A /* SSHKeyServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EDBF8AB95AD1BD0632E9DC5 /* SSHKeyServiceTests.swift */; };
@@ -71,20 +73,16 @@
 		AA960FEEACDD73F7D7DC36F3 /* MoshBootstrapService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2B9B11940723B9C53B4410C /* MoshBootstrapService.swift */; };
 		AC48C12B2115A175C1467711 /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = D93629C5FA7BBEDDD78D5478 /* OFL.txt */; };
 		AE6A859A8E7ED9210A37428C /* MononokiNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 89E70FBED6094022B4F5F8D4 /* MononokiNerdFontMono-Regular.ttf */; };
-		AF291D827FEF755F2DEA0436 /* FantasqueSansMNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D29A6455B627675930BDC4F5 /* FantasqueSansMNerdFontMono-Regular.ttf */; };
 		AF9EE0A1C454D8C738E075E4 /* ToolbarButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74C7E92165EDFEF3678813D9 /* ToolbarButton.swift */; };
 		B3E276B09DC8AC366CB189E2 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = B06240B1AC6C6DB7CD56CF5B /* Citadel */; };
-		B4FDD0DE6C57F34C5EA44BA1 /* FantasqueSansMNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 264595A326ED9BA0A3A786F1 /* FantasqueSansMNerdFontMono-Bold.ttf */; };
 		B6C1187C1ABC1ACC105F144B /* AppearanceSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FE236F7BE9FEA21ED9BBCBC /* AppearanceSettings.swift */; };
 		B6E12D938C3010070F5453F5 /* CaskaydiaCoveNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B23BAD806015AA69E0909C84 /* CaskaydiaCoveNerdFontMono-Italic.ttf */; };
 		B808A611369E149F6B0B8088 /* ColorSchemePreference.swift in Sources */ = {isa = PBXBuildFile; fileRef = 106EC4392C230C7D203D1769 /* ColorSchemePreference.swift */; };
 		B94D2D832E6A3E9262327483 /* GhosttyThemeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC5A0FB628B34BE815D797C /* GhosttyThemeAdapter.swift */; };
-		BA5C099D364504928A95C3C1 /* FantasqueSansMNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C660194F1BBB377A0242189A /* FantasqueSansMNerdFontMono-Italic.ttf */; };
 		BDEC5B34B7CC855EF5A4A194 /* SauceCodeProNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F7B8704BE7DEEC364B8E7530 /* SauceCodeProNerdFontMono-Bold.ttf */; };
 		CB925AEEE0A3FEA3532EE0E8 /* MesloLGSNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A807286CB8D9A08D5F3B2770 /* MesloLGSNerdFontMono-Regular.ttf */; };
 		CC04ED92E0B9D468CD6DEE1F /* SauceCodeProNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 80B2A4F86E488641E7497767 /* SauceCodeProNerdFontMono-BoldItalic.ttf */; };
 		CCBCF05E0F1E5A88BB203916 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1913DF729009DA8DC0A599B5 /* KeychainService.swift */; };
-		CD6AA781DD02976BD2D7F744 /* FantasqueSansMono.zip in Resources */ = {isa = PBXBuildFile; fileRef = CD4A11DB312AEDE9C67E3602 /* FantasqueSansMono.zip */; };
 		D040FAA5D3CC82EE6069117A /* JetBrainsMonoNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 6EF78C0050A2B5F4099C1DED /* JetBrainsMonoNerdFontMono-Regular.ttf */; };
 		D22DB61E421382204913A526 /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B1099C69E83AC319C5CAA1 /* TerminalView.swift */; };
 		D3002045BC765B2F012820E6 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 263F27DE87745B6CBB01F9EC /* README.md */; };
@@ -99,6 +97,7 @@
 		E293E5B88435EF600774A8DA /* KeychainServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C196748322C5769248D1E351 /* KeychainServiceTests.swift */; };
 		E40620E37450D2328A81C58E /* IosevkaNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0BC8F5D874B7A64368CA4634 /* IosevkaNerdFontMono-Italic.ttf */; };
 		E6435FDC851D363CAD5BB75D /* ToolbarEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31A14278942E4B7AEFB3F1EB /* ToolbarEditView.swift */; };
+		E7604D7C358F7FA6A1BC2EF7 /* FantasqueSansMNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1FF91BC6BC483D5D7AFC61F3 /* FantasqueSansMNerdFontMono-Regular.ttf */; };
 		F3916F8D9A261E1AEB1AF07A /* MesloLGSNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = ECD6E3400C759BA2E5459CC7 /* MesloLGSNerdFontMono-Italic.ttf */; };
 		F39E77B57049A76E1A27CF86 /* JetBrainsMonoNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 958FD6277EBAC3147453F610 /* JetBrainsMonoNerdFontMono-Bold.ttf */; };
 		F790EE3A7563497AE3278AF3 /* FantasqueSansMNerdFontPropo-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D9B7E45B20EC880BBE410431 /* FantasqueSansMNerdFontPropo-Regular.ttf */; };
@@ -133,6 +132,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		00A59A42868A8B1623EA7ACC /* FantasqueSansMNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		056BD9A1394B7DE2DC974461 /* VictorMonoNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "VictorMonoNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		08326AEDEEBE494F5026A5FD /* TmuxDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxDetectionService.swift; sourceTree = "<group>"; };
 		0BC8F5D874B7A64368CA4634 /* IosevkaNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IosevkaNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
@@ -142,10 +142,9 @@
 		168EE5B0051233375A63B33F /* MesloLGSNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MesloLGSNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		1913DF729009DA8DC0A599B5 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
 		19D8FFFF3A11114D6122B6B0 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		1FF91BC6BC483D5D7AFC61F3 /* FantasqueSansMNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		22E727DDBEDCCBA321258007 /* HackNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HackNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
 		263F27DE87745B6CBB01F9EC /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
-		264595A326ED9BA0A3A786F1 /* FantasqueSansMNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
-		29E5F4DB92838EA72B678F2E /* FantasqueSansMNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		2D2E28A5EA11F0126B55C42C /* HoshiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoshiApp.swift; sourceTree = "<group>"; };
 		305DDC61B0427C4D22B89881 /* GeistMonoNerdFontMono-Bold.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "GeistMonoNerdFontMono-Bold.otf"; sourceTree = "<group>"; };
 		308F44F8EECB3F7443B190ED /* MoshUDPConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshUDPConnection.swift; sourceTree = "<group>"; };
@@ -183,6 +182,7 @@
 		935710390BD542E213897400 /* ConnectionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionViewModel.swift; sourceTree = "<group>"; };
 		958FD6277EBAC3147453F610 /* JetBrainsMonoNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
 		969B9307CAA607A311D3067C /* SessionCarouselView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCarouselView.swift; sourceTree = "<group>"; };
+		9754890B02212DFC67FD26EC /* FantasqueSansMNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
 		98A8C6B94D769B9D7B243F28 /* SSHKeyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHKeyService.swift; sourceTree = "<group>"; };
 		9917D156528C1F234C6AE282 /* KeyGeneratorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyGeneratorView.swift; sourceTree = "<group>"; };
 		9C0FA717B1413451034834BC /* FontPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontPickerView.swift; sourceTree = "<group>"; };
@@ -200,19 +200,17 @@
 		BCD0BDA1F9E260CA9BF0B371 /* FantasqueSansMNerdFont-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFont-Italic.ttf"; sourceTree = "<group>"; };
 		C196748322C5769248D1E351 /* KeychainServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainServiceTests.swift; sourceTree = "<group>"; };
 		C5B1099C69E83AC319C5CAA1 /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
-		C660194F1BBB377A0242189A /* FantasqueSansMNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
 		C69A192CB8090D193F9BAE37 /* TerminalTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTheme.swift; sourceTree = "<group>"; };
 		C76E633109B9B1EEB493CC99 /* VictorMonoNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "VictorMonoNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		C83888891E5AE09F121D7AE0 /* FantasqueSansMNerdFontPropo-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontPropo-BoldItalic.ttf"; sourceTree = "<group>"; };
 		CBCD39EB73247795B564239E /* FantasqueSansMNerdFont-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFont-Regular.ttf"; sourceTree = "<group>"; };
-		CD4A11DB312AEDE9C67E3602 /* FantasqueSansMono.zip */ = {isa = PBXFileReference; lastKnownFileType = archive.zip; path = FantasqueSansMono.zip; sourceTree = "<group>"; };
 		CD6FB75DC159A221A4041B52 /* JetBrainsMonoNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		D11B78874807368F1E546709 /* FantasqueSansMNerdFontPropo-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontPropo-Italic.ttf"; sourceTree = "<group>"; };
-		D29A6455B627675930BDC4F5 /* FantasqueSansMNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		D2A47D4DB71EA9D072DD91AE /* MoshSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshSession.swift; sourceTree = "<group>"; };
 		D493916FB8323A0BFDB051C4 /* MononokiNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MononokiNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
 		D59BA3DFAA3F29B0B2D61DD8 /* CaskaydiaCoveNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "CaskaydiaCoveNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		D5EAC9D34A60A274CF4CF826 /* FiraCodeNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FiraCodeNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
+		D77927DA3E7A9D232FB2AF6E /* FantasqueSansMNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
 		D93629C5FA7BBEDDD78D5478 /* OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = OFL.txt; sourceTree = "<group>"; };
 		D9B7E45B20EC880BBE410431 /* FantasqueSansMNerdFontPropo-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontPropo-Regular.ttf"; sourceTree = "<group>"; };
 		D9EF90FB6D788D4D56A623D2 /* ManagedSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedSession.swift; sourceTree = "<group>"; };
@@ -270,10 +268,6 @@
 			isa = PBXGroup;
 			children = (
 				33023FFA322E011C5EB6887A /* Assets.xcassets */,
-				264595A326ED9BA0A3A786F1 /* FantasqueSansMNerdFontMono-Bold.ttf */,
-				29E5F4DB92838EA72B678F2E /* FantasqueSansMNerdFontMono-BoldItalic.ttf */,
-				C660194F1BBB377A0242189A /* FantasqueSansMNerdFontMono-Italic.ttf */,
-				D29A6455B627675930BDC4F5 /* FantasqueSansMNerdFontMono-Regular.ttf */,
 				4FC697AB2FE144B55B83B4F9 /* Fonts */,
 			);
 			path = Resources;
@@ -313,11 +307,14 @@
 				68F7035092B0ACF1D4E67131 /* FantasqueSansMNerdFont-BoldItalic.ttf */,
 				BCD0BDA1F9E260CA9BF0B371 /* FantasqueSansMNerdFont-Italic.ttf */,
 				CBCD39EB73247795B564239E /* FantasqueSansMNerdFont-Regular.ttf */,
+				D77927DA3E7A9D232FB2AF6E /* FantasqueSansMNerdFontMono-Bold.ttf */,
+				00A59A42868A8B1623EA7ACC /* FantasqueSansMNerdFontMono-BoldItalic.ttf */,
+				9754890B02212DFC67FD26EC /* FantasqueSansMNerdFontMono-Italic.ttf */,
+				1FF91BC6BC483D5D7AFC61F3 /* FantasqueSansMNerdFontMono-Regular.ttf */,
 				5C7ACDBCAC51E50CC25A2E71 /* FantasqueSansMNerdFontPropo-Bold.ttf */,
 				C83888891E5AE09F121D7AE0 /* FantasqueSansMNerdFontPropo-BoldItalic.ttf */,
 				D11B78874807368F1E546709 /* FantasqueSansMNerdFontPropo-Italic.ttf */,
 				D9B7E45B20EC880BBE410431 /* FantasqueSansMNerdFontPropo-Regular.ttf */,
-				CD4A11DB312AEDE9C67E3602 /* FantasqueSansMono.zip */,
 				D5EAC9D34A60A274CF4CF826 /* FiraCodeNerdFontMono-Bold.ttf */,
 				AEF9701024C6D382B7B17573 /* FiraCodeNerdFontMono-Regular.ttf */,
 				305DDC61B0427C4D22B89881 /* GeistMonoNerdFontMono-Bold.otf */,
@@ -543,15 +540,14 @@
 				94CBC132B31327A12B197002 /* FantasqueSansMNerdFont-BoldItalic.ttf in Resources */,
 				67EAFC8D2724CE7CF28F3D21 /* FantasqueSansMNerdFont-Italic.ttf in Resources */,
 				74BDDAA9CBDA058C1B8B0DA5 /* FantasqueSansMNerdFont-Regular.ttf in Resources */,
-				B4FDD0DE6C57F34C5EA44BA1 /* FantasqueSansMNerdFontMono-Bold.ttf in Resources */,
-				22613851A3F744A04F16757C /* FantasqueSansMNerdFontMono-BoldItalic.ttf in Resources */,
-				BA5C099D364504928A95C3C1 /* FantasqueSansMNerdFontMono-Italic.ttf in Resources */,
-				AF291D827FEF755F2DEA0436 /* FantasqueSansMNerdFontMono-Regular.ttf in Resources */,
+				4C2254C1D1A0CE8B061B3048 /* FantasqueSansMNerdFontMono-Bold.ttf in Resources */,
+				4348D738E6E90AE847181385 /* FantasqueSansMNerdFontMono-BoldItalic.ttf in Resources */,
+				475FB7768A32B662FAC2D730 /* FantasqueSansMNerdFontMono-Italic.ttf in Resources */,
+				E7604D7C358F7FA6A1BC2EF7 /* FantasqueSansMNerdFontMono-Regular.ttf in Resources */,
 				95531096D22C7C0FFF5640E7 /* FantasqueSansMNerdFontPropo-Bold.ttf in Resources */,
 				3E029F824C3064012225F9AA /* FantasqueSansMNerdFontPropo-BoldItalic.ttf in Resources */,
 				6A2CB034BF21A9A113232907 /* FantasqueSansMNerdFontPropo-Italic.ttf in Resources */,
 				F790EE3A7563497AE3278AF3 /* FantasqueSansMNerdFontPropo-Regular.ttf in Resources */,
-				CD6AA781DD02976BD2D7F744 /* FantasqueSansMono.zip in Resources */,
 				7DAA33FF1C9007496B2F156C /* FiraCodeNerdFontMono-Bold.ttf in Resources */,
 				67B5BA7CACC871826A1FED19 /* FiraCodeNerdFontMono-Regular.ttf in Resources */,
 				145A0B43D15635B9F8DE36AA /* GeistMonoNerdFontMono-Bold.otf in Resources */,
@@ -674,48 +670,6 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Hoshi;
-				INFOPLIST_KEY_UIAppFonts = (
-					"FantasqueSansMNerdFontMono-Regular.ttf",
-					"FantasqueSansMNerdFontMono-Italic.ttf",
-					"FantasqueSansMNerdFontMono-Bold.ttf",
-					"FantasqueSansMNerdFontMono-BoldItalic.ttf",
-					"JetBrainsMonoNerdFontMono-Regular.ttf",
-					"JetBrainsMonoNerdFontMono-Italic.ttf",
-					"JetBrainsMonoNerdFontMono-Bold.ttf",
-					"JetBrainsMonoNerdFontMono-BoldItalic.ttf",
-					"FiraCodeNerdFontMono-Regular.ttf",
-					"FiraCodeNerdFontMono-Bold.ttf",
-					"HackNerdFontMono-Regular.ttf",
-					"HackNerdFontMono-Italic.ttf",
-					"HackNerdFontMono-Bold.ttf",
-					"HackNerdFontMono-BoldItalic.ttf",
-					"MesloLGSNerdFontMono-Regular.ttf",
-					"MesloLGSNerdFontMono-Italic.ttf",
-					"MesloLGSNerdFontMono-Bold.ttf",
-					"MesloLGSNerdFontMono-BoldItalic.ttf",
-					"CaskaydiaCoveNerdFontMono-Regular.ttf",
-					"CaskaydiaCoveNerdFontMono-Italic.ttf",
-					"CaskaydiaCoveNerdFontMono-Bold.ttf",
-					"CaskaydiaCoveNerdFontMono-BoldItalic.ttf",
-					"SauceCodeProNerdFontMono-Regular.ttf",
-					"SauceCodeProNerdFontMono-Italic.ttf",
-					"SauceCodeProNerdFontMono-Bold.ttf",
-					"SauceCodeProNerdFontMono-BoldItalic.ttf",
-					"IosevkaNerdFontMono-Regular.ttf",
-					"IosevkaNerdFontMono-Italic.ttf",
-					"IosevkaNerdFontMono-Bold.ttf",
-					"IosevkaNerdFontMono-BoldItalic.ttf",
-					"VictorMonoNerdFontMono-Regular.ttf",
-					"VictorMonoNerdFontMono-Italic.ttf",
-					"VictorMonoNerdFontMono-Bold.ttf",
-					"VictorMonoNerdFontMono-BoldItalic.ttf",
-					"MononokiNerdFontMono-Regular.ttf",
-					"MononokiNerdFontMono-Italic.ttf",
-					"MononokiNerdFontMono-Bold.ttf",
-					"MononokiNerdFontMono-BoldItalic.ttf",
-					"GeistMonoNerdFontMono-Regular.otf",
-					"GeistMonoNerdFontMono-Bold.otf",
-				);
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -881,48 +835,6 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Hoshi;
-				INFOPLIST_KEY_UIAppFonts = (
-					"FantasqueSansMNerdFontMono-Regular.ttf",
-					"FantasqueSansMNerdFontMono-Italic.ttf",
-					"FantasqueSansMNerdFontMono-Bold.ttf",
-					"FantasqueSansMNerdFontMono-BoldItalic.ttf",
-					"JetBrainsMonoNerdFontMono-Regular.ttf",
-					"JetBrainsMonoNerdFontMono-Italic.ttf",
-					"JetBrainsMonoNerdFontMono-Bold.ttf",
-					"JetBrainsMonoNerdFontMono-BoldItalic.ttf",
-					"FiraCodeNerdFontMono-Regular.ttf",
-					"FiraCodeNerdFontMono-Bold.ttf",
-					"HackNerdFontMono-Regular.ttf",
-					"HackNerdFontMono-Italic.ttf",
-					"HackNerdFontMono-Bold.ttf",
-					"HackNerdFontMono-BoldItalic.ttf",
-					"MesloLGSNerdFontMono-Regular.ttf",
-					"MesloLGSNerdFontMono-Italic.ttf",
-					"MesloLGSNerdFontMono-Bold.ttf",
-					"MesloLGSNerdFontMono-BoldItalic.ttf",
-					"CaskaydiaCoveNerdFontMono-Regular.ttf",
-					"CaskaydiaCoveNerdFontMono-Italic.ttf",
-					"CaskaydiaCoveNerdFontMono-Bold.ttf",
-					"CaskaydiaCoveNerdFontMono-BoldItalic.ttf",
-					"SauceCodeProNerdFontMono-Regular.ttf",
-					"SauceCodeProNerdFontMono-Italic.ttf",
-					"SauceCodeProNerdFontMono-Bold.ttf",
-					"SauceCodeProNerdFontMono-BoldItalic.ttf",
-					"IosevkaNerdFontMono-Regular.ttf",
-					"IosevkaNerdFontMono-Italic.ttf",
-					"IosevkaNerdFontMono-Bold.ttf",
-					"IosevkaNerdFontMono-BoldItalic.ttf",
-					"VictorMonoNerdFontMono-Regular.ttf",
-					"VictorMonoNerdFontMono-Italic.ttf",
-					"VictorMonoNerdFontMono-Bold.ttf",
-					"VictorMonoNerdFontMono-BoldItalic.ttf",
-					"MononokiNerdFontMono-Regular.ttf",
-					"MononokiNerdFontMono-Italic.ttf",
-					"MononokiNerdFontMono-Bold.ttf",
-					"MononokiNerdFontMono-BoldItalic.ttf",
-					"GeistMonoNerdFontMono-Regular.otf",
-					"GeistMonoNerdFontMono-Bold.otf",
-				);
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
 				LD_RUNPATH_SEARCH_PATHS = (
