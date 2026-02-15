@@ -8,8 +8,8 @@ typealias ToolbarButtonAction = ([UInt8]) -> Void
 class KeyboardToolbarAccessoryView: UIView {
     private var hostingController: UIHostingController<KeyboardToolbarContent>?
 
-    // Current Ctrl-sticky state
-    private var ctrlActive = false
+    // Active sticky modifiers (Ctrl, Opt, Shift) — applied to next key press
+    private var activeModifiers: Set<String> = []
 
     // Callback that sends bytes to the terminal session
     var onButtonTap: ToolbarButtonAction?
@@ -34,7 +34,7 @@ class KeyboardToolbarAccessoryView: UIView {
     // Reload buttons from persistence (after edit)
     func reloadButtons() {
         buttons = ToolbarConfigurationService.shared.loadButtons()
-        ctrlActive = false
+        activeModifiers.removeAll()
         updateContent()
     }
 
@@ -62,9 +62,12 @@ class KeyboardToolbarAccessoryView: UIView {
     private func makeContent() -> KeyboardToolbarContent {
         KeyboardToolbarContent(
             buttons: buttons,
-            ctrlActive: ctrlActive,
+            activeModifiers: activeModifiers,
             onButtonTap: { [weak self] button in
                 self?.handleButtonTap(button)
+            },
+            onSwipeArrow: { [weak self] bytes in
+                self?.onButtonTap?(bytes)
             },
             onEditTap: { [weak self] in
                 self?.onEditTap?()
@@ -73,31 +76,99 @@ class KeyboardToolbarAccessoryView: UIView {
     }
 
     private func handleButtonTap(_ button: ToolbarButton) {
-        // Ctrl is a sticky toggle — it modifies the next non-Ctrl button press
-        if button.id == "ctrl" {
-            ctrlActive.toggle()
+        // Sticky modifiers toggle on/off and modify the next key press
+        if ToolbarButton.stickyModifierIDs.contains(button.id) {
+            if activeModifiers.contains(button.id) {
+                activeModifiers.remove(button.id)
+            } else {
+                activeModifiers.insert(button.id)
+            }
             updateContent()
             return
         }
 
-        let modified = applyCtrlModifierIfNeeded(to: ArraySlice(button.bytes))
+        let modified = applyModifiersIfNeeded(to: ArraySlice(button.bytes))
         onButtonTap?(Array(modified))
     }
 
-    // Applies sticky Ctrl to the next typed key (toolbar or hardware keyboard input).
-    func applyCtrlModifierIfNeeded(to data: ArraySlice<UInt8>) -> ArraySlice<UInt8> {
-        guard ctrlActive else { return data }
+    // Applies any active sticky modifiers to the given input bytes.
+    // Two code paths: escape sequences (arrows, function keys) and single printable bytes.
+    func applyModifiersIfNeeded(to data: ArraySlice<UInt8>) -> ArraySlice<UInt8> {
+        guard !activeModifiers.isEmpty else { return data }
         defer {
-            ctrlActive = false
+            activeModifiers.removeAll()
             updateContent()
         }
 
-        // Ctrl+letter = letter & 0x1F (works for ASCII letters and some symbols)
-        guard data.count == 1, let byte = data.first, byte >= 0x40, byte <= 0x7F else {
-            return data
+        let hasShift = activeModifiers.contains("shift")
+        let hasCtrl = activeModifiers.contains("ctrl")
+        let hasOpt = activeModifiers.contains("opt")
+
+        // Path A — Escape sequences from toolbar buttons (arrows, function keys, etc.)
+        if data.count > 1, data.first == 0x1B {
+            let modCode = 1 + (hasShift ? 1 : 0) + (hasOpt ? 2 : 0) + (hasCtrl ? 4 : 0)
+            var result: [UInt8]
+            if modCode > 1 {
+                result = insertXtermModifier(into: Array(data), code: modCode)
+            } else {
+                result = Array(data)
+            }
+            // Opt also prepends ESC for meta-sends-escape behavior
+            if hasOpt {
+                result.insert(0x1B, at: 0)
+            }
+            return ArraySlice(result)
         }
 
-        return ArraySlice([byte & 0x1F])
+        // Path B — Single printable byte (regular characters from keyboard/toolbar)
+        var result = data
+
+        // Ctrl: byte & 0x1F (ASCII 0x40-0x7F)
+        if hasCtrl, result.count == 1, let byte = result.first, byte >= 0x40, byte <= 0x7F {
+            result = ArraySlice([byte & 0x1F])
+        }
+
+        // Shift: uppercase (lowercase a-z → uppercase A-Z)
+        if hasShift, result.count == 1, let byte = result.first, byte >= 0x61, byte <= 0x7A {
+            result = ArraySlice([byte ^ 0x20])
+        }
+
+        // Opt: prepend ESC
+        if hasOpt {
+            var prefixed: [UInt8] = [0x1B]
+            prefixed.append(contentsOf: result)
+            result = ArraySlice(prefixed)
+        }
+
+        return result
+    }
+
+    // Insert ";{code}" into xterm escape sequences for modifier encoding
+    // ESC[A → ESC[1;2A    ESC[15~ → ESC[15;2~    ESCOP → ESC[1;2P
+    private func insertXtermModifier(into seq: [UInt8], code: Int) -> [UInt8] {
+        let codeStr = Array(";\(code)".utf8)
+
+        // SS3 format (ESC O x) → convert to CSI with parameter 1
+        if seq.count == 3, seq[0] == 0x1B, seq[1] == 0x4F {
+            return [0x1B, 0x5B, 0x31] + codeStr + [seq[2]]
+        }
+
+        // CSI format (ESC [ ... final_char)
+        if seq.count >= 3, seq[0] == 0x1B, seq[1] == 0x5B {
+            let final = seq.last!
+            let params = Array(seq[2..<(seq.count - 1)])
+
+            if params.isEmpty {
+                // ESC[A → ESC[1;{code}A
+                return [0x1B, 0x5B, 0x31] + codeStr + [final]
+            } else {
+                // ESC[15~ → ESC[15;{code}~
+                return [0x1B, 0x5B] + params + codeStr + [final]
+            }
+        }
+
+        // Unknown format, pass through
+        return seq
     }
 
     // Required for inputAccessoryView sizing
@@ -110,9 +181,16 @@ class KeyboardToolbarAccessoryView: UIView {
 
 struct KeyboardToolbarContent: View {
     let buttons: [ToolbarButton]
-    let ctrlActive: Bool
+    let activeModifiers: Set<String>
     let onButtonTap: (ToolbarButton) -> Void
+    let onSwipeArrow: ([UInt8]) -> Void
     let onEditTap: () -> Void
+
+    // Arrow key bytes for swipe gestures
+    private static let arrowUp:    [UInt8] = [0x1B, 0x5B, 0x41]
+    private static let arrowDown:  [UInt8] = [0x1B, 0x5B, 0x42]
+    private static let arrowRight: [UInt8] = [0x1B, 0x5B, 0x43]
+    private static let arrowLeft:  [UInt8] = [0x1B, 0x5B, 0x44]
 
     var body: some View {
         HStack(spacing: 0) {
@@ -120,7 +198,11 @@ struct KeyboardToolbarContent: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     ForEach(buttons) { button in
-                        toolbarButton(button)
+                        if ToolbarButton.swipeButtonIDs.contains(button.id) {
+                            swipeButton(button)
+                        } else {
+                            toolbarButton(button)
+                        }
                     }
                 }
                 .padding(.horizontal, 8)
@@ -145,8 +227,7 @@ struct KeyboardToolbarContent: View {
 
     @ViewBuilder
     private func toolbarButton(_ button: ToolbarButton) -> some View {
-        let isCtrl = button.id == "ctrl"
-        let isHighlighted = isCtrl && ctrlActive
+        let isHighlighted = ToolbarButton.stickyModifierIDs.contains(button.id) && activeModifiers.contains(button.id)
 
         Button {
             onButtonTap(button)
@@ -165,5 +246,92 @@ struct KeyboardToolbarContent: View {
                         .strokeBorder(SwiftUI.Color(UIColor.separator), lineWidth: 0.5)
                 )
         }
+    }
+
+    // Swipe button — drag to send arrow keys, with accumulated distance tracking
+    @ViewBuilder
+    private func swipeButton(_ button: ToolbarButton) -> some View {
+        SwipeArrowButton(
+            label: button.label,
+            buttonID: button.id,
+            onArrow: onSwipeArrow
+        )
+    }
+}
+
+// MARK: - Swipe arrow button with drag gesture
+
+private struct SwipeArrowButton: View {
+    let label: String
+    let buttonID: String
+    let onArrow: ([UInt8]) -> Void
+
+    // Track accumulated drag distance to fire arrow keys at intervals
+    @State private var lastStepX: CGFloat = 0
+    @State private var lastStepY: CGFloat = 0
+    @State private var isDragging = false
+
+    // Points of drag per arrow key event
+    private let stepSize: CGFloat = 20
+
+    private let arrowUp:    [UInt8] = [0x1B, 0x5B, 0x41]
+    private let arrowDown:  [UInt8] = [0x1B, 0x5B, 0x42]
+    private let arrowRight: [UInt8] = [0x1B, 0x5B, 0x43]
+    private let arrowLeft:  [UInt8] = [0x1B, 0x5B, 0x44]
+
+    private var allowHorizontal: Bool { buttonID != "swipe-vert" }
+    private var allowVertical: Bool { buttonID != "swipe-horiz" }
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: 14, weight: .medium, design: .monospaced))
+            .foregroundStyle(isDragging ? SwiftUI.Color.black : SwiftUI.Color.primary)
+            .frame(width: 50)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isDragging ? SwiftUI.Color.white : SwiftUI.Color(UIColor.tertiarySystemBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(SwiftUI.Color(UIColor.separator), lineWidth: 0.5)
+            )
+            .gesture(
+                DragGesture(minimumDistance: 5)
+                    .onChanged { value in
+                        isDragging = true
+                        let dx = value.translation.width
+                        let dy = value.translation.height
+
+                        // Horizontal arrow keys
+                        if allowHorizontal {
+                            while dx - lastStepX > stepSize {
+                                lastStepX += stepSize
+                                onArrow(arrowRight)
+                            }
+                            while lastStepX - dx > stepSize {
+                                lastStepX -= stepSize
+                                onArrow(arrowLeft)
+                            }
+                        }
+
+                        // Vertical arrow keys
+                        if allowVertical {
+                            while dy - lastStepY > stepSize {
+                                lastStepY += stepSize
+                                onArrow(arrowDown)
+                            }
+                            while lastStepY - dy > stepSize {
+                                lastStepY -= stepSize
+                                onArrow(arrowUp)
+                            }
+                        }
+                    }
+                    .onEnded { _ in
+                        isDragging = false
+                        lastStepX = 0
+                        lastStepY = 0
+                    }
+            )
     }
 }

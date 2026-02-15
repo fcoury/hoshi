@@ -11,6 +11,7 @@ struct ToolbarButton: Codable, Identifiable, Equatable, Hashable {
     enum Category: String, Codable, CaseIterable {
         case modifier   // Ctrl, Alt, etc.
         case navigation // Arrow keys, Home, End, PgUp, PgDn
+        case swipe      // Swipe-to-arrow controls
         case function   // F1-F12
         case symbol     // /, -, |, ~, etc.
         case combo      // Ctrl+C, Ctrl+B, Ctrl+D, etc.
@@ -22,15 +23,21 @@ struct ToolbarButton: Codable, Identifiable, Equatable, Hashable {
 extension ToolbarButton {
 
     // All available buttons the user can choose from
-    static let allAvailable: [ToolbarButton] = modifiers + navigation + function + symbols + combos
+    static let allAvailable: [ToolbarButton] = modifiers + navigation + swipeControls + function + symbols + combos
 
     // Default toolbar layout
     static let defaultButtons: [ToolbarButton] = [
-        .esc, .ctrl, .tab,
+        .esc, .ctrl, .opt, .tab,
         .arrowUp, .arrowDown, .arrowLeft, .arrowRight,
         .slash, .dash, .pipe,
         .ctrlC,
     ]
+
+    // Modifier IDs that behave as sticky toggles (applied to next key press)
+    static let stickyModifierIDs: Set<String> = ["ctrl", "opt", "shift"]
+
+    // Swipe button IDs (rendered with drag gesture instead of tap)
+    static let swipeButtonIDs: Set<String> = ["swipe-all", "swipe-horiz", "swipe-vert"]
 
     // MARK: Modifiers
 
@@ -41,7 +48,13 @@ extension ToolbarButton {
     // Represented as a toggle in the toolbar, not a direct byte sender
     static let ctrl = ToolbarButton(id: "ctrl", label: "Ctrl", bytes: [], category: .modifier)
 
-    static let modifiers: [ToolbarButton] = [esc, ctrl, tab]
+    // Opt (Alt/Meta) — sticky modifier, prepends ESC (0x1B) before next key
+    static let opt = ToolbarButton(id: "opt", label: "Opt", bytes: [], category: .modifier)
+
+    // Shift — sticky modifier, uppercases next letter or adds xterm modifier code
+    static let shift = ToolbarButton(id: "shift", label: "Shift", bytes: [], category: .modifier)
+
+    static let modifiers: [ToolbarButton] = [esc, ctrl, opt, shift, tab]
 
     // MARK: Navigation (VT100 escape sequences for arrow keys, etc.)
 
@@ -55,6 +68,14 @@ extension ToolbarButton {
     static let pgDn = ToolbarButton(id: "pgdn", label: "PgDn", bytes: [0x1B, 0x5B, 0x36, 0x7E], category: .navigation)     // ESC [ 6 ~
 
     static let navigation: [ToolbarButton] = [arrowUp, arrowDown, arrowLeft, arrowRight, home, end, pgUp, pgDn]
+
+    // MARK: Swipe controls — drag to send arrow keys
+
+    static let swipeAll   = ToolbarButton(id: "swipe-all",   label: "⌖", bytes: [], category: .swipe)
+    static let swipeHoriz = ToolbarButton(id: "swipe-horiz", label: "⇔", bytes: [], category: .swipe)
+    static let swipeVert  = ToolbarButton(id: "swipe-vert",  label: "⇕", bytes: [], category: .swipe)
+
+    static let swipeControls: [ToolbarButton] = [swipeAll, swipeHoriz, swipeVert]
 
     // MARK: Function keys (VT100 escape sequences)
 

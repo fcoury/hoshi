@@ -673,7 +673,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
             }
         }
 
-        let transformed = toolbarAccessory.applyCtrlModifierIfNeeded(to: ArraySlice(data))
+        let transformed = toolbarAccessory.applyModifiersIfNeeded(to: ArraySlice(data))
         if Self.inputTraceEnabled {
             print("[INPUT_TRACE] sendInputData direct bytes=\(Self.hexBytes(Data(transformed)))")
         }
