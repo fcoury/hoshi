@@ -9,12 +9,14 @@ struct GhosttyTerminalView: UIViewRepresentable {
     @Binding var fontSize: CGFloat
     @Binding var showToolbarEditor: Bool
     @Binding var keyboardVisible: Bool
+    var onSwapSession: (() -> Void)?
     var onSurfaceReady: ((GhosttyTerminalSurfaceView) -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
             connectionVM: connectionVM,
-            showToolbarEditorBinding: $showToolbarEditor
+            showToolbarEditorBinding: $showToolbarEditor,
+            onSwapSession: onSwapSession
         )
     }
 
@@ -35,6 +37,9 @@ struct GhosttyTerminalView: UIViewRepresentable {
         }
         view.onEditTap = { [weak coordinator] in
             coordinator?.showToolbarEditorBinding?.wrappedValue = true
+        }
+        view.onSwapSession = { [weak coordinator] in
+            coordinator?.onSwapSession?()
         }
 
         connectionVM.setDataCallback { [weak view] bytes in
@@ -59,6 +64,9 @@ struct GhosttyTerminalView: UIViewRepresentable {
         uiView.onEditTap = { [weak coordinator] in
             coordinator?.showToolbarEditorBinding?.wrappedValue = true
         }
+        uiView.onSwapSession = { [weak coordinator] in
+            coordinator?.onSwapSession?()
+        }
 
         connectionVM.setDataCallback { [weak uiView] bytes in
             DispatchQueue.main.async {
@@ -79,16 +87,19 @@ struct GhosttyTerminalView: UIViewRepresentable {
         uiView.onInputData = nil
         uiView.onTerminalSizeChanged = nil
         uiView.onEditTap = nil
+        uiView.onSwapSession = nil
         coordinator.connectionVM.setDataCallback(nil)
     }
 
     final class Coordinator {
         let connectionVM: ConnectionViewModel
         var showToolbarEditorBinding: Binding<Bool>?
+        var onSwapSession: (() -> Void)?
 
-        init(connectionVM: ConnectionViewModel, showToolbarEditorBinding: Binding<Bool>?) {
+        init(connectionVM: ConnectionViewModel, showToolbarEditorBinding: Binding<Bool>?, onSwapSession: (() -> Void)?) {
             self.connectionVM = connectionVM
             self.showToolbarEditorBinding = showToolbarEditorBinding
+            self.onSwapSession = onSwapSession
         }
 
         func sendInput(_ data: Data) {
@@ -170,6 +181,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
             toolbarAccessory.onEditTap = onEditTap
         }
     }
+    var onSwapSession: (() -> Void)?
 
     var keyboardType: UIKeyboardType = .asciiCapable
     var autocorrectionType: UITextAutocorrectionType = .no
@@ -218,6 +230,12 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
 
         // Pan should not fire while a long press is active
         pan.require(toFail: longPress)
+
+        // Two-finger horizontal swipe to toggle to previous session
+        let twoFingerPan = UIPanGestureRecognizer(target: self, action: #selector(handleTwoFingerSwipe(_:)))
+        twoFingerPan.minimumNumberOfTouches = 2
+        twoFingerPan.maximumNumberOfTouches = 2
+        addGestureRecognizer(twoFingerPan)
 
         if keyboardVisible {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -878,6 +896,15 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         default:
             break
         }
+    }
+
+    // Two-finger horizontal swipe triggers session swap (fires once per gesture)
+    @objc private func handleTwoFingerSwipe(_ gesture: UIPanGestureRecognizer) {
+        guard gesture.state == .ended else { return }
+        let velocity = gesture.velocity(in: self)
+        // Require meaningful horizontal velocity to avoid accidental triggers
+        guard abs(velocity.x) > 500, abs(velocity.x) > abs(velocity.y) else { return }
+        onSwapSession?()
     }
 
     private static func register(surface: ghostty_surface_t, view: GhosttyTerminalSurfaceView) {

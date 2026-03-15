@@ -111,6 +111,10 @@ struct ServerListView: View {
                 TerminalView(
                     connectionVM: session.connectionVM,
                     managedSession: session,
+                    canSwapSession: sessionManager.sessions.count >= 2,
+                    onSwapSession: {
+                        sessionManager.switchToPrevious()
+                    },
                     onDismiss: {
                         sessionManager.returnToServerList()
                     }

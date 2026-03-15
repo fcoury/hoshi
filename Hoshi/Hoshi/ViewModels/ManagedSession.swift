@@ -12,6 +12,7 @@ final class ManagedSession: Identifiable {
     let createdAt: Date
     let connectionVM: ConnectionViewModel
 
+    var lastAccessedAt: Date
     var tmuxSession: String?
     var thumbnail: UIImage?
     weak var surfaceView: GhosttyTerminalSurfaceView?
@@ -25,6 +26,7 @@ final class ManagedSession: Identifiable {
         self.serverName = server.name
         self.isMosh = server.useMosh
         self.createdAt = Date()
+        self.lastAccessedAt = createdAt
         self.tmuxSession = server.tmuxSession
         self.connectionVM = ConnectionViewModel()
     }
