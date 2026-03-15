@@ -50,7 +50,7 @@ struct ToolbarEditView: View {
                 // Bottom zone: "Available Keys"
                 availableKeysSection
             }
-            .background(SwiftUI.Color(UIColor.systemGroupedBackground))
+            .background(SwiftUI.Color(AppearanceSettings.shared.currentTheme.chromeBackground))
             .navigationTitle("Edit Toolbar")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -66,6 +66,7 @@ struct ToolbarEditView: View {
             .alert("Reset Toolbar?", isPresented: $showResetAlert) {
                 Button("Cancel", role: .cancel) {}
                 Button("Reset", role: .destructive) {
+                    HapticService.warning()
                     withAnimation {
                         ToolbarConfigurationService.shared.resetToDefaults()
                         currentButtons = ToolbarButton.defaultButtons
@@ -125,6 +126,8 @@ struct ToolbarEditView: View {
         .padding(.vertical, 12)
     }
 
+    private var editTheme: TerminalTheme { AppearanceSettings.shared.currentTheme }
+
     // A single chip in the "Your Toolbar" row with an x badge
     private func toolbarChip(_ button: ToolbarButton) -> some View {
         ZStack(alignment: .topTrailing) {
@@ -135,11 +138,11 @@ struct ToolbarEditView: View {
                 .padding(.vertical, 8)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(SwiftUI.Color(UIColor.tertiarySystemBackground))
+                        .fill(SwiftUI.Color(editTheme.cardSurface))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(SwiftUI.Color(UIColor.separator), lineWidth: 0.5)
+                        .strokeBorder(SwiftUI.Color(editTheme.separator), lineWidth: 0.5)
                 )
 
             // X badge to remove
@@ -151,7 +154,7 @@ struct ToolbarEditView: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 16))
                     .foregroundStyle(.secondary)
-                    .background(Circle().fill(SwiftUI.Color(UIColor.systemGroupedBackground)).padding(2))
+                    .background(Circle().fill(SwiftUI.Color(editTheme.chromeBackground)).padding(2))
             }
             .offset(x: 6, y: -6)
         }
@@ -196,11 +199,11 @@ struct ToolbarEditView: View {
                                 .padding(.horizontal, 8)
                                 .background(
                                     RoundedRectangle(cornerRadius: 8)
-                                        .fill(SwiftUI.Color(UIColor.tertiarySystemBackground))
+                                        .fill(SwiftUI.Color(editTheme.cardSurface))
                                 )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 8)
-                                        .strokeBorder(SwiftUI.Color(UIColor.separator), lineWidth: 0.5)
+                                        .strokeBorder(SwiftUI.Color(editTheme.separator), lineWidth: 0.5)
                                 )
                                 .opacity(alreadyAdded ? 0.4 : 1.0)
                         }
@@ -242,11 +245,11 @@ struct ToolbarEditView: View {
                 .padding(.vertical, 6)
                 .background(
                     Capsule()
-                        .fill(isSelected ? SwiftUI.Color.white : SwiftUI.Color(UIColor.tertiarySystemBackground))
+                        .fill(isSelected ? SwiftUI.Color.white : SwiftUI.Color(editTheme.cardSurface))
                 )
                 .overlay(
                     Capsule()
-                        .strokeBorder(SwiftUI.Color(UIColor.separator), lineWidth: 0.5)
+                        .strokeBorder(SwiftUI.Color(editTheme.separator), lineWidth: 0.5)
                 )
         }
     }
