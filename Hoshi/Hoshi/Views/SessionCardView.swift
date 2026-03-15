@@ -1,6 +1,11 @@
 import SwiftUI
 
-// Individual session card for the carousel: thumbnail + metadata bar.
+/// Session card for the carousel: terminal thumbnail with a metadata bar below.
+///
+/// Visual state reflects the underlying connection:
+/// - **Status dot** pulses during transient states (connecting, reconnecting).
+/// - **Card opacity** fades to 50% when disconnected or errored.
+/// - **Protocol badge** is colored green (Mosh) or blue (SSH) from the theme palette.
 struct SessionCardView: View {
     let session: ManagedSession
 

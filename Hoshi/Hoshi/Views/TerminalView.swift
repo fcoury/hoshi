@@ -1,6 +1,18 @@
 import SwiftUI
 
-// Full terminal emulator view using Ghostty.
+/// Full-screen terminal emulator view wrapping a Ghostty Metal surface.
+///
+/// Owns the status bar, connection banners, keyboard toolbar lifecycle,
+/// and pinch-to-zoom font sizing. Delegates actual terminal rendering
+/// to `GhosttyTerminalView`.
+///
+/// Connection state drives three visual behaviors:
+/// - **Status dot** pulses during transient states (connecting, reconnecting).
+/// - **Banners** slide in as floating pills for reconnecting/disconnected states.
+/// - **Haptic feedback** fires on every state transition (success, warning, error).
+///
+/// The view auto-dismisses when the connection drops from a previously-connected
+/// state (e.g. user typed `exit`), returning the user to the server list.
 struct TerminalView: View {
     @Bindable var connectionVM: ConnectionViewModel
     var managedSession: ManagedSession?

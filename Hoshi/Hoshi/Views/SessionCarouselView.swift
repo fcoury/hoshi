@@ -1,6 +1,8 @@
 import SwiftUI
 
-// Horizontal scrolling carousel of active session cards.
+/// Horizontal scrolling carousel of active session cards, shown above the server list
+/// when at least one session is alive. Tapping a card switches to that session's
+/// full-screen terminal; long-press context menu allows closing.
 struct SessionCarouselView: View {
     let sessions: [ManagedSession]
     let onTap: (UUID) -> Void

@@ -1,6 +1,30 @@
 import UIKit
 
-// A terminal color theme with 16 ANSI colors, background/foreground, cursor, and selection colors.
+/// A terminal color theme with 16 ANSI colors, background/foreground, cursor, and selection colors.
+///
+/// Serves double duty: it configures Ghostty's rendering palette **and** derives all app chrome
+/// colors so the surrounding UI visually matches the terminal. Switching themes repaints the
+/// entire app, not just the terminal viewport.
+///
+/// The derived chrome colors form a brightness hierarchy above the terminal background:
+/// ```
+/// background        (base)     — terminal viewport
+/// chromeBackground  (+0.04)    — page-level surfaces (server list, editor)
+/// cardSurface       (+0.06)    — elevated elements (toolbar buttons, chips)
+/// chromeSurface     (+0.08)    — status bars, navigation bars
+/// ```
+///
+/// Semantic accent colors map to standard ANSI palette slots so they harmonize with the
+/// terminal content the user is already looking at:
+/// - `palette[1]` → `accentRed`     (errors, destructive actions)
+/// - `palette[2]` → `accentGreen`   (Mosh badges, success)
+/// - `palette[3]` → `accentYellow`  (warnings, reconnecting)
+/// - `palette[4]` → `accentBlue`    (SSH badges, links)
+/// - `palette[5]` → `accentMagenta` (general accents)
+/// - `palette[6]` → `accentCyan`    (tmux badges)
+///
+/// This mapping assumes `palette` follows the standard ANSI 16-color ordering.
+/// All built-in themes satisfy this; custom themes must too or accents will mismatch.
 struct TerminalTheme: Identifiable, Equatable {
     let id: String
     let name: String
@@ -12,35 +36,40 @@ struct TerminalTheme: Identifiable, Equatable {
     let selectionBackground: UIColor
     let selectionForeground: UIColor
 
-    // Slightly lightened background for status bar and other UI chrome
+    // MARK: - Chrome surface hierarchy (increasing brightness)
+
+    /// Status bars and navigation bars — highest elevation chrome surface.
     var chromeSurface: UIColor {
         background.adjustedBrightness(by: 0.08)
     }
 
-    // App chrome background — slightly lighter than terminal background
+    /// Page-level background behind content (server list, toolbar editor).
     var chromeBackground: UIColor {
         background.adjustedBrightness(by: 0.04)
     }
 
-    // Card / elevated surface background
+    /// Elevated interactive elements (toolbar button fills, card backgrounds).
     var cardSurface: UIColor {
         background.adjustedBrightness(by: 0.06)
     }
 
-    // Semantic accent colors derived from ANSI palette
-    var accentCyan: UIColor { palette[6] }     // Cyan — used for tmux badges
-    var accentGreen: UIColor { palette[2] }    // Green — used for Mosh badges
-    var accentBlue: UIColor { palette[4] }     // Blue — used for SSH/links
-    var accentYellow: UIColor { palette[3] }   // Yellow — used for warnings
-    var accentRed: UIColor { palette[1] }      // Red — used for errors
-    var accentMagenta: UIColor { palette[5] }  // Magenta — used for accents
+    // MARK: - Semantic accent colors (derived from ANSI palette)
 
-    // Dimmed foreground for secondary text
+    var accentCyan: UIColor { palette[6] }
+    var accentGreen: UIColor { palette[2] }
+    var accentBlue: UIColor { palette[4] }
+    var accentYellow: UIColor { palette[3] }
+    var accentRed: UIColor { palette[1] }
+    var accentMagenta: UIColor { palette[5] }
+
+    // MARK: - Text and separator utilities
+
+    /// Dimmed foreground for secondary labels (60% opacity of theme foreground).
     var secondaryForeground: UIColor {
         foreground.withAlphaComponent(0.6)
     }
 
-    // Subtle separator color
+    /// Subtle divider between rows and sections (12% opacity of theme foreground).
     var separator: UIColor {
         foreground.withAlphaComponent(0.12)
     }

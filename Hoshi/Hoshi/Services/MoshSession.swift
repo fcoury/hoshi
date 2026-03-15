@@ -51,11 +51,6 @@ final class MoshSession: ObservableObject {
     // (~100ms RTT) instead of waiting for the 3s heartbeat cycle.
     private var needsImmediateAck = false
 
-    // Track time of last received datagram for session-end detection.
-    // If no data arrives for 15s while connected, the remote session
-    // has likely ended (user typed 'exit').
-    private var lastReceiveTime: CFTimeInterval = CACurrentMediaTime()
-
     // Track whether a full-screen app (nvim, etc.) has enabled mouse
     // tracking. When it disables tracking on exit, we inject a screen
     // clear because the mosh server's terminal emulator handles the
@@ -288,7 +283,6 @@ final class MoshSession: ObservableObject {
         remoteStateNum = 0
         needsImmediateAck = false
         mouseTrackingActive = false
-        lastReceiveTime = CACurrentMediaTime()
         lastRemoteTimestamp = 0
         consecutiveDatagramFailures = 0
         fragmentAssembly.reset()
@@ -348,7 +342,6 @@ final class MoshSession: ObservableObject {
     // Decrypt, reassemble, and decode a received datagram
     private func processDatagram(_ datagram: Data) async {
         guard let cryptoSession else { return }
-        lastReceiveTime = CACurrentMediaTime()
         debugReceiveDatagramCount += 1
 
         do {
@@ -506,14 +499,6 @@ final class MoshSession: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(tickInterval))
                 guard let self, !Task.isCancelled else { break }
                 ticksSinceLastHeartbeat += 1
-
-                // Detect dead session: if no datagrams received for 15s
-                // while connected, the remote mosh-server has likely exited.
-                let timeSinceLastReceive = CACurrentMediaTime() - self.lastReceiveTime
-                if timeSinceLastReceive > 15.0 && self.connectionState == .connected {
-                    self.connectionState = .disconnected
-                    return
-                }
 
                 // Send ack when overdue or when the overlap guard
                 // flagged a base-mismatch skip.

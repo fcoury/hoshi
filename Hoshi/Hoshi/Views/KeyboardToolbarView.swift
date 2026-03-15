@@ -1,10 +1,15 @@
 import SwiftUI
 import UIKit
 
-// Callback when a toolbar button is tapped
 typealias ToolbarButtonAction = ([UInt8]) -> Void
 
-// UIKit host for the SwiftUI toolbar, used as inputAccessoryView
+/// UIKit host for the keyboard toolbar, mounted as `inputAccessoryView` on the terminal's
+/// hidden `UITextField`.
+///
+/// Manages sticky modifier state (Ctrl, Opt, Shift) and translates toolbar button taps
+/// into byte sequences sent to the active terminal session. Modifier encoding follows
+/// xterm conventions: escape sequences get `;{code}` inserted, single bytes get
+/// Ctrl masking / Shift casing / Opt ESC-prefixing.
 class KeyboardToolbarAccessoryView: UIView {
     private var hostingController: UIHostingController<KeyboardToolbarContent>?
 
@@ -114,10 +119,6 @@ class KeyboardToolbarAccessoryView: UIView {
                 result = insertXtermModifier(into: Array(data), code: modCode)
             } else {
                 result = Array(data)
-            }
-            // Opt also prepends ESC for meta-sends-escape behavior
-            if hasOpt {
-                result.insert(0x1B, at: 0)
             }
             return ArraySlice(result)
         }
