@@ -61,6 +61,7 @@
 		82E093096115FAE2667FBD39 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 33023FFA322E011C5EB6887A /* Assets.xcassets */; };
 		8638C1A18C9661397A239797 /* MesloLGSNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 168EE5B0051233375A63B33F /* MesloLGSNerdFontMono-BoldItalic.ttf */; };
 		881A8187BD93A78441937C3F /* VictorMonoNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 056BD9A1394B7DE2DC974461 /* VictorMonoNerdFontMono-Regular.ttf */; };
+		949197A2CA73ECBA09B6427A /* HapticService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C85C3CAB513AE37F7EF24AC /* HapticService.swift */; };
 		94CBC132B31327A12B197002 /* FantasqueSansMNerdFont-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 68F7035092B0ACF1D4E67131 /* FantasqueSansMNerdFont-BoldItalic.ttf */; };
 		95531096D22C7C0FFF5640E7 /* FantasqueSansMNerdFontPropo-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 5C7ACDBCAC51E50CC25A2E71 /* FantasqueSansMNerdFontPropo-Bold.ttf */; };
 		961B9C2272D0AB6E9B8C66C8 /* KeyboardToolbarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BE99C6A440F89020EFE0E55 /* KeyboardToolbarView.swift */; };
@@ -171,6 +172,7 @@
 		6EF78C0050A2B5F4099C1DED /* JetBrainsMonoNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		74C7E92165EDFEF3678813D9 /* ToolbarButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarButton.swift; sourceTree = "<group>"; };
 		780724516B4EA0B83F0F4B64 /* VictorMonoNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "VictorMonoNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
+		7C85C3CAB513AE37F7EF24AC /* HapticService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticService.swift; sourceTree = "<group>"; };
 		7E7B7A33C6D07387D9708017 /* SSHConnectionError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHConnectionError.swift; sourceTree = "<group>"; };
 		80B2A4F86E488641E7497767 /* SauceCodeProNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "SauceCodeProNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		83584445F7F64462E791CA50 /* Server.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Server.swift; sourceTree = "<group>"; };
@@ -398,6 +400,7 @@
 			isa = PBXGroup;
 			children = (
 				3FE236F7BE9FEA21ED9BBCBC /* AppearanceSettings.swift */,
+				7C85C3CAB513AE37F7EF24AC /* HapticService.swift */,
 				1913DF729009DA8DC0A599B5 /* KeychainService.swift */,
 				E2B9B11940723B9C53B4410C /* MoshBootstrapService.swift */,
 				D2A47D4DB71EA9D072DD91AE /* MoshSession.swift */,
@@ -599,6 +602,7 @@
 				00022D11F851BDF7B2E6A9E2 /* GhosttyRuntimeController.swift in Sources */,
 				1C4F264585232B5664F22A6C /* GhosttyTerminalView.swift in Sources */,
 				B94D2D832E6A3E9262327483 /* GhosttyThemeAdapter.swift in Sources */,
+				949197A2CA73ECBA09B6427A /* HapticService.swift in Sources */,
 				5CF07FF1FE024A5759336ECC /* HoshiApp.swift in Sources */,
 				42EC5C294A912C3284C5864E /* KeyGeneratorView.swift in Sources */,
 				961B9C2272D0AB6E9B8C66C8 /* KeyboardToolbarView.swift in Sources */,

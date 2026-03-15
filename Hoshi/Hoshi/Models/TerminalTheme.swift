@@ -17,6 +17,34 @@ struct TerminalTheme: Identifiable, Equatable {
         background.adjustedBrightness(by: 0.08)
     }
 
+    // App chrome background — slightly lighter than terminal background
+    var chromeBackground: UIColor {
+        background.adjustedBrightness(by: 0.04)
+    }
+
+    // Card / elevated surface background
+    var cardSurface: UIColor {
+        background.adjustedBrightness(by: 0.06)
+    }
+
+    // Semantic accent colors derived from ANSI palette
+    var accentCyan: UIColor { palette[6] }     // Cyan — used for tmux badges
+    var accentGreen: UIColor { palette[2] }    // Green — used for Mosh badges
+    var accentBlue: UIColor { palette[4] }     // Blue — used for SSH/links
+    var accentYellow: UIColor { palette[3] }   // Yellow — used for warnings
+    var accentRed: UIColor { palette[1] }      // Red — used for errors
+    var accentMagenta: UIColor { palette[5] }  // Magenta — used for accents
+
+    // Dimmed foreground for secondary text
+    var secondaryForeground: UIColor {
+        foreground.withAlphaComponent(0.6)
+    }
+
+    // Subtle separator color
+    var separator: UIColor {
+        foreground.withAlphaComponent(0.12)
+    }
+
     // All built-in themes
     static let allThemes: [TerminalTheme] = [
         .nord, .dracula, .solarizedDark, .gruvboxDark, .tokyoNight, .catppuccinMocha
