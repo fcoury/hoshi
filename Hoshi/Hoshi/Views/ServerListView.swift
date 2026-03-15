@@ -1,6 +1,17 @@
 import SwiftUI
 import SwiftData
 
+/// Root view: server list with active session carousel.
+///
+/// Uses a custom `ScrollView` + `LazyVStack` instead of `List` so that backgrounds,
+/// separators, and section headers can be fully themed from `TerminalTheme`.
+/// The trade-off is that built-in swipe actions are unavailable; delete is
+/// accessible only via context menu.
+///
+/// Session lifecycle flows through three sheets presented in sequence:
+/// 1. `ConnectView` — credential entry (or skipped via quick-launch)
+/// 2. `TmuxSessionPickerView` — tmux session selection (if server has tmux)
+/// 3. `TerminalView` — full-screen terminal (via `.fullScreenCover`)
 struct ServerListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
@@ -15,6 +26,7 @@ struct ServerListView: View {
     @State private var sessionManager = SessionManager()
     @State private var quickLaunching = false
     @State private var connectingSession: ManagedSession?
+    @State private var quickLaunchErrorMessage: String?
     @State private var showMaxSessionsAlert = false
 
     private let appearance = AppearanceSettings.shared
@@ -113,18 +125,12 @@ struct ServerListView: View {
         }
         // Quick-launch error alert
         .alert("Connection Failed", isPresented: Binding(
-            get: {
-                guard let session = connectingSession else { return false }
-                return session.connectionVM.showError && !quickLaunching
-            },
-            set: { if !$0 {
-                connectingSession?.connectionVM.showError = false
-                connectingSession?.connectionVM.errorMessage = nil
-            }}
+            get: { quickLaunchErrorMessage != nil },
+            set: { if !$0 { quickLaunchErrorMessage = nil } }
         )) {
             Button("OK", role: .cancel) {}
         } message: {
-            if let error = connectingSession?.connectionVM.errorMessage {
+            if let error = quickLaunchErrorMessage {
                 Text(error)
             }
         }
@@ -253,6 +259,7 @@ struct ServerListView: View {
     // Create a session and connect — sequential flow avoids race conditions
     private func connectToServer(_ server: Server) {
         HapticService.lightTap()
+        quickLaunchErrorMessage = nil
         guard let session = sessionManager.createSession(for: server) else {
             showMaxSessionsAlert = true
             return
@@ -277,7 +284,10 @@ struct ServerListView: View {
                     sessionManager.switchTo(sessionID: session.id)
                     connectingSession = nil
                 } else {
-                    // Connection failed or unexpected state — clean up
+                    // Connection failed or unexpected state — preserve
+                    // the error after the transient session is closed.
+                    quickLaunchErrorMessage = session.connectionVM.errorMessage
+                        ?? "Unable to connect to \(server.name)."
                     await sessionManager.closeSession(id: session.id)
                     connectingSession = nil
                 }
@@ -294,7 +304,10 @@ struct ServerListView: View {
     }
 }
 
-// A row displaying server name, hostname, tmux session, and connection badges
+/// A row displaying server name, hostname, tmux session, and connection badges.
+///
+/// Badge color semantics: green = Mosh, blue = SSH, cyan = tmux session name,
+/// yellow bolt = stored credentials (quick-launch capable).
 struct ServerRow: View {
     let server: Server
     var theme: TerminalTheme = AppearanceSettings.shared.currentTheme
