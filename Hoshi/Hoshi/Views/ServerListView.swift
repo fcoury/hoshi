@@ -17,6 +17,9 @@ struct ServerListView: View {
     @State private var connectingSession: ManagedSession?
     @State private var showMaxSessionsAlert = false
 
+    private let appearance = AppearanceSettings.shared
+    private var theme: TerminalTheme { appearance.currentTheme }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -146,6 +149,8 @@ struct ServerListView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .toolbarBackground(SwiftUI.Color(theme.chromeSurface), for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
             case .active:
@@ -162,7 +167,9 @@ struct ServerListView: View {
         ContentUnavailableView {
             Label("No Servers", systemImage: "server.rack")
         } description: {
-            Text("Add a server to get started.")
+            Text("$ add a server to get started")
+                .font(.system(size: 14, design: .monospaced))
+                .foregroundStyle(.secondary)
         } actions: {
             Button("Add Server") {
                 showAddServer = true
@@ -171,11 +178,27 @@ struct ServerListView: View {
         }
     }
 
+    // Terminal-style section header: monospace caps with a subtle trailing line
+    private func sectionHeader(_ title: String) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(SwiftUI.Color(theme.secondaryForeground))
+
+            Rectangle()
+                .fill(SwiftUI.Color(theme.separator))
+                .frame(height: 0.5)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 4)
+    }
+
     private var serverList: some View {
-        List {
-            // Active sessions carousel
-            if sessionManager.hasActiveSessions {
-                Section {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                // Active sessions carousel
+                if sessionManager.hasActiveSessions {
                     SessionCarouselView(
                         sessions: sessionManager.sessions,
                         onTap: { sessionID in
@@ -188,50 +211,48 @@ struct ServerListView: View {
                         }
                     )
                 }
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
-            }
 
-            // Server list
-            ForEach(servers) { server in
-                ServerRow(server: server)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        connectToServer(server)
-                    }
-                    .contextMenu {
-                        Button {
-                            editingServer = server
-                        } label: {
-                            Label("Edit", systemImage: "pencil")
-                        }
+                // Server list section
+                sectionHeader("SERVERS")
 
-                        Button(role: .destructive) {
-                            deleteServer(server)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+                ForEach(servers) { server in
+                    ServerRow(server: server, theme: theme)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            connectToServer(server)
                         }
-                    }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) {
-                            deleteServer(server)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+                        .contextMenu {
+                            Button {
+                                editingServer = server
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+
+                            Button(role: .destructive) {
+                                deleteServer(server)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
 
-                        Button {
-                            editingServer = server
-                        } label: {
-                            Label("Edit", systemImage: "pencil")
-                        }
-                        .tint(.blue)
+                    // Subtle separator between rows
+                    if server.id != servers.last?.id {
+                        Rectangle()
+                            .fill(SwiftUI.Color(theme.separator))
+                            .frame(height: 0.5)
+                            .padding(.leading, 16)
                     }
+                }
             }
         }
+        .background(SwiftUI.Color(theme.chromeBackground))
     }
 
     // Create a session and connect — sequential flow avoids race conditions
     private func connectToServer(_ server: Server) {
+        HapticService.lightTap()
         guard let session = sessionManager.createSession(for: server) else {
             showMaxSessionsAlert = true
             return
@@ -276,58 +297,60 @@ struct ServerListView: View {
 // A row displaying server name, hostname, tmux session, and connection badges
 struct ServerRow: View {
     let server: Server
+    var theme: TerminalTheme = AppearanceSettings.shared.currentTheme
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(server.name)
-                        .font(.headline)
+                        .font(.system(size: 15, weight: .semibold))
 
-                    // tmux session badge
+                    // tmux session badge — themed cyan
                     if let tmux = server.tmuxSession {
                         Text(tmux)
                             .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.cyan)
+                            .foregroundStyle(SwiftUI.Color(theme.accentCyan))
                             .padding(.horizontal, 4)
                             .padding(.vertical, 2)
-                            .background(SwiftUI.Color.cyan.opacity(0.15))
+                            .background(SwiftUI.Color(theme.accentCyan).opacity(0.15))
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                     }
                 }
 
+                // Technical details in monospace
                 Text("\(server.username)@\(server.hostname):\(server.port)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(SwiftUI.Color(theme.secondaryForeground))
             }
 
             Spacer()
 
-            // Mosh badge
-            if server.useMosh {
-                Text("MOSH")
+            HStack(spacing: 6) {
+                // Protocol badge — themed green for Mosh, blue for SSH
+                Text(server.useMosh ? "MOSH" : "SSH")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(SwiftUI.Color(server.useMosh ? theme.accentGreen : theme.accentBlue))
                     .padding(.horizontal, 4)
                     .padding(.vertical, 2)
-                    .background(SwiftUI.Color.green.opacity(0.15))
+                    .background(SwiftUI.Color(server.useMosh ? theme.accentGreen : theme.accentBlue).opacity(0.15))
                     .clipShape(RoundedRectangle(cornerRadius: 4))
-            }
 
-            // Auth method indicator
-            Image(systemName: server.authMethod == .key ? "key.fill" : "lock.fill")
-                .foregroundStyle(.secondary)
-                .font(.caption)
+                // Auth method indicator
+                Image(systemName: server.authMethod == .key ? "key.fill" : "lock.fill")
+                    .foregroundStyle(SwiftUI.Color(theme.secondaryForeground))
+                    .font(.caption)
 
-            // Quick-launch indicator (bolt) or standard chevron
-            if ConnectionViewModel.hasStoredCredentials(for: server) {
-                Image(systemName: "bolt.fill")
-                    .foregroundStyle(.yellow.opacity(0.7))
-                    .font(.caption)
-            } else {
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(.tertiary)
-                    .font(.caption)
+                // Quick-launch indicator (bolt) or standard chevron
+                if ConnectionViewModel.hasStoredCredentials(for: server) {
+                    Image(systemName: "bolt.fill")
+                        .foregroundStyle(SwiftUI.Color(theme.accentYellow).opacity(0.7))
+                        .font(.caption)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(SwiftUI.Color(theme.secondaryForeground))
+                        .font(.caption)
+                }
             }
         }
         .padding(.vertical, 4)

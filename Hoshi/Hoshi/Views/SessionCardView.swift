@@ -4,10 +4,13 @@ import SwiftUI
 struct SessionCardView: View {
     let session: ManagedSession
 
-    private let cardWidth: CGFloat = 200
-    private let thumbnailHeight: CGFloat = 100
+    private let cardWidth: CGFloat = 260
+    private let thumbnailHeight: CGFloat = 140
     private let metadataHeight: CGFloat = 40
     private let appearanceSettings = AppearanceSettings.shared
+    private var theme: TerminalTheme { appearanceSettings.currentTheme }
+
+    @State private var statusDotPulsing = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,10 +20,30 @@ struct SessionCardView: View {
                     .frame(width: cardWidth, height: thumbnailHeight)
                     .clipped()
 
-                // Status dot
+                // Status dot — pulses during connecting/reconnecting
                 Circle()
                     .fill(statusColor)
                     .frame(width: 8, height: 8)
+                    .scaleEffect(statusDotPulsing ? 1.3 : 1.0)
+                    .opacity(statusDotPulsing ? 0.7 : 1.0)
+                    .onAppear {
+                        if isConnecting {
+                            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                                statusDotPulsing = true
+                            }
+                        }
+                    }
+                    .onChange(of: isConnecting) { _, pulsing in
+                        if pulsing {
+                            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                                statusDotPulsing = true
+                            }
+                        } else {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                statusDotPulsing = false
+                            }
+                        }
+                    }
                     .padding(6)
             }
 
@@ -28,21 +51,21 @@ struct SessionCardView: View {
             HStack(spacing: 4) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.serverName)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
                         .lineLimit(1)
 
                     HStack(spacing: 4) {
-                        // Tmux session badge
+                        // Tmux session badge — themed cyan
                         if let tmux = session.tmuxSession {
                             Text(tmux)
                                 .font(.system(size: 8, weight: .medium, design: .monospaced))
-                                .foregroundStyle(.cyan)
+                                .foregroundStyle(SwiftUI.Color(theme.accentCyan))
                         }
 
-                        // Protocol badge
+                        // Protocol badge — themed green/blue
                         Text(session.isMosh ? "MOSH" : "SSH")
                             .font(.system(size: 8, weight: .bold, design: .monospaced))
-                            .foregroundStyle(session.isMosh ? .green : .secondary)
+                            .foregroundStyle(SwiftUI.Color(session.isMosh ? theme.accentGreen : theme.accentBlue))
                     }
                 }
 
@@ -55,8 +78,20 @@ struct SessionCardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)
+                .strokeBorder(SwiftUI.Color(theme.separator), lineWidth: 0.5)
         )
+        // Fade disconnected/error sessions
+        .opacity(isDisconnected ? 0.5 : 1.0)
+        .animation(.easeInOut(duration: 0.6), value: isDisconnected)
+    }
+
+    private var isDisconnected: Bool {
+        switch session.connectionState {
+        case .disconnected, .error:
+            return true
+        default:
+            return false
+        }
     }
 
     @ViewBuilder
@@ -84,6 +119,15 @@ struct SessionCardView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var isConnecting: Bool {
+        switch session.connectionState {
+        case .connecting, .sshBootstrap, .moshStarting, .reconnecting:
+            return true
+        default:
+            return false
         }
     }
 

@@ -33,21 +33,25 @@ struct SettingsView: View {
                     Text("Font Family")
                     Spacer()
                     Text(settings.fontFamily)
+                        .font(.system(size: 14, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
 
             // Font size stepper
-            Stepper(
-                "Font Size: \(Int(settings.fontSize))pt",
-                value: Binding(
+            HStack {
+                Text("Font Size")
+                Spacer()
+                Text("\(Int(settings.fontSize))pt")
+                    .font(.system(size: 14, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Stepper("", value: Binding(
                     get: { settings.fontSize },
                     set: { settings.fontSize = $0 }
-                ),
-                in: 8...32,
-                step: 1
-            )
+                ), in: 8...32, step: 1)
+                .labelsHidden()
+            }
 
             // Color theme nav link
             NavigationLink {
@@ -57,6 +61,7 @@ struct SettingsView: View {
                     Text("Color Theme")
                     Spacer()
                     Text(settings.currentTheme.name)
+                        .font(.system(size: 14, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -74,7 +79,13 @@ struct SettingsView: View {
 
             // Scroll speed slider
             VStack(alignment: .leading) {
-                Text("Scroll Speed: \(String(format: "%.1f", settings.scrollMultiplier))x")
+                HStack {
+                    Text("Scroll Speed")
+                    Spacer()
+                    Text("\(String(format: "%.1f", settings.scrollMultiplier))x")
+                        .font(.system(size: 14, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
                 Slider(
                     value: Binding(
                         get: { settings.scrollMultiplier },
@@ -87,7 +98,13 @@ struct SettingsView: View {
 
             // Background opacity slider
             VStack(alignment: .leading) {
-                Text("Opacity: \(Int(settings.backgroundOpacity * 100))%")
+                HStack {
+                    Text("Opacity")
+                    Spacer()
+                    Text("\(Int(settings.backgroundOpacity * 100))%")
+                        .font(.system(size: 14, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
                 Slider(
                     value: Binding(
                         get: { settings.backgroundOpacity },

@@ -83,10 +83,12 @@ class KeyboardToolbarAccessoryView: UIView {
             } else {
                 activeModifiers.insert(button.id)
             }
+            HapticService.selection()
             updateContent()
             return
         }
 
+        HapticService.lightTap()
         let modified = applyModifiersIfNeeded(to: ArraySlice(button.bytes))
         onButtonTap?(Array(modified))
     }
@@ -222,12 +224,13 @@ struct KeyboardToolbarContent: View {
             .padding(.trailing, 8)
         }
         .frame(height: 44)
-        .background(SwiftUI.Color(UIColor.secondarySystemBackground))
+        .background(SwiftUI.Color(AppearanceSettings.shared.currentTheme.chromeSurface))
     }
 
     @ViewBuilder
     private func toolbarButton(_ button: ToolbarButton) -> some View {
-        let isHighlighted = ToolbarButton.stickyModifierIDs.contains(button.id) && activeModifiers.contains(button.id)
+        let isModifier = ToolbarButton.stickyModifierIDs.contains(button.id)
+        let isHighlighted = isModifier && activeModifiers.contains(button.id)
 
         Button {
             onButtonTap(button)
@@ -239,12 +242,15 @@ struct KeyboardToolbarContent: View {
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(isHighlighted ? SwiftUI.Color.white : SwiftUI.Color(UIColor.tertiarySystemBackground))
+                        .fill(isHighlighted ? SwiftUI.Color.white : SwiftUI.Color(AppearanceSettings.shared.currentTheme.cardSurface))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(SwiftUI.Color(UIColor.separator), lineWidth: 0.5)
+                        .strokeBorder(SwiftUI.Color(AppearanceSettings.shared.currentTheme.separator), lineWidth: 0.5)
                 )
+                // Scale bounce on modifier toggle
+                .scaleEffect(isHighlighted ? 1.1 : 1.0)
+                .animation(.spring(duration: 0.15, bounce: 0.4), value: isHighlighted)
         }
     }
 
@@ -290,11 +296,11 @@ private struct SwipeArrowButton: View {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(isDragging ? SwiftUI.Color.white : SwiftUI.Color(UIColor.tertiarySystemBackground))
+                    .fill(isDragging ? SwiftUI.Color.white : SwiftUI.Color(AppearanceSettings.shared.currentTheme.cardSurface))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(SwiftUI.Color(UIColor.separator), lineWidth: 0.5)
+                    .strokeBorder(SwiftUI.Color(AppearanceSettings.shared.currentTheme.separator), lineWidth: 0.5)
             )
             .gesture(
                 DragGesture(minimumDistance: 5)
@@ -307,10 +313,12 @@ private struct SwipeArrowButton: View {
                         if allowHorizontal {
                             while dx - lastStepX > stepSize {
                                 lastStepX += stepSize
+                                HapticService.lightTap()
                                 onArrow(arrowRight)
                             }
                             while lastStepX - dx > stepSize {
                                 lastStepX -= stepSize
+                                HapticService.lightTap()
                                 onArrow(arrowLeft)
                             }
                         }
@@ -319,10 +327,12 @@ private struct SwipeArrowButton: View {
                         if allowVertical {
                             while dy - lastStepY > stepSize {
                                 lastStepY += stepSize
+                                HapticService.lightTap()
                                 onArrow(arrowDown)
                             }
                             while lastStepY - dy > stepSize {
                                 lastStepY -= stepSize
+                                HapticService.lightTap()
                                 onArrow(arrowUp)
                             }
                         }
