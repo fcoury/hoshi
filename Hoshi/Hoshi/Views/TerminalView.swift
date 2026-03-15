@@ -113,6 +113,12 @@ struct TerminalView: View {
                 // GhosttyTerminalView reloads toolbar buttons after dismissal.
             })
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+            isKeyboardVisible = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
+            isKeyboardVisible = false
+        }
     }
 
     // Whether the status dot should pulse (connecting/reconnecting states)
