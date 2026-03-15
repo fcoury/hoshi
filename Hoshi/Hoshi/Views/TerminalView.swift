@@ -16,6 +16,8 @@ import SwiftUI
 struct TerminalView: View {
     @Bindable var connectionVM: ConnectionViewModel
     var managedSession: ManagedSession?
+    var canSwapSession: Bool = false
+    var onSwapSession: (() -> Void)?
     var onDismiss: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
@@ -70,6 +72,7 @@ struct TerminalView: View {
                 fontSize: $fontSize,
                 showToolbarEditor: $showToolbarEditor,
                 keyboardVisible: $isKeyboardVisible,
+                onSwapSession: canSwapSession ? onSwapSession : nil,
                 onSurfaceReady: { surfaceView in
                     // Capture weak reference to the surface for thumbnail snapshots
                     managedSession?.surfaceView = surfaceView
@@ -177,6 +180,18 @@ struct TerminalView: View {
                     .foregroundStyle(.secondary)
             }
             .accessibilityLabel(isKeyboardVisible ? "Hide keyboard" : "Show keyboard")
+
+            // Swap — toggle to the previous session (only visible with 2+ sessions)
+            if canSwapSession {
+                Button {
+                    HapticService.lightTap()
+                    onSwapSession?()
+                } label: {
+                    Image(systemName: "rectangle.2.swap")
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityLabel("Switch to previous session")
+            }
 
             // Minimize — return to server list, keep session alive in carousel
             Button {

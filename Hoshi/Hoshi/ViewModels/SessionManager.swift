@@ -25,7 +25,7 @@ final class SessionManager {
     func createSession(for server: Server) -> ManagedSession? {
         guard sessions.count < Self.maxSessions else { return nil }
         let session = ManagedSession(server: server)
-        sessions.append(session)
+        promoteSessionToFront(session)
         return session
     }
 
@@ -42,12 +42,23 @@ final class SessionManager {
         }
     }
 
+    // Toggle to the previous (MRU) session — called by the swap button and 2-finger swipe
+    func switchToPrevious() {
+        guard sessions.count >= 2 else { return }
+        let previousSession = sessions[1]
+        switchTo(sessionID: previousSession.id)
+    }
+
     // Switch to a session: capture thumbnail of current, then set the new active ID
     func switchTo(sessionID: UUID) {
         // Capture thumbnail of the session we're leaving
         if let current = activeSession {
             current.captureThumbnail()
         }
+
+        guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        let session = sessions[index]
+        promoteSessionToFront(session)
         activeSessionID = sessionID
     }
 
@@ -80,6 +91,18 @@ final class SessionManager {
     func handleSceneBackground() {
         if let current = activeSession {
             current.captureThumbnail()
+        }
+    }
+
+    private func promoteSessionToFront(_ session: ManagedSession) {
+        session.lastAccessedAt = Date()
+
+        if let index = sessions.firstIndex(where: { $0.id == session.id }) {
+            guard index != 0 else { return }
+            let existing = sessions.remove(at: index)
+            sessions.insert(existing, at: 0)
+        } else {
+            sessions.insert(session, at: 0)
         }
     }
 }
