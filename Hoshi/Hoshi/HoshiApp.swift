@@ -35,9 +35,12 @@ struct HoshiApp: App {
         }
     }
 
+    // Switch this to .neonPulse or .constellation to try the other variations
+    private static let splashStyle: SplashStyle = .terminalBoot
+
     var body: some Scene {
         WindowGroup {
-            ServerListView()
+            SplashContainerView(style: Self.splashStyle)
         }
         .modelContainer(for: [Server.self])
     }
