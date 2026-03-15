@@ -237,12 +237,6 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         twoFingerPan.maximumNumberOfTouches = 2
         addGestureRecognizer(twoFingerPan)
 
-        if keyboardVisible {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-                guard let self else { return }
-                _ = self.becomeFirstResponder()
-            }
-        }
     }
 
     required init?(coder: NSCoder) {
@@ -380,6 +374,14 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         ghostty_surface_set_occlusion(surface, window != nil)
         if window != nil {
             updateSurfaceSizeIfNeeded()
+
+            // Request focus after the fullScreenCover presentation animation
+            // completes. Immediate becomeFirstResponder() silently fails during
+            // the transition, so we delay until the view is fully presented.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self, self.window != nil, !self.isFirstResponder else { return }
+                _ = self.becomeFirstResponder()
+            }
         }
     }
 
