@@ -40,6 +40,7 @@
 		538D8E0977B2ACCA89F408C6 /* SessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 496577E7FB5E979F6E5DC1F8 /* SessionManager.swift */; };
 		539569A7ADAF63A743137D9A /* SSHKeyServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EDBF8AB95AD1BD0632E9DC5 /* SSHKeyServiceTests.swift */; };
 		557852416FD2A54EFC66DE88 /* ServerListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F70A34682A15DD67521724FD /* ServerListView.swift */; };
+		A1B2C3D4E5F60718A9B0C1D2 /* SplashScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E4F5A6B7C80921E2F3A4B5 /* SplashScreenView.swift */; };
 		5CF07FF1FE024A5759336ECC /* HoshiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D2E28A5EA11F0126B55C42C /* HoshiApp.swift */; };
 		65B494BB42FEEC879D910B4B /* SessionCarouselView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969B9307CAA607A311D3067C /* SessionCarouselView.swift */; };
 		65F0E59F2EFC44654BF5B1D6 /* MoshTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 414AB1CB023F8485D188ED5A /* MoshTransport.swift */; };
@@ -226,6 +227,7 @@
 		F434FC2C5E00789F32E7BF2D /* GhosttyTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyTerminalView.swift; sourceTree = "<group>"; };
 		F446ED424D69451050AA8120 /* GeistMonoNerdFontMono-Regular.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "GeistMonoNerdFontMono-Regular.otf"; sourceTree = "<group>"; };
 		F70A34682A15DD67521724FD /* ServerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerListView.swift; sourceTree = "<group>"; };
+		D3E4F5A6B7C80921E2F3A4B5 /* SplashScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashScreenView.swift; sourceTree = "<group>"; };
 		F7B8704BE7DEEC364B8E7530 /* SauceCodeProNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "SauceCodeProNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
 		F89DF94786BEA2C04C961E48 /* ConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectView.swift; sourceTree = "<group>"; };
 		FA0657BD71280F76D8693BDC /* HoshiTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HoshiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -379,6 +381,7 @@
 				BB95500B7D399772F2FB8BD8 /* SessionCardView.swift */,
 				969B9307CAA607A311D3067C /* SessionCarouselView.swift */,
 				19D8FFFF3A11114D6122B6B0 /* SettingsView.swift */,
+				D3E4F5A6B7C80921E2F3A4B5 /* SplashScreenView.swift */,
 				C5B1099C69E83AC319C5CAA1 /* TerminalView.swift */,
 				DCE7EC1DDE1A89967CD4B68A /* TmuxSessionPickerView.swift */,
 				31A14278942E4B7AEFB3F1EB /* ToolbarEditView.swift */,
@@ -624,6 +627,7 @@
 				538D8E0977B2ACCA89F408C6 /* SessionManager.swift in Sources */,
 				26B826D28D58615A4D882013 /* SessionProtocol.swift in Sources */,
 				3C42FB85D6E594C7AE94E8D3 /* SettingsView.swift in Sources */,
+				A1B2C3D4E5F60718A9B0C1D2 /* SplashScreenView.swift in Sources */,
 				A08BCE350D681A0F24BF8B26 /* TerminalTheme.swift in Sources */,
 				D22DB61E421382204913A526 /* TerminalView.swift in Sources */,
 				FE7F8E8100652F86991C5D88 /* TmuxDetectionService.swift in Sources */,
