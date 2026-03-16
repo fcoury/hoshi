@@ -6,6 +6,7 @@ import NIOSSH
 import Network
 import zlib
 import os.log
+import QuartzCore
 @preconcurrency import CCryptoBoringSSL
 
 private let sspLog = Logger(subsystem: "com.hoshi.app.dev", category: "SSP")

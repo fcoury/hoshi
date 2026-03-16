@@ -1,6 +1,17 @@
 import SwiftUI
 import SwiftData
 
+/// Root view: server list with active session carousel.
+///
+/// Uses a custom `ScrollView` + `LazyVStack` instead of `List` so that backgrounds,
+/// separators, and section headers can be fully themed from `TerminalTheme`.
+/// The trade-off is that built-in swipe actions are unavailable; delete is
+/// accessible only via context menu.
+///
+/// Session lifecycle flows through three sheets presented in sequence:
+/// 1. `ConnectView` — credential entry (or skipped via quick-launch)
+/// 2. `TmuxSessionPickerView` — tmux session selection (if server has tmux)
+/// 3. `TerminalView` — full-screen terminal (via `.fullScreenCover`)
 struct ServerListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
@@ -9,9 +20,17 @@ struct ServerListView: View {
     @State private var showAddServer = false
     @State private var selectedServer: Server?
     @State private var editingServer: Server?
-    @State private var connectionVM = ConnectionViewModel()
-    @State private var quickLaunching = false
     @State private var showSettings = false
+
+    // Multi-session state
+    @State private var sessionManager = SessionManager()
+    @State private var quickLaunching = false
+    @State private var connectingSession: ManagedSession?
+    @State private var quickLaunchErrorMessage: String?
+    @State private var showMaxSessionsAlert = false
+
+    private let appearance = AppearanceSettings.shared
+    private var theme: TerminalTheme { appearance.currentTheme }
 
     var body: some View {
         NavigationStack {
@@ -48,64 +67,89 @@ struct ServerListView: View {
             .sheet(item: $editingServer) { server in
                 AddServerView(existingServer: server)
             }
-            .sheet(item: $selectedServer) { server in
-                ConnectView(server: server, connectionVM: connectionVM)
+            // ConnectView — credentials entry for the session being connected
+            .sheet(item: $selectedServer, onDismiss: {
+                guard let session = connectingSession else { return }
+                if session.connectionVM.showTmuxPicker {
+                    // Hand off to tmux picker sheet
+                    session.connectionVM.showTmuxPicker = false
+                    sessionManager.tmuxPickerSession = session
+                    connectingSession = nil
+                } else if session.connectionVM.connectionState == .connected {
+                    // PTY is open — safe to show terminal
+                    sessionManager.switchTo(sessionID: session.id)
+                    connectingSession = nil
+                } else {
+                    // Connection cancelled or failed — clean up
+                    Task { await sessionManager.closeSession(id: session.id) }
+                    connectingSession = nil
+                }
+            }) { server in
+                if let session = connectingSession {
+                    ConnectView(server: server, connectionVM: session.connectionVM)
+                }
             }
-            // tmux session picker — shown after SSH connects, before terminal opens
-            .sheet(isPresented: Binding(
-                get: { connectionVM.showTmuxPicker },
-                set: { connectionVM.showTmuxPicker = $0 }
-            )) {
+            // Tmux session picker — shown per-session after SSH connects
+            .sheet(item: $sessionManager.tmuxPickerSession) { session in
                 TmuxSessionPickerView(
-                    sessions: connectionVM.detectedTmuxSessions
+                    sessions: session.connectionVM.detectedTmuxSessions
                 ) { choice in
                     Task {
-                        await connectionVM.completeTmuxChoice(choice, modelContext: modelContext)
+                        let tmuxName = await session.connectionVM.completeTmuxChoice(choice)
+                        session.tmuxSession = tmuxName
+                        sessionManager.tmuxPickerSession = nil
+                        // Open the session full-screen after tmux attach
+                        sessionManager.switchTo(sessionID: session.id)
                     }
                 }
             }
-            .fullScreenCover(isPresented: Binding(
-                get: {
-                    // Keep the terminal open during connected, reconnecting, and disconnected states
-                    // (disconnected here means the session dropped but we may reconnect)
-                    switch connectionVM.connectionState {
-                    case .connected, .reconnecting:
-                        return true
-                    case .disconnected:
-                        // Only show terminal if a session object still exists (awaiting reconnect)
-                        return connectionVM.hasActiveSession
-                    default:
-                        return false
+            // Full-screen terminal — shown when a session is active
+            .fullScreenCover(item: Binding<ManagedSession?>(
+                get: { sessionManager.activeSession },
+                set: { if $0 == nil { sessionManager.returnToServerList() } }
+            )) { session in
+                TerminalView(
+                    connectionVM: session.connectionVM,
+                    managedSession: session,
+                    canSwapSession: sessionManager.sessions.count >= 2,
+                    onSwapSession: {
+                        sessionManager.switchToPrevious()
+                    },
+                    onDismiss: {
+                        sessionManager.returnToServerList()
                     }
-                },
-                set: { if !$0 { Task { await connectionVM.disconnect() } } }
-            )) {
-                TerminalView(connectionVM: connectionVM)
+                )
             }
         }
-        // Quick-launch error alert — shown if auto-connect fails
+        // Max sessions alert
+        .alert("Session Limit Reached", isPresented: $showMaxSessionsAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("You can have up to \(SessionManager.maxSessions) active sessions. Close an existing session to open a new one.")
+        }
+        // Quick-launch error alert
         .alert("Connection Failed", isPresented: Binding(
-            get: { connectionVM.showError && !quickLaunching },
-            set: { if !$0 { connectionVM.showError = false; connectionVM.errorMessage = nil } }
+            get: { quickLaunchErrorMessage != nil },
+            set: { if !$0 { quickLaunchErrorMessage = nil } }
         )) {
             Button("OK", role: .cancel) {}
         } message: {
-            if let error = connectionVM.errorMessage {
+            if let error = quickLaunchErrorMessage {
                 Text(error)
             }
         }
         // Quick-launch connecting overlay
         .overlay {
-            if quickLaunching {
+            if quickLaunching, let session = connectingSession {
                 ZStack {
                     SwiftUI.Color.black.opacity(0.4)
                         .ignoresSafeArea()
                     VStack(spacing: 12) {
                         ProgressView()
                             .controlSize(.large)
-                        Text(connectionVM.connectionPhase.isEmpty
+                        Text(session.connectionVM.connectionPhase.isEmpty
                              ? "Connecting..."
-                             : connectionVM.connectionPhase)
+                             : session.connectionVM.connectionPhase)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -115,10 +159,16 @@ struct ServerListView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .toolbarBackground(SwiftUI.Color(theme.chromeSurface), for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .onChange(of: scenePhase) { _, newPhase in
-            // When app returns to foreground, check session health and reconnect if needed
-            if newPhase == .active {
-                connectionVM.handleSceneActive()
+            switch newPhase {
+            case .active:
+                sessionManager.handleSceneActive()
+            case .background:
+                sessionManager.handleSceneBackground()
+            default:
+                break
             }
         }
     }
@@ -127,7 +177,9 @@ struct ServerListView: View {
         ContentUnavailableView {
             Label("No Servers", systemImage: "server.rack")
         } description: {
-            Text("Add a server to get started.")
+            Text("$ add a server to get started")
+                .font(.system(size: 14, design: .monospaced))
+                .foregroundStyle(.secondary)
         } actions: {
             Button("Add Server") {
                 showAddServer = true
@@ -136,51 +188,117 @@ struct ServerListView: View {
         }
     }
 
+    // Terminal-style section header: monospace caps with a subtle trailing line
+    private func sectionHeader(_ title: String) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(SwiftUI.Color(theme.secondaryForeground))
+
+            Rectangle()
+                .fill(SwiftUI.Color(theme.separator))
+                .frame(height: 0.5)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 4)
+    }
+
     private var serverList: some View {
-        List {
-            ForEach(servers) { server in
-                ServerRow(server: server)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        // Quick-launch if stored credentials are available
-                        if ConnectionViewModel.hasStoredCredentials(for: server) {
-                            quickLaunching = true
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                // Active sessions carousel
+                if sessionManager.hasActiveSessions {
+                    SessionCarouselView(
+                        sessions: sessionManager.sessions,
+                        onTap: { sessionID in
+                            sessionManager.switchTo(sessionID: sessionID)
+                        },
+                        onClose: { sessionID in
                             Task {
-                                await connectionVM.quickLaunch(server: server)
-                                quickLaunching = false
+                                await sessionManager.closeSession(id: sessionID)
                             }
-                        } else {
-                            selectedServer = server
                         }
-                    }
-                    .contextMenu {
-                        Button {
-                            editingServer = server
-                        } label: {
-                            Label("Edit", systemImage: "pencil")
+                    )
+                }
+
+                // Server list section
+                sectionHeader("SERVERS")
+
+                ForEach(servers) { server in
+                    ServerRow(server: server, theme: theme)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            connectToServer(server)
+                        }
+                        .contextMenu {
+                            Button {
+                                editingServer = server
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+
+                            Button(role: .destructive) {
+                                deleteServer(server)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
 
-                        Button(role: .destructive) {
-                            deleteServer(server)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
+                    // Subtle separator between rows
+                    if server.id != servers.last?.id {
+                        Rectangle()
+                            .fill(SwiftUI.Color(theme.separator))
+                            .frame(height: 0.5)
+                            .padding(.leading, 16)
                     }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) {
-                            deleteServer(server)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-
-                        Button {
-                            editingServer = server
-                        } label: {
-                            Label("Edit", systemImage: "pencil")
-                        }
-                        .tint(.blue)
-                    }
+                }
             }
+        }
+        .background(SwiftUI.Color(theme.chromeBackground))
+    }
+
+    // Create a session and connect — sequential flow avoids race conditions
+    private func connectToServer(_ server: Server) {
+        HapticService.lightTap()
+        quickLaunchErrorMessage = nil
+        guard let session = sessionManager.createSession(for: server) else {
+            showMaxSessionsAlert = true
+            return
+        }
+
+        connectingSession = session
+
+        if ConnectionViewModel.hasStoredCredentials(for: server) {
+            // Quick-launch: await full connection, then transition
+            quickLaunching = true
+            Task {
+                await session.connectionVM.quickLaunch(server: server)
+                quickLaunching = false
+
+                if session.connectionVM.showTmuxPicker {
+                    // Hand off to tmux picker sheet
+                    session.connectionVM.showTmuxPicker = false
+                    sessionManager.tmuxPickerSession = session
+                    connectingSession = nil
+                } else if session.connectionVM.connectionState == .connected {
+                    // PTY is open — safe to show terminal
+                    sessionManager.switchTo(sessionID: session.id)
+                    connectingSession = nil
+                } else {
+                    // Connection failed or unexpected state — preserve
+                    // the error after the transient session is closed.
+                    quickLaunchErrorMessage = session.connectionVM.errorMessage
+                        ?? "Unable to connect to \(server.name)."
+                    await sessionManager.closeSession(id: session.id)
+                    connectingSession = nil
+                }
+            }
+        } else {
+            // Show ConnectView for credential entry
+            selectedServer = server
         }
     }
 
@@ -190,61 +308,66 @@ struct ServerListView: View {
     }
 }
 
-// A row displaying server name, hostname, tmux session, and connection badges
+/// A row displaying server name, hostname, tmux session, and connection badges.
+///
+/// Badge color semantics: green = Mosh, blue = SSH, cyan = tmux session name,
+/// yellow bolt = stored credentials (quick-launch capable).
 struct ServerRow: View {
     let server: Server
+    var theme: TerminalTheme = AppearanceSettings.shared.currentTheme
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(server.name)
-                        .font(.headline)
+                        .font(.system(size: 15, weight: .semibold))
 
-                    // tmux session badge
+                    // tmux session badge — themed cyan
                     if let tmux = server.tmuxSession {
                         Text(tmux)
                             .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.cyan)
+                            .foregroundStyle(SwiftUI.Color(theme.accentCyan))
                             .padding(.horizontal, 4)
                             .padding(.vertical, 2)
-                            .background(SwiftUI.Color.cyan.opacity(0.15))
+                            .background(SwiftUI.Color(theme.accentCyan).opacity(0.15))
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                     }
                 }
 
+                // Technical details in monospace
                 Text("\(server.username)@\(server.hostname):\(server.port)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(SwiftUI.Color(theme.secondaryForeground))
             }
 
             Spacer()
 
-            // Mosh badge
-            if server.useMosh {
-                Text("MOSH")
+            HStack(spacing: 6) {
+                // Protocol badge — themed green for Mosh, blue for SSH
+                Text(server.useMosh ? "MOSH" : "SSH")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(SwiftUI.Color(server.useMosh ? theme.accentGreen : theme.accentBlue))
                     .padding(.horizontal, 4)
                     .padding(.vertical, 2)
-                    .background(SwiftUI.Color.green.opacity(0.15))
+                    .background(SwiftUI.Color(server.useMosh ? theme.accentGreen : theme.accentBlue).opacity(0.15))
                     .clipShape(RoundedRectangle(cornerRadius: 4))
-            }
 
-            // Auth method indicator
-            Image(systemName: server.authMethod == .key ? "key.fill" : "lock.fill")
-                .foregroundStyle(.secondary)
-                .font(.caption)
+                // Auth method indicator
+                Image(systemName: server.authMethod == .key ? "key.fill" : "lock.fill")
+                    .foregroundStyle(SwiftUI.Color(theme.secondaryForeground))
+                    .font(.caption)
 
-            // Quick-launch indicator (bolt) or standard chevron
-            if ConnectionViewModel.hasStoredCredentials(for: server) {
-                Image(systemName: "bolt.fill")
-                    .foregroundStyle(.yellow.opacity(0.7))
-                    .font(.caption)
-            } else {
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(.tertiary)
-                    .font(.caption)
+                // Quick-launch indicator (bolt) or standard chevron
+                if ConnectionViewModel.hasStoredCredentials(for: server) {
+                    Image(systemName: "bolt.fill")
+                        .foregroundStyle(SwiftUI.Color(theme.accentYellow).opacity(0.7))
+                        .font(.caption)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(SwiftUI.Color(theme.secondaryForeground))
+                        .font(.caption)
+                }
             }
         }
         .padding(.vertical, 4)

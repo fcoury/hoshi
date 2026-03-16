@@ -9,14 +9,29 @@ struct TmuxSessionPickerView: View {
     var body: some View {
         NavigationStack {
             List {
-                // Existing sessions
-                if sessions.isEmpty {
-                    Section {
+                // Quick escape at the top
+                Section {
+                    Button {
+                        onChoice(.skip)
+                        dismiss()
+                    } label: {
+                        Label("Skip", systemImage: "arrow.right.circle")
+                    }
+                }
+
+                // Sessions list with "New Session" as first item
+                Section("tmux Sessions") {
+                    Button {
+                        onChoice(.newSession)
+                        dismiss()
+                    } label: {
+                        Label("New Session", systemImage: "plus.rectangle")
+                    }
+
+                    if sessions.isEmpty {
                         Label("No sessions found", systemImage: "text.rectangle.page")
                             .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Section("tmux Sessions") {
+                    } else {
                         ForEach(sessions) { session in
                             Button {
                                 onChoice(.attach(session))
@@ -46,24 +61,6 @@ struct TmuxSessionPickerView: View {
                             }
                             .tint(.primary)
                         }
-                    }
-                }
-
-                // Actions
-                Section {
-                    Button {
-                        onChoice(.newSession)
-                        dismiss()
-                    } label: {
-                        Label("New Session", systemImage: "plus.rectangle")
-                    }
-
-                    Button {
-                        onChoice(.skip)
-                        dismiss()
-                    } label: {
-                        Label("Skip", systemImage: "arrow.right.circle")
-                            .foregroundStyle(.secondary)
                     }
                 }
             }

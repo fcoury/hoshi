@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hoshi — SSH & Mosh Client for iOS</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: #08090d;
+    color: #e8eaf0;
+    overflow-x: hidden;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 50% at 50% 0%, rgba(56, 120, 255, 0.12) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 40% at 20% 80%, rgba(80, 200, 120, 0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 40% at 80% 80%, rgba(160, 100, 255, 0.06) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  /* Star field */
+  .stars {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .stars::before, .stars::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    background: white;
+    animation: twinkle 3s ease-in-out infinite alternate;
+  }
+  .stars::before {
+    width: 2px; height: 2px;
+    top: 15%; left: 25%;
+    box-shadow:
+      120px 40px 0 0 rgba(255,255,255,0.3),
+      300px 80px 0 0 rgba(255,255,255,0.2),
+      50px 200px 0 0 rgba(255,255,255,0.15),
+      400px 150px 0 0 rgba(255,255,255,0.25),
+      250px 300px 0 0 rgba(255,255,255,0.1),
+      600px 60px 0 0 rgba(255,255,255,0.2),
+      700px 200px 0 0 rgba(255,255,255,0.15),
+      150px 350px 0 0 rgba(255,255,255,0.2),
+      500px 250px 0 0 rgba(255,255,255,0.1),
+      350px 50px 0 0 rgba(255,255,255,0.3);
+  }
+  @keyframes twinkle {
+    0% { opacity: 0.4; }
+    100% { opacity: 1; }
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    border-radius: 100px;
+    border: 1px solid rgba(80, 200, 120, 0.3);
+    background: rgba(80, 200, 120, 0.08);
+    color: #50c878;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-bottom: 32px;
+    position: relative;
+  }
+
+  .hero-badge::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #50c878;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.3); }
+  }
+
+  h1 {
+    font-size: clamp(48px, 8vw, 96px);
+    font-weight: 900;
+    letter-spacing: -3px;
+    line-height: 0.95;
+    text-align: center;
+    position: relative;
+    margin-bottom: 24px;
+  }
+
+  h1 span {
+    background: linear-gradient(135deg, #e8eaf0 0%, #a0b0d0 50%, #7090c0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-sub {
+    font-size: clamp(18px, 2.5vw, 24px);
+    color: #8090a8;
+    text-align: center;
+    max-width: 560px;
+    line-height: 1.5;
+    font-weight: 400;
+    margin-bottom: 48px;
+    position: relative;
+  }
+
+  .hero-sub strong {
+    color: #b0c0d8;
+    font-weight: 500;
+  }
+
+  /* ── Device Frame ── */
+  .device {
+    position: relative;
+    width: 280px;
+    flex-shrink: 0;
+  }
+
+  .device-frame {
+    position: relative;
+    border-radius: 40px;
+    border: 3px solid #2a2d35;
+    background: #1a1d25;
+    padding: 12px;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.05),
+      0 20px 60px rgba(0,0,0,0.5),
+      0 40px 100px rgba(0,0,0,0.3),
+      inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+
+  .device-frame img {
+    width: 100%;
+    border-radius: 28px;
+    display: block;
+  }
+
+  .device-notch {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100px;
+    height: 28px;
+    background: #1a1d25;
+    border-radius: 0 0 18px 18px;
+    z-index: 2;
+  }
+
+  .device-frame::after {
+    content: '';
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100px;
+    height: 4px;
+    background: #3a3d45;
+    border-radius: 2px;
+  }
+
+  /* ── Showcase Rows ── */
+  .showcase {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 80px;
+    padding: 120px 48px;
+    max-width: 1200px;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  .showcase.reverse {
+    flex-direction: row-reverse;
+  }
+
+  .showcase-text {
+    flex: 1;
+    max-width: 440px;
+  }
+
+  .showcase-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #3878ff;
+    margin-bottom: 16px;
+  }
+
+  .showcase h2 {
+    font-size: clamp(32px, 4vw, 48px);
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    line-height: 1.1;
+    margin-bottom: 20px;
+  }
+
+  .showcase h2 span {
+    background: linear-gradient(135deg, #e8eaf0, #8898b8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .showcase p {
+    font-size: 17px;
+    line-height: 1.7;
+    color: #7888a0;
+    margin-bottom: 24px;
+  }
+
+  .feature-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .pill {
+    padding: 6px 14px;
+    border-radius: 100px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    color: #a0afc0;
+  }
+
+  .pill.green { border-color: rgba(80,200,120,0.25); color: #50c878; background: rgba(80,200,120,0.06); }
+  .pill.blue  { border-color: rgba(56,120,255,0.25); color: #5890ff; background: rgba(56,120,255,0.06); }
+  .pill.amber { border-color: rgba(255,180,60,0.25); color: #ffb43c; background: rgba(255,180,60,0.06); }
+
+  /* ── Divider ── */
+  .divider {
+    height: 1px;
+    max-width: 800px;
+    margin: 0 auto;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+  }
+
+  /* ── Hero device trio ── */
+  .hero-devices {
+    display: flex;
+    align-items: flex-end;
+    gap: 24px;
+    position: relative;
+    margin-top: 20px;
+  }
+
+  .hero-devices .device:nth-child(1) { transform: rotate(-6deg) translateY(20px); opacity: 0.85; }
+  .hero-devices .device:nth-child(2) { transform: scale(1.08); z-index: 2; }
+  .hero-devices .device:nth-child(3) { transform: rotate(6deg) translateY(20px); opacity: 0.85; }
+
+  /* Glow under center device — warm gold to match splash kanji */
+  .hero-devices .device:nth-child(2) .device-frame {
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.05),
+      0 20px 60px rgba(210, 180, 100, 0.18),
+      0 40px 120px rgba(210, 180, 100, 0.08),
+      inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+
+  /* ── Footer ── */
+  .footer {
+    text-align: center;
+    padding: 80px 24px 48px;
+    position: relative;
+  }
+
+  .footer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 200px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  }
+
+  .footer h2 {
+    font-size: clamp(36px, 5vw, 56px);
+    font-weight: 800;
+    letter-spacing: -2px;
+    margin-bottom: 16px;
+  }
+
+  .footer h2 span {
+    background: linear-gradient(135deg, #e8eaf0, #7090c0);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .footer p {
+    color: #607080;
+    font-size: 15px;
+    margin-top: 32px;
+  }
+
+  .cta-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 32px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #3060e0, #2848c0);
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+    text-decoration: none;
+    margin-top: 24px;
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 4px 20px rgba(48,96,224,0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+
+  .cta-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(48,96,224,0.4);
+  }
+
+  .cta-btn svg {
+    width: 18px; height: 18px;
+    fill: currentColor;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .showcase { flex-direction: column !important; gap: 48px; padding: 80px 24px; }
+    .showcase-text { text-align: center; max-width: 100%; }
+    .feature-pills { justify-content: center; }
+    .hero-devices .device { width: 200px; }
+    .hero-devices { gap: 12px; }
+  }
+
+  @media (max-width: 600px) {
+    .hero-devices .device { width: 140px; }
+    .hero-devices { gap: 8px; }
+    .device { width: 240px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HERO ═══════════ -->
+<section class="hero">
+  <div class="stars"></div>
+
+  <div class="hero-badge">Now with Mosh support</div>
+
+  <h1><span>Hoshi</span></h1>
+  <p class="hero-sub">
+    A <strong>full-featured SSH & Mosh client</strong> for iOS.<br>
+    Multiple sessions. Live thumbnails. Keyboard built for terminal.
+  </p>
+
+  <div class="hero-devices">
+    <div class="device">
+      <div class="device-frame">
+        <img src="Screenshot 2026-03-15 at 21.18.01.png" alt="Server list with multiple connections">
+      </div>
+    </div>
+    <div class="device">
+      <div class="device-frame">
+        <img src="Screenshot 2026-03-15 at 21.24.13.png" alt="Hoshi splash screen">
+      </div>
+    </div>
+    <div class="device">
+      <div class="device-frame">
+        <img src="Screenshot 2026-03-15 at 21.19.19.png" alt="Terminal session with code">
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══════════ FEATURE 1: Sessions ═══════════ -->
+<section class="showcase">
+  <div class="device">
+    <div class="device-frame">
+      <img src="Screenshot 2026-03-15 at 21.18.01.png" alt="Active sessions with thumbnails">
+    </div>
+  </div>
+  <div class="showcase-text">
+    <div class="showcase-label">Multi-Session</div>
+    <h2><span>Jump between servers instantly</span></h2>
+    <p>
+      Keep multiple SSH and Mosh connections alive simultaneously.
+      Live thumbnails show what each session is doing — swipe to swap
+      without losing your place.
+    </p>
+    <div class="feature-pills">
+      <span class="pill green">Live Thumbnails</span>
+      <span class="pill blue">2-Finger Swap</span>
+      <span class="pill">Session Carousel</span>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══════════ FEATURE 2: Terminal ═══════════ -->
+<section class="showcase reverse">
+  <div class="device">
+    <div class="device-frame">
+      <img src="Screenshot 2026-03-15 at 21.19.19.png" alt="Terminal with code editing">
+    </div>
+  </div>
+  <div class="showcase-text">
+    <div class="showcase-label">Pro Terminal</div>
+    <h2><span>Edit code like you mean it</span></h2>
+    <p>
+      Powered by Ghostty's Metal renderer. Customizable keyboard toolbar
+      with Esc, Ctrl, Opt, Tab — everything a terminal power user needs,
+      right at your fingertips.
+    </p>
+    <div class="feature-pills">
+      <span class="pill blue">Ghostty Engine</span>
+      <span class="pill amber">Custom Toolbar</span>
+      <span class="pill green">Pinch-to-Zoom</span>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══════════ FEATURE 3: Mosh ═══════════ -->
+<section class="showcase">
+  <div class="device">
+    <div class="device-frame">
+      <img src="Screenshot 2026-03-15 at 21.20.56.png" alt="Server list showing Mosh support">
+    </div>
+  </div>
+  <div class="showcase-text">
+    <div class="showcase-label">Resilient Connection</div>
+    <h2><span>Mosh keeps you connected</span></h2>
+    <p>
+      Switch between Wi-Fi and cellular without dropping your session.
+      Mosh handles roaming, high latency, and intermittent connectivity
+      so you can work from anywhere.
+    </p>
+    <div class="feature-pills">
+      <span class="pill green">Mosh Protocol</span>
+      <span class="pill">Auto-Reconnect</span>
+      <span class="pill amber">Network Roaming</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ FOOTER CTA ═══════════ -->
+<section class="footer">
+  <h2><span>Your servers, in your pocket.</span></h2>
+  <br>
+  <a href="#" class="cta-btn">
+    <svg viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+    Coming to the App Store
+  </a>
+  <p>Built with Ghostty &middot; Swift &middot; Metal</p>
+</section>
+
+</body>
+</html>

@@ -1,13 +1,17 @@
 import Foundation
 import SwiftUI
-import SwiftData
+import Combine
 
 @MainActor
 @Observable
 final class ConnectionViewModel {
     // Active session — either SSH or Mosh
-    var sshSession: SSHSession?
-    var moshSession: MoshSession?
+    var sshSession: SSHSession? {
+        didSet { bindSessionState() }
+    }
+    var moshSession: MoshSession? {
+        didSet { bindSessionState() }
+    }
     var isConnecting = false
     var errorMessage: String?
     var showError = false
@@ -18,7 +22,9 @@ final class ConnectionViewModel {
     var detectedPackageManager: RemotePackageManager?
 
     // tmux session picker state
-    var showTmuxPicker = false
+    var showTmuxPicker = false {
+        didSet { bindSessionState() }
+    }
     var detectedTmuxSessions: [TmuxSessionInfo] = []
 
     // Stashed credentials for fallback/install retry
@@ -26,12 +32,47 @@ final class ConnectionViewModel {
     private var pendingPassword: String?
     private var pendingKeyTag: String?
 
+    // Bridged state from the active session's @Published connectionState.
+    // SSHSession/MoshSession use ObservableObject + @Published (Combine),
+    // but this class uses @Observable (Swift Observation). These two systems
+    // don't bridge automatically — changes to sshSession.connectionState
+    // don't trigger @Observable updates. This stored property is synced via
+    // a Combine subscription so SwiftUI sees changes.
+    private(set) var currentSessionState: ConnectionState = .disconnected
+
+    // Combine subscription that forwards session state changes
+    @ObservationIgnored
+    private var sessionStateCancellable: AnyCancellable?
+
     // The active session's connection state — suppress .connected until terminal is open
     var connectionState: ConnectionState {
         if showTmuxPicker { return .connecting }
-        if let moshSession { return moshSession.connectionState }
-        if let sshSession { return sshSession.connectionState }
-        return .disconnected
+        return currentSessionState
+    }
+
+    // Subscribe to the active session's @Published connectionState and
+    // mirror it into currentSessionState so @Observable can track it.
+    private func bindSessionState() {
+        sessionStateCancellable?.cancel()
+        sessionStateCancellable = nil
+
+        if showTmuxPicker {
+            currentSessionState = .connecting
+        } else if let moshSession {
+            currentSessionState = moshSession.connectionState
+            sessionStateCancellable = moshSession.$connectionState
+                .sink { [weak self] state in
+                    self?.currentSessionState = state
+                }
+        } else if let sshSession {
+            currentSessionState = sshSession.connectionState
+            sessionStateCancellable = sshSession.$connectionState
+                .sink { [weak self] state in
+                    self?.currentSessionState = state
+                }
+        } else {
+            currentSessionState = .disconnected
+        }
     }
 
     // Whether a session object exists (even if currently disconnected/reconnecting)
@@ -90,17 +131,18 @@ final class ConnectionViewModel {
         }
     }
 
-    // Handle the user's tmux session choice, creating a distinct saved entry if needed
-    func completeTmuxChoice(_ choice: TmuxChoice, modelContext: ModelContext? = nil) async {
+    // Handle the user's tmux session choice — returns the chosen session name for display
+    func completeTmuxChoice(_ choice: TmuxChoice) async -> String? {
         showTmuxPicker = false
-        guard let sshSession else { return }
+        guard let sshSession else { return nil }
+
+        var chosenSession: String? = nil
 
         // Set the initial command based on user choice
         switch choice {
         case .attach(let session):
             sshSession.initialCommand = TmuxDetectionService.attachCommand(sessionName: session.name)
-            // Create or find a distinct entry for this server+tmux combo
-            ensureTmuxEntry(sessionName: session.name, modelContext: modelContext)
+            chosenSession = session.name
         case .newSession:
             sshSession.initialCommand = TmuxDetectionService.newSessionCommand()
         case .skip:
@@ -113,54 +155,8 @@ final class ConnectionViewModel {
         if connectionState == .connected {
             pendingServer?.lastConnected = Date()
         }
-    }
 
-    // Create a saved connection entry for a server+tmux combo if one doesn't already exist
-    private func ensureTmuxEntry(sessionName: String, modelContext: ModelContext?) {
-        guard let server = pendingServer, let modelContext else { return }
-
-        // If this server entry already targets this tmux session, just update it
-        if server.tmuxSession == sessionName {
-            return
-        }
-
-        // Check if a matching entry already exists
-        let hostname = server.hostname
-        let port = server.port
-        let username = server.username
-        let predicate = #Predicate<Server> {
-            $0.hostname == hostname &&
-            $0.port == port &&
-            $0.username == username &&
-            $0.tmuxSession == sessionName
-        }
-        let descriptor = FetchDescriptor<Server>(predicate: predicate)
-
-        if let existing = try? modelContext.fetch(descriptor).first {
-            // Entry already exists — switch to it for lastConnected tracking
-            pendingServer = existing
-            return
-        }
-
-        // Create a new entry for this server+tmux session combo
-        let newEntry = Server(
-            name: "\(server.name) (\(sessionName))",
-            hostname: server.hostname,
-            port: server.port,
-            username: server.username,
-            authMethod: server.authMethod,
-            useMosh: server.useMosh,
-            tmuxSession: sessionName
-        )
-        modelContext.insert(newEntry)
-
-        // Copy stored password to the new entry's Keychain slot
-        if server.authMethod == .password,
-           let password = try? KeychainService.shared.retrievePassword(forServer: server.id) {
-            try? KeychainService.shared.storePassword(password, forServer: newEntry.id)
-        }
-
-        pendingServer = newEntry
+        return chosenSession
     }
 
     // Handle app returning to foreground — check session health and reconnect if needed
@@ -175,8 +171,9 @@ final class ConnectionViewModel {
         }
 
         if let sshSession {
-            // If the SSH session silently died while backgrounded, trigger reconnect
-            if sshSession.connectionState == .disconnected {
+            // If the SSH session silently died while backgrounded, trigger reconnect.
+            // Don't reconnect if the user typed 'exit' — that's an intentional end.
+            if sshSession.connectionState == .disconnected && !sshSession.sessionEndedNormally {
                 Task {
                     await sshSession.reconnect()
                 }
