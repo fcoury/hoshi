@@ -3,6 +3,11 @@ import UIKit
 
 typealias ToolbarButtonAction = ([UInt8]) -> Void
 
+enum ClipboardAction {
+    case copy
+    case paste
+}
+
 /// UIKit host for the keyboard toolbar, mounted as `inputAccessoryView` on the terminal's
 /// hidden `UITextField`.
 ///
@@ -21,6 +26,9 @@ class KeyboardToolbarAccessoryView: UIView {
 
     // Callback to present the edit sheet
     var onEditTap: (() -> Void)?
+
+    // Callback for semantic clipboard actions
+    var onClipboardAction: ((ClipboardAction) -> Void)?
 
     // Current button layout
     private var buttons: [ToolbarButton]
@@ -81,6 +89,18 @@ class KeyboardToolbarAccessoryView: UIView {
     }
 
     private func handleButtonTap(_ button: ToolbarButton) {
+        if button.id == ToolbarButton.copy.id {
+            HapticService.lightTap()
+            onClipboardAction?(.copy)
+            return
+        }
+
+        if button.id == ToolbarButton.paste.id {
+            HapticService.lightTap()
+            onClipboardAction?(.paste)
+            return
+        }
+
         // Sticky modifiers toggle on/off and modify the next key press
         if ToolbarButton.stickyModifierIDs.contains(button.id) {
             if activeModifiers.contains(button.id) {

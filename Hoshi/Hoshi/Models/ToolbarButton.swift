@@ -14,6 +14,7 @@ struct ToolbarButton: Codable, Identifiable, Equatable, Hashable {
         case swipe      // Swipe-to-arrow controls
         case function   // F1-F12
         case symbol     // /, -, |, ~, etc.
+        case clipboard  // Copy and paste actions
         case combo      // Ctrl+C, Ctrl+B, Ctrl+D, etc.
     }
 }
@@ -23,7 +24,7 @@ struct ToolbarButton: Codable, Identifiable, Equatable, Hashable {
 extension ToolbarButton {
 
     // All available buttons the user can choose from
-    static let allAvailable: [ToolbarButton] = modifiers + navigation + swipeControls + function + symbols + combos
+    static let allAvailable: [ToolbarButton] = modifiers + navigation + swipeControls + function + symbols + clipboard + combos
 
     // Default toolbar layout
     static let defaultButtons: [ToolbarButton] = [
@@ -120,6 +121,13 @@ extension ToolbarButton {
         ampersand, asterisk, equals, plus, backslash, underscore,
         lbracket, rbracket, lbrace, rbrace,
     ]
+
+    // MARK: Clipboard actions
+
+    static let copy = ToolbarButton(id: "copy", label: "Copy", bytes: [], category: .clipboard)
+    static let paste = ToolbarButton(id: "paste", label: "Paste", bytes: [], category: .clipboard)
+
+    static let clipboard: [ToolbarButton] = [copy, paste]
 
     // MARK: Common key combos (Ctrl+letter = letter & 0x1F)
 
