@@ -18,12 +18,28 @@ struct ConnectView: View {
         NavigationStack {
             Form {
                 Section("Server") {
-                    LabeledContent("Name", value: server.name)
-                    LabeledContent("Host", value: "\(server.hostname):\(server.port)")
-                    LabeledContent("User", value: server.username)
-                    LabeledContent("Auth", value: server.authMethod == .password ? "Password" : "SSH Key")
+                    LabeledContent("Name") {
+                        Text(server.name)
+                            .font(.system(size: 14, design: .monospaced))
+                    }
+                    LabeledContent("Host") {
+                        Text("\(server.hostname):\(server.port)")
+                            .font(.system(size: 14, design: .monospaced))
+                    }
+                    LabeledContent("User") {
+                        Text(server.username)
+                            .font(.system(size: 14, design: .monospaced))
+                    }
+                    LabeledContent("Auth") {
+                        Text(server.authMethod == .password ? "Password" : "SSH Key")
+                            .font(.system(size: 14, design: .monospaced))
+                    }
                     if server.useMosh {
-                        LabeledContent("Mode", value: "Mosh (resilient)")
+                        LabeledContent("Mode") {
+                            Text("MOSH")
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.green)
+                        }
                     }
                 }
 

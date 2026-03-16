@@ -128,6 +128,17 @@ final class GhosttyRuntimeController: ObservableObject {
             GhosttyTerminalSurfaceView.updateTitle(for: surface, title: title)
             return true
 
+        case GHOSTTY_ACTION_SCROLLBAR:
+            guard target.tag == GHOSTTY_TARGET_SURFACE,
+                  let surface = target.target.surface
+            else {
+                return true
+            }
+
+            let sb = action.action.scrollbar
+            GhosttyTerminalSurfaceView.updateScrollbar(for: surface, total: sb.total, offset: sb.offset, len: sb.len)
+            return true
+
         default:
             return false
         }

@@ -25,5 +25,10 @@ prd/.ralph-tui/
 *.swp
 *~
 
+# Wrangler cache
+.wrangler/
+
 # Local Ghostty build artifacts
 Hoshi/Frameworks/GhosttyKit.xcframework
+# Nightshift plan artifacts (keep out of version control)
+.nightshift-plan

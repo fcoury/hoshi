@@ -32,7 +32,7 @@ enum GhosttyThemeAdapter {
         }
 
         // Font
-        lines.append("font-family = \"\(settings.fontFamily)\"")
+        lines.append("font-family = \(settings.fontFamily)")
         lines.append("font-size = \(Double(settings.fontSize))")
         lines.append("window-inherit-font-size = false")
 

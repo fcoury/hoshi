@@ -31,11 +31,6 @@ targets:
         INFOPLIST_KEY_UIUserInterfaceStyle: Dark
         INFOPLIST_KEY_UILaunchScreen_Generation: true
         INFOPLIST_KEY_CFBundleDisplayName: "Hoshi"
-        INFOPLIST_KEY_UIAppFonts:
-          - FantasqueSansMNerdFontMono-Regular.ttf
-          - FantasqueSansMNerdFontMono-Italic.ttf
-          - FantasqueSansMNerdFontMono-Bold.ttf
-          - FantasqueSansMNerdFontMono-BoldItalic.ttf
         PRODUCT_BUNDLE_IDENTIFIER: com.hoshi.app.dev
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"

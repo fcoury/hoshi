@@ -15,6 +15,7 @@ final class AppearanceSettings {
         static let cursorStyle = "com.hoshi.appearance.cursorStyle"
         static let backgroundOpacity = "com.hoshi.appearance.backgroundOpacity"
         static let colorScheme = "com.hoshi.appearance.colorScheme"
+        static let scrollMultiplier = "com.hoshi.appearance.scrollMultiplier"
     }
 
     var themeID: String {
@@ -41,6 +42,10 @@ final class AppearanceSettings {
         didSet { defaults.set(colorScheme.rawValue, forKey: Key.colorScheme) }
     }
 
+    var scrollMultiplier: Double {
+        didSet { defaults.set(scrollMultiplier, forKey: Key.scrollMultiplier) }
+    }
+
     // Resolved theme object from the current themeID
     var currentTheme: TerminalTheme {
         TerminalTheme.theme(for: themeID)
@@ -55,6 +60,7 @@ final class AppearanceSettings {
         hasher.combine(cursorStyle)
         hasher.combine(backgroundOpacity)
         hasher.combine(colorScheme)
+        hasher.combine(scrollMultiplier)
         return hasher.finalize()
     }
 
@@ -81,5 +87,8 @@ final class AppearanceSettings {
         } else {
             self.colorScheme = .dark
         }
+
+        let savedMultiplier = defaults.object(forKey: Key.scrollMultiplier) as? Double
+        self.scrollMultiplier = savedMultiplier ?? 3.0
     }
 }

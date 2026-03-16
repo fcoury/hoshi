@@ -7,8 +7,16 @@ struct FontPickerView: View {
 
     private let bundledFonts = [
         "FantasqueSansM Nerd Font Mono",
-        "FantasqueSansM Nerd Font",
-        "FantasqueSansM Nerd Font Propo",
+        "JetBrainsMono Nerd Font Mono",
+        "FiraCode Nerd Font Mono",
+        "Hack Nerd Font Mono",
+        "MesloLGS Nerd Font Mono",
+        "CaskaydiaCove Nerd Font Mono",
+        "SauceCodePro Nerd Font Mono",
+        "Iosevka Nerd Font Mono",
+        "VictorMono Nerd Font Mono",
+        "Mononoki Nerd Font Mono",
+        "GeistMono Nerd Font Mono",
     ]
 
     @State private var systemMonoFonts: [String] = []
