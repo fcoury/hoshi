@@ -205,6 +205,15 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         toolbarAccessory.onButtonTap = { [weak self] bytes in
             self?.sendInputData(Data(bytes))
         }
+        toolbarAccessory.onClipboardAction = { [weak self] action in
+            guard let self else { return }
+            switch action {
+            case .copy:
+                _ = self.copyToClipboard()
+            case .paste:
+                self.pasteFromClipboard()
+            }
+        }
 
         if let app {
             createSurface(app: app, fontSize: fontSize)
@@ -308,6 +317,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
 
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         var handled = false
+        var unhandledPresses: Set<UIPress> = []
 
         for press in presses {
             guard let key = press.key else {
@@ -315,6 +325,20 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
                 // Forwarding those to `super` can trigger Ghostty's PTY callback
                 // while `insertText` also fires, duplicating user input.
                 handled = true
+                continue
+            }
+
+            if key.modifierFlags.contains(.command) {
+                let chars = key.charactersIgnoringModifiers.lowercased()
+                if chars == "c" {
+                    _ = copyToClipboard()
+                    handled = true
+                } else if chars == "v" {
+                    pasteFromClipboard()
+                    handled = true
+                } else {
+                    unhandledPresses.insert(press)
+                }
                 continue
             }
 
@@ -337,7 +361,9 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
             }
         }
 
-        if !handled {
+        if !unhandledPresses.isEmpty {
+            super.pressesBegan(unhandledPresses, with: event)
+        } else if !handled {
             super.pressesBegan(presses, with: event)
         }
     }
@@ -491,6 +517,37 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         guard let surface else { return }
         content.withCString { cString in
             ghostty_surface_complete_clipboard_request(surface, cString, state, confirmed)
+        }
+    }
+
+    func hasSelection() -> Bool {
+        guard let surface else { return false }
+        return ghostty_surface_has_selection(surface)
+    }
+
+    func readSelection() -> String? {
+        guard let surface else { return nil }
+
+        var selectedText = ghostty_text_s()
+        guard ghostty_surface_read_selection(surface, &selectedText) else { return nil }
+        defer { ghostty_surface_free_text(surface, &selectedText) }
+
+        let text = String(cString: selectedText.text)
+        return text.isEmpty ? nil : text
+    }
+
+    @discardableResult
+    func copyToClipboard() -> Bool {
+        guard let selectedText = readSelection() else { return false }
+        UIPasteboard.general.string = selectedText
+        return true
+    }
+
+    func pasteFromClipboard() {
+        guard let surface, UIPasteboard.general.hasStrings else { return }
+        let action = "paste_from_clipboard"
+        action.withCString { cAction in
+            _ = ghostty_surface_binding_action(surface, cAction, UInt(action.utf8.count))
         }
     }
 
@@ -878,7 +935,13 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
             ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
         case .changed:
             ghostty_surface_mouse_pos(surface, pos.x, pos.y, GHOSTTY_MODS_NONE)
-        case .ended, .cancelled:
+        case .ended:
+            ghostty_surface_mouse_pos(surface, pos.x, pos.y, GHOSTTY_MODS_NONE)
+            ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
+            if copyToClipboard() {
+                HapticService.lightTap()
+            }
+        case .cancelled:
             ghostty_surface_mouse_pos(surface, pos.x, pos.y, GHOSTTY_MODS_NONE)
             ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
         default:
