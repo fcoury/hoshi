@@ -4,12 +4,18 @@ A terminal app for iOS built for monitoring and interacting with AI coding agent
 
 Hoshi (星, "star" in Japanese) is designed around a specific workflow: connect → pick tmux session → check agent status → send input → disconnect. It prioritizes mobile-friendly terminal interaction with gesture controls, a customizable keyboard toolbar, and Metal-accelerated rendering powered by [Ghostty](https://ghostty.org).
 
+<a href="https://apps.apple.com/app/id6760631255">
+  <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" height="40" />
+</a>
+
 <p align="center">
-  <img src="assets/server-list.png" width="270" alt="Server list" />
-  &nbsp;&nbsp;
-  <img src="assets/tmux-picker.png" width="270" alt="tmux session picker" />
-  &nbsp;&nbsp;
-  <img src="assets/terminal-session.png" width="270" alt="Terminal session" />
+  <img src="assets/screenshots/6.9/01-hero-1320x2868.png" width="220" alt="Your AI agents, in your pocket" />
+  &nbsp;
+  <img src="assets/screenshots/6.9/02-terminal-1320x2868.png" width="220" alt="A real terminal. Finally." />
+  &nbsp;
+  <img src="assets/screenshots/6.9/03-multi-session-1320x2868.png" width="220" alt="Every server, one swipe" />
+  &nbsp;
+  <img src="assets/screenshots/6.9/05-identity-1320x2868.png" width="220" alt="Made for devs who ship with agents" />
 </p>
 
 ## Features
