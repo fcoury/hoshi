@@ -9,13 +9,11 @@ Hoshi (星, "star" in Japanese) is designed around a specific workflow: connect 
 </a>
 
 <p align="center">
-  <img src="assets/screenshots/6.9/01-hero-1320x2868.png" width="220" alt="Your AI agents, in your pocket" />
-  &nbsp;
-  <img src="assets/screenshots/6.9/02-terminal-1320x2868.png" width="220" alt="A real terminal. Finally." />
-  &nbsp;
-  <img src="assets/screenshots/6.9/03-multi-session-1320x2868.png" width="220" alt="Every server, one swipe" />
-  &nbsp;
-  <img src="assets/screenshots/6.9/05-identity-1320x2868.png" width="220" alt="Made for devs who ship with agents" />
+  <img src="assets/screenshots/6.9/01-hero-1320x2868.png" width="250" alt="Your AI agents, in your pocket" />
+  &nbsp;&nbsp;
+  <img src="assets/screenshots/6.9/02-terminal-1320x2868.png" width="250" alt="A real terminal. Finally." />
+  &nbsp;&nbsp;
+  <img src="assets/screenshots/6.9/03-multi-session-1320x2868.png" width="250" alt="Every server, one swipe" />
 </p>
 
 ## Features
