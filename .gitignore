@@ -25,6 +25,9 @@ prd/.ralph-tui/
 *.swp
 *~
 
+# API keys
+*.p8
+
 # Wrangler cache
 .wrangler/
 
