@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00000PRIV00000000PRIVACY01 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 00000PRIV00000000PRIVACY02 /* PrivacyInfo.xcprivacy */; };
 		00022D11F851BDF7B2E6A9E2 /* GhosttyRuntimeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A17CA7267266FF635755CD /* GhosttyRuntimeController.swift */; };
 		04891F707B323D36FB701009 /* SauceCodeProNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = EE74F42FC3581FBD6835FEE6 /* SauceCodeProNerdFontMono-Regular.ttf */; };
 		097940E5568A3DFD23FFF996 /* MononokiNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3E541CA9B24D14C5D80302FE /* MononokiNerdFontMono-Bold.ttf */; };
@@ -94,7 +95,7 @@
 		D9777936EE3EF82667021731 /* MesloLGSNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1774CA68622C03A3373FEB0 /* MesloLGSNerdFontMono-Bold.ttf */; };
 		DAF481F02039E5DCF7BAFD08 /* SSHConnectionError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7B7A33C6D07387D9708017 /* SSHConnectionError.swift */; };
 		DD3E1D9D00916701F11A6762 /* VictorMonoNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C76E633109B9B1EEB493CC99 /* VictorMonoNerdFontMono-BoldItalic.ttf */; };
-		DF4201EF0C83E223DF1F69C0 /* GhosttyKit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 6E2EFDD79EC2C42851A8617C /* GhosttyKit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+
 		E293E5B88435EF600774A8DA /* KeychainServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C196748322C5769248D1E351 /* KeychainServiceTests.swift */; };
 		E40620E37450D2328A81C58E /* IosevkaNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0BC8F5D874B7A64368CA4634 /* IosevkaNerdFontMono-Italic.ttf */; };
 		E6435FDC851D363CAD5BB75D /* ToolbarEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31A14278942E4B7AEFB3F1EB /* ToolbarEditView.swift */; };
@@ -125,7 +126,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				DF4201EF0C83E223DF1F69C0 /* GhosttyKit.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -133,6 +133,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		00000PRIV00000000PRIVACY02 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		00A59A42868A8B1623EA7ACC /* FantasqueSansMNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		056BD9A1394B7DE2DC974461 /* VictorMonoNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "VictorMonoNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		08326AEDEEBE494F5026A5FD /* TmuxDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxDetectionService.swift; sourceTree = "<group>"; };
@@ -271,6 +272,7 @@
 			children = (
 				33023FFA322E011C5EB6887A /* Assets.xcassets */,
 				4FC697AB2FE144B55B83B4F9 /* Fonts */,
+				00000PRIV00000000PRIVACY02 /* PrivacyInfo.xcprivacy */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -534,6 +536,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				00000PRIV00000000PRIVACY01 /* PrivacyInfo.xcprivacy in Resources */,
 				82E093096115FAE2667FBD39 /* Assets.xcassets in Resources */,
 				96E76FE7CC9CAE73972F40B2 /* CaskaydiaCoveNerdFontMono-Bold.ttf in Resources */,
 				5248EE3B3EA2C454D927D269 /* CaskaydiaCoveNerdFontMono-BoldItalic.ttf in Resources */,
@@ -675,13 +678,16 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Hoshi;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				"INFOPLIST_KEY_UISupportedInterfaceOrientations~ipad" = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
+				ITSAppUsesNonExemptEncryption = NO;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.hoshi.app;
+				PRODUCT_BUNDLE_IDENTIFIER = app.gethoshi.ios;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -840,13 +846,16 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Hoshi;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				"INFOPLIST_KEY_UISupportedInterfaceOrientations~ipad" = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
+				ITSAppUsesNonExemptEncryption = NO;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.hoshi.app;
+				PRODUCT_BUNDLE_IDENTIFIER = app.gethoshi.ios;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
