@@ -6,6 +6,7 @@ import SwiftUI
 struct SessionCarouselView: View {
     let sessions: [ManagedSession]
     let onTap: (UUID) -> Void
+    let onDuplicate: (UUID) -> Void
     let onClose: (UUID) -> Void
 
     private var theme: TerminalTheme { AppearanceSettings.shared.currentTheme }
@@ -33,6 +34,12 @@ struct SessionCarouselView: View {
                                 onTap(session.id)
                             }
                             .contextMenu {
+                                Button {
+                                    onDuplicate(session.id)
+                                } label: {
+                                    Label("Duplicate Session", systemImage: "plus.square.on.square")
+                                }
+
                                 Button("Close Session", role: .destructive) {
                                     onClose(session.id)
                                 }

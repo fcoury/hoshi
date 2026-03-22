@@ -214,6 +214,9 @@ struct ServerListView: View {
                         onTap: { sessionID in
                             sessionManager.switchTo(sessionID: sessionID)
                         },
+                        onDuplicate: { sessionID in
+                            duplicateSession(id: sessionID)
+                        },
                         onClose: { sessionID in
                             Task {
                                 await sessionManager.closeSession(id: sessionID)
@@ -240,6 +243,12 @@ struct ServerListView: View {
                                 Label("Edit", systemImage: "pencil")
                             }
 
+                            Button {
+                                duplicateServer(server)
+                            } label: {
+                                Label("Duplicate Server", systemImage: "doc.on.doc")
+                            }
+
                             Button(role: .destructive) {
                                 deleteServer(server)
                             } label: {
@@ -263,19 +272,39 @@ struct ServerListView: View {
     // Create a session and connect — sequential flow avoids race conditions
     private func connectToServer(_ server: Server) {
         HapticService.lightTap()
+        launchSession(for: server)
+    }
+
+    private func duplicateSession(id: UUID) {
+        HapticService.lightTap()
+
+        guard let sourceSession = sessionManager.sessions.first(where: { $0.id == id }) else { return }
+        guard let sourceServer = servers.first(where: { $0.id == sourceSession.serverID }) else {
+            quickLaunchErrorMessage = "Unable to duplicate \(sourceSession.serverName) because its server profile no longer exists."
+            return
+        }
+
+        launchSession(for: sourceServer, tmuxOverride: sourceSession.tmuxSession)
+    }
+
+    private func launchSession(for server: Server, tmuxOverride: String? = nil) {
         quickLaunchErrorMessage = nil
-        guard let session = sessionManager.createSession(for: server) else {
+        let connectionServer = connectionServer(from: server, tmuxOverride: tmuxOverride)
+
+        guard let session = sessionManager.createSession(for: connectionServer) else {
+            selectedServer = nil
             showMaxSessionsAlert = true
             return
         }
 
+        session.tmuxSession = connectionServer.tmuxSession
         connectingSession = session
 
-        if ConnectionViewModel.hasStoredCredentials(for: server) {
+        if ConnectionViewModel.hasStoredCredentials(for: connectionServer) {
             // Quick-launch: await full connection, then transition
             quickLaunching = true
             Task {
-                await session.connectionVM.quickLaunch(server: server)
+                await session.connectionVM.quickLaunch(server: connectionServer)
                 quickLaunching = false
 
                 if session.connectionVM.showTmuxPicker {
@@ -291,20 +320,68 @@ struct ServerListView: View {
                     // Connection failed or unexpected state — preserve
                     // the error after the transient session is closed.
                     quickLaunchErrorMessage = session.connectionVM.errorMessage
-                        ?? "Unable to connect to \(server.name)."
+                        ?? "Unable to connect to \(connectionServer.name)."
                     await sessionManager.closeSession(id: session.id)
                     connectingSession = nil
                 }
             }
         } else {
             // Show ConnectView for credential entry
-            selectedServer = server
+            selectedServer = connectionServer
         }
+    }
+
+    private func connectionServer(from server: Server, tmuxOverride: String?) -> Server {
+        let copy = Server(
+            name: server.name,
+            hostname: server.hostname,
+            port: server.port,
+            username: server.username,
+            authMethod: server.authMethod,
+            useMosh: server.useMosh,
+            tmuxSession: tmuxOverride ?? server.tmuxSession
+        )
+        copy.id = server.id
+        copy.lastConnected = server.lastConnected
+        return copy
     }
 
     private func deleteServer(_ server: Server) {
         KeychainService.shared.deletePassword(forServer: server.id)
         modelContext.delete(server)
+    }
+
+    private func duplicateServer(_ server: Server) {
+        let duplicatedServer = Server(
+            name: duplicatedServerName(from: server.name),
+            hostname: server.hostname,
+            port: server.port,
+            username: server.username,
+            authMethod: server.authMethod,
+            useMosh: server.useMosh,
+            tmuxSession: server.tmuxSession
+        )
+
+        if server.authMethod == .password,
+           let password = try? KeychainService.shared.retrievePassword(forServer: server.id) {
+            try? KeychainService.shared.storePassword(password, forServer: duplicatedServer.id)
+        }
+
+        modelContext.insert(duplicatedServer)
+        HapticService.lightTap()
+        editingServer = duplicatedServer
+    }
+
+    private func duplicatedServerName(from originalName: String) -> String {
+        let baseName = "\(originalName) Copy"
+        guard !servers.contains(where: { $0.name == baseName }) else {
+            var copyIndex = 2
+            while servers.contains(where: { $0.name == "\(baseName) \(copyIndex)" }) {
+                copyIndex += 1
+            }
+            return "\(baseName) \(copyIndex)"
+        }
+        return baseName
     }
 }
 

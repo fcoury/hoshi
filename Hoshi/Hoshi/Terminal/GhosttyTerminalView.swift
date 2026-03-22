@@ -153,6 +153,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
     private var lastPressSend: (data: Data, time: CFTimeInterval)?
     private let pressInsertOverlap: CFTimeInterval = 0.05
     private var lastAppliedSettingsHash: Int = 0
+    private var pendingFocusRetryWorkItem: DispatchWorkItem?
 
     // Scrollbar indicator (added to superview so it composites above Metal)
     private let scrollbarOverlay: UIView = {
@@ -254,6 +255,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
     }
 
     deinit {
+        pendingFocusRetryWorkItem?.cancel()
         scrollbarFadeTimer?.invalidate()
         scrollbarOverlay.removeFromSuperview()
         if let surface {
@@ -401,14 +403,10 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         ghostty_surface_set_occlusion(surface, window != nil)
         if window != nil {
             updateSurfaceSizeIfNeeded()
-
-            // Request focus after the fullScreenCover presentation animation
-            // completes. Immediate becomeFirstResponder() silently fails during
-            // the transition, so we delay until the view is fully presented.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                guard let self, self.window != nil, !self.isFirstResponder else { return }
-                _ = self.becomeFirstResponder()
-            }
+            scheduleFocusAcquisition()
+        } else {
+            pendingFocusRetryWorkItem?.cancel()
+            pendingFocusRetryWorkItem = nil
         }
     }
 
@@ -433,17 +431,28 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
     }
 
     func setKeyboardVisible(_ visible: Bool) {
-        guard visible != isKeyboardVisible else { return }
+        guard visible != isKeyboardVisible else {
+            // SwiftUI often presents the terminal with `keyboardVisible == true`
+            // from the start. In that case we still need an explicit first-
+            // responder request, otherwise the terminal stays inert until the
+            // user toggles keyboard visibility later.
+            if visible {
+                scheduleFocusAcquisition()
+            }
+            return
+        }
         isKeyboardVisible = visible
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             if visible {
-                _ = self.becomeFirstResponder()
+                self.scheduleFocusAcquisition()
             } else {
+                self.pendingFocusRetryWorkItem?.cancel()
+                self.pendingFocusRetryWorkItem = nil
                 _ = self.resignFirstResponder()
+                self.updateSurfaceFocus()
             }
-            self.updateSurfaceFocus()
         }
     }
 
@@ -743,6 +752,31 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         // shell output from repainting the visible terminal surface.
         let shouldFocusSurface = window != nil
         ghostty_surface_set_focus(surface, shouldFocusSurface)
+    }
+
+    private func scheduleFocusAcquisition(attempt: Int = 0) {
+        guard isKeyboardVisible else { return }
+
+        pendingFocusRetryWorkItem?.cancel()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            guard self.window != nil else { return }
+
+            if !self.isFirstResponder {
+                _ = self.becomeFirstResponder()
+            }
+            self.updateSurfaceFocus()
+
+            if !self.isFirstResponder, attempt < 10 {
+                self.scheduleFocusAcquisition(attempt: attempt + 1)
+            }
+        }
+
+        pendingFocusRetryWorkItem = workItem
+
+        let delay = attempt == 0 ? 0.35 : 0.15
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
     private func sendInputData(_ data: Data) {
