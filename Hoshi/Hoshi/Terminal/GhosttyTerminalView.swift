@@ -142,6 +142,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
     private var pinchStartFontSize: CGFloat = 14
     private var isKeyboardVisible: Bool
     private var lastGridSize: (cols: Int, rows: Int) = (0, 0)
+    private var pendingPanScrollLines: CGFloat = 0
     private var snappedRenderSize: CGSize = .zero
     private weak var renderLayer: CALayer?
     private var recentDirectInputs: [(canonical: Data, time: CFTimeInterval)] = []
@@ -914,13 +915,50 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
     // Pan scrolls the terminal buffer using natural scrolling (swipe down = see history)
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard let surface else { return }
-        if gesture.state == .changed {
+        switch gesture.state {
+        case .began:
+            pendingPanScrollLines = 0
+
+        case .changed:
             let delta = gesture.translation(in: self)
-            // Natural scrolling: iOS pan Y positive = finger moves down = content moves down
-            // Ghostty positive Y = scroll up into history, which matches pulling content down
             let multiplier = AppearanceSettings.shared.scrollMultiplier
-            ghostty_surface_mouse_scroll(surface, 0, delta.y * multiplier, 1)
+
+            if ghostty_surface_mouse_captured(surface) {
+                // Preserve app-directed wheel behavior only when the terminal
+                // explicitly requested mouse capture.
+                ghostty_surface_mouse_scroll(surface, 0, delta.y * multiplier, 1)
+                gesture.setTranslation(.zero, in: self)
+                return
+            }
+
+            let size = ghostty_surface_size(surface)
+            let scale = window?.screen.scale ?? traitCollection.displayScale
+            let cellHeight = CGFloat(size.cell_height_px) / max(scale, 1)
+            guard cellHeight > 0 else {
+                gesture.setTranslation(.zero, in: self)
+                return
+            }
+
+            // Touch pan should scroll the viewport, not synthesize cursor keys
+            // in alternate-screen apps that don't capture the mouse.
+            pendingPanScrollLines += (delta.y * multiplier) / cellHeight
+
+            let lineDelta = Int(pendingPanScrollLines.rounded(.towardZero))
+            if lineDelta != 0 {
+                let action = "scroll_page_lines:\(-lineDelta)"
+                action.withCString { cAction in
+                    _ = ghostty_surface_binding_action(surface, cAction, UInt(action.utf8.count))
+                }
+                pendingPanScrollLines -= CGFloat(lineDelta)
+            }
+
             gesture.setTranslation(.zero, in: self)
+
+        case .ended, .cancelled, .failed:
+            pendingPanScrollLines = 0
+
+        default:
+            break
         }
     }
 
