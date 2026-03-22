@@ -35,3 +35,8 @@ prd/.ralph-tui/
 Hoshi/Frameworks/GhosttyKit.xcframework
 # Nightshift plan artifacts (keep out of version control)
 .nightshift-plan
+
+# Screenshot generator local/build artifacts
+assets/screenshot-generator/.next/
+assets/screenshot-generator/node_modules/
+assets/screenshot-generator/.DS_Store
