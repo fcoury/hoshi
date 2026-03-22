@@ -440,15 +440,10 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
             guard let self else { return }
             if visible {
                 _ = self.becomeFirstResponder()
-                if let surface = self.surface {
-                    ghostty_surface_set_focus(surface, true)
-                }
             } else {
                 _ = self.resignFirstResponder()
-                if let surface = self.surface {
-                    ghostty_surface_set_focus(surface, false)
-                }
             }
+            self.updateSurfaceFocus()
         }
     }
 
@@ -664,8 +659,8 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
         case .system: GHOSTTY_COLOR_SCHEME_DARK
         }
         ghostty_surface_set_color_scheme(surface, scheme)
-        ghostty_surface_set_focus(surface, isKeyboardVisible)
         ghostty_surface_set_occlusion(surface, true)
+        updateSurfaceFocus()
 
         ghostty_surface_set_pty_input_callback(surface) { userdata, data, len in
             guard let userdata, let data, len > 0 else { return }
@@ -738,6 +733,16 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits {
             lastGridSize = (finalCols, finalRows)
             onTerminalSizeChanged?(finalCols, finalRows)
         }
+    }
+
+    private func updateSurfaceFocus() {
+        guard let surface else { return }
+
+        // Keyboard visibility and terminal focus are not the same thing.
+        // On iPad, dismissing the software keyboard should not stop tmux or
+        // shell output from repainting the visible terminal surface.
+        let shouldFocusSurface = window != nil
+        ghostty_surface_set_focus(surface, shouldFocusSurface)
     }
 
     private func sendInputData(_ data: Data) {
