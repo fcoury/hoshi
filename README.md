@@ -42,6 +42,14 @@ Hoshi (星, "star" in Japanese) is designed around a specific workflow: connect 
 - Optional bearer-token-protected, self-hosted companion for tmux and Mosh
 - No account, mandatory cloud service, or automatically executed approvals
 
+### Private Voice Prompts
+
+- Push-to-talk dictation using on-device speech recognition only
+- Editable, in-memory drafts with no saved audio or transcripts
+- Insert text without Return, or explicitly confirm submitting it
+- Configurable language and recording limits
+- Drafts and recording are cleared when Hoshi locks or backgrounds
+
 ### Terminal
 
 - Powered by [Ghostty](https://ghostty.org) with Metal-accelerated rendering
@@ -57,6 +65,7 @@ Hoshi (星, "star" in Japanese) is designed around a specific workflow: connect 
 - Sticky modifiers — Ctrl, Opt/Alt, and Shift apply to the next keystroke
 - Swipe-to-arrow controls — drag gestures emit arrow keys
 - Esc, Tab, function keys, symbols, and common combos (^C, ^D, ^Z)
+- Customizable microphone action for private voice prompt composition
 
 ### Touch & Gestures
 
@@ -82,6 +91,7 @@ Hoshi (星, "star" in Japanese) is designed around a specific workflow: connect 
 - **CryptoSwift** — AES-OCB encryption for the Mosh protocol
 - **SwiftData** — local persistence for server profiles
 - **Keychain Services** — credential storage
+- **Speech / AVFoundation** — strictly on-device voice prompt dictation
 
 The Mosh protocol is implemented from scratch in Swift, including UDP transport, SSP (State Synchronization Protocol), and AES-OCB encryption.
 

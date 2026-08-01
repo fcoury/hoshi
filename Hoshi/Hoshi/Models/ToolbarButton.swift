@@ -15,6 +15,7 @@ struct ToolbarButton: Codable, Identifiable, Equatable, Hashable {
         case function   // F1-F12
         case symbol     // /, -, |, ~, etc.
         case clipboard  // Copy and paste actions
+        case voice      // On-device voice prompt composition
         case combo      // Ctrl+C, Ctrl+B, Ctrl+D, etc.
     }
 }
@@ -24,14 +25,14 @@ struct ToolbarButton: Codable, Identifiable, Equatable, Hashable {
 extension ToolbarButton {
 
     // All available buttons the user can choose from
-    static let allAvailable: [ToolbarButton] = modifiers + navigation + swipeControls + function + symbols + clipboard + combos
+    static let allAvailable: [ToolbarButton] = modifiers + navigation + swipeControls + function + symbols + clipboard + voiceActions + combos
 
     // Default toolbar layout
     static let defaultButtons: [ToolbarButton] = [
         .esc, .ctrl, .opt, .tab,
         .arrowUp, .arrowDown, .arrowLeft, .arrowRight,
         .slash, .dash, .pipe,
-        .ctrlC, .paste,
+        .ctrlC, .paste, .voicePrompt,
     ]
 
     // Modifier IDs that behave as sticky toggles (applied to next key press)
@@ -129,6 +130,12 @@ extension ToolbarButton {
 
     static let clipboard: [ToolbarButton] = [copy, paste]
 
+    // MARK: On-device voice prompt actions
+
+    static let voicePrompt = ToolbarButton(id: "voice-prompt", label: "Voice", bytes: [], category: .voice)
+
+    static let voiceActions: [ToolbarButton] = [voicePrompt]
+
     var accessibilityLabel: String {
         switch id {
         case "esc": "Escape"
@@ -154,6 +161,7 @@ extension ToolbarButton {
         case "ctrl-r": "Control R, reverse search"
         case "ctrl-w": "Control W, delete word"
         case "ctrl-u": "Control U, clear line"
+        case "voice-prompt": "Compose on-device voice prompt"
         default: label
         }
     }

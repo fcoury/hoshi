@@ -30,6 +30,12 @@ struct SettingsView: View {
     private var agentSection: some View {
         Section("Coding Agents") {
             NavigationLink {
+                VoicePromptSettingsView()
+            } label: {
+                Label("Voice Prompts", systemImage: "mic")
+            }
+
+            NavigationLink {
                 AgentMonitoringSettingsView()
             } label: {
                 HStack {

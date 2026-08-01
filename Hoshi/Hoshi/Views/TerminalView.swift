@@ -24,6 +24,7 @@ struct TerminalView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let appearanceSettings = AppearanceSettings.shared
+    private let voiceSettings = VoicePromptSettings.shared
 
     // Font size state for pinch-to-zoom (initialized from settings)
     @State private var fontSize: CGFloat = AppearanceSettings.shared.fontSize
@@ -31,11 +32,13 @@ struct TerminalView: View {
     // Toolbar edit sheet
     @State private var showToolbarEditor = false
     @State private var showTmuxPalette = false
+    @State private var showVoiceComposer = false
 
     // Keyboard visibility for explicit show/hide control
     @State private var isKeyboardVisible = true
     @State private var keyboardVisibleBeforeToolbarEditor = true
     @State private var keyboardVisibleBeforeTmuxPalette = true
+    @State private var keyboardVisibleBeforeVoiceComposer = true
 
     // Unsafe pastes and remote clipboard requests require explicit approval.
     @State private var pendingClipboardRequest: TerminalClipboardRequest?
@@ -81,7 +84,9 @@ struct TerminalView: View {
                 appearanceSettings: appearanceSettings,
                 fontSize: $fontSize,
                 showToolbarEditor: $showToolbarEditor,
+                showVoiceComposer: $showVoiceComposer,
                 keyboardVisible: $isKeyboardVisible,
+                voicePromptsEnabled: voiceSettings.isEnabled,
                 onClipboardRequest: { request in
                     keyboardVisibleBeforeClipboardPrompt = isKeyboardVisible
                     pendingClipboardRequest = request
@@ -137,6 +142,14 @@ struct TerminalView: View {
                 isKeyboardVisible = true
             }
         }
+        .onChange(of: showVoiceComposer) { _, isPresented in
+            if isPresented {
+                keyboardVisibleBeforeVoiceComposer = isKeyboardVisible
+                isKeyboardVisible = false
+            } else {
+                isKeyboardVisible = keyboardVisibleBeforeVoiceComposer
+            }
+        }
         .sheet(isPresented: $showToolbarEditor) {
             ToolbarEditView(onSave: {
                 // GhosttyTerminalView reloads toolbar buttons after dismissal.
@@ -145,6 +158,11 @@ struct TerminalView: View {
         .sheet(isPresented: $showTmuxPalette) {
             TmuxCommandPaletteView { bytes in
                 Task { await connectionVM.sendBytes(ArraySlice(bytes)) }
+            }
+        }
+        .sheet(isPresented: $showVoiceComposer) {
+            VoicePromptComposerView { data in
+                await connectionVM.send(data)
             }
         }
         .alert(
@@ -263,6 +281,20 @@ struct TerminalView: View {
             .layoutPriority(1)
 
             Spacer(minLength: 0)
+
+            if voiceSettings.isEnabled {
+                Button {
+                    showVoiceComposer = true
+                } label: {
+                    Image(systemName: "mic")
+                        .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("Compose on-device voice prompt")
+                .accessibilityHint("Opens a private push-to-talk draft")
+                .accessibilityIdentifier("terminal.voice.open")
+                .keyboardShortcut("m", modifiers: [.command, .shift])
+            }
 
             Button {
                 showTmuxPalette = true

@@ -9,7 +9,9 @@ struct GhosttyTerminalView: UIViewRepresentable {
     let appearanceSettings: AppearanceSettings
     @Binding var fontSize: CGFloat
     @Binding var showToolbarEditor: Bool
+    @Binding var showVoiceComposer: Bool
     @Binding var keyboardVisible: Bool
+    let voicePromptsEnabled: Bool
     let onClipboardRequest: (TerminalClipboardRequest) -> Void
     var onSwapSession: (() -> Void)?
     var onSurfaceReady: ((GhosttyTerminalSurfaceView) -> Void)?
@@ -18,6 +20,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
         Coordinator(
             connectionVM: connectionVM,
             showToolbarEditorBinding: $showToolbarEditor,
+            showVoiceComposerBinding: $showVoiceComposer,
             keyboardVisibleBinding: $keyboardVisible,
             managedSession: managedSession,
             onClipboardRequest: onClipboardRequest,
@@ -43,6 +46,9 @@ struct GhosttyTerminalView: UIViewRepresentable {
         view.onEditTap = { [weak coordinator] in
             coordinator?.showToolbarEditorBinding?.wrappedValue = true
         }
+        view.onVoicePrompt = { [weak coordinator] in
+            coordinator?.showVoiceComposerBinding?.wrappedValue = true
+        }
         view.onSwapSession = { [weak coordinator] in
             coordinator?.onSwapSession?()
         }
@@ -52,6 +58,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
         view.onKeyboardVisibilityChanged = { [weak coordinator] visible in
             coordinator?.updateKeyboardVisibility(visible)
         }
+        view.toolbarAccessory.setVoicePromptAvailable(voicePromptsEnabled)
 
         connectionVM.setDataCallback { [weak view] bytes in
             DispatchQueue.main.async {
@@ -75,6 +82,9 @@ struct GhosttyTerminalView: UIViewRepresentable {
         uiView.onEditTap = { [weak coordinator] in
             coordinator?.showToolbarEditorBinding?.wrappedValue = true
         }
+        uiView.onVoicePrompt = { [weak coordinator] in
+            coordinator?.showVoiceComposerBinding?.wrappedValue = true
+        }
         uiView.onSwapSession = { [weak coordinator] in
             coordinator?.onSwapSession?()
         }
@@ -86,6 +96,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
         }
         coordinator.onClipboardRequest = onClipboardRequest
         coordinator.onSwapSession = onSwapSession
+        uiView.toolbarAccessory.setVoicePromptAvailable(voicePromptsEnabled)
 
         connectionVM.setDataCallback { [weak uiView] bytes in
             DispatchQueue.main.async {
@@ -107,6 +118,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
         uiView.onInputData = nil
         uiView.onTerminalSizeChanged = nil
         uiView.onEditTap = nil
+        uiView.onVoicePrompt = nil
         uiView.onSwapSession = nil
         uiView.onClipboardRequest = nil
         uiView.onKeyboardVisibilityChanged = nil
@@ -120,6 +132,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
     final class Coordinator {
         let connectionVM: ConnectionViewModel
         var showToolbarEditorBinding: Binding<Bool>?
+        var showVoiceComposerBinding: Binding<Bool>?
         var keyboardVisibleBinding: Binding<Bool>?
         weak var managedSession: ManagedSession?
         var onClipboardRequest: (TerminalClipboardRequest) -> Void
@@ -129,6 +142,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
         init(
             connectionVM: ConnectionViewModel,
             showToolbarEditorBinding: Binding<Bool>?,
+            showVoiceComposerBinding: Binding<Bool>?,
             keyboardVisibleBinding: Binding<Bool>?,
             managedSession: ManagedSession?,
             onClipboardRequest: @escaping (TerminalClipboardRequest) -> Void,
@@ -136,6 +150,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
         ) {
             self.connectionVM = connectionVM
             self.showToolbarEditorBinding = showToolbarEditorBinding
+            self.showVoiceComposerBinding = showVoiceComposerBinding
             self.keyboardVisibleBinding = keyboardVisibleBinding
             self.managedSession = managedSession
             self.onClipboardRequest = onClipboardRequest
@@ -237,6 +252,11 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
     var onEditTap: (() -> Void)? {
         didSet {
             toolbarAccessory.onEditTap = onEditTap
+        }
+    }
+    var onVoicePrompt: (() -> Void)? {
+        didSet {
+            toolbarAccessory.onVoicePrompt = onVoicePrompt
         }
     }
     var onSwapSession: (() -> Void)?

@@ -32,10 +32,14 @@ class KeyboardToolbarAccessoryView: UIView {
     // Callback for semantic clipboard actions
     var onClipboardAction: ((ClipboardAction) -> Void)?
 
+    // Callback to open the explicit on-device dictation composer.
+    var onVoicePrompt: (() -> Void)?
+
     // Current button layout
     private(set) var buttons: [ToolbarButton]
     private(set) var selectionAvailable = false
     private(set) var pasteAvailable = UIPasteboard.general.hasStrings
+    private(set) var voicePromptAvailable = VoicePromptSettings.shared.isEnabled
     private var pasteboardObserver: NSObjectProtocol?
 
     init(buttons: [ToolbarButton]? = nil) {
@@ -88,6 +92,12 @@ class KeyboardToolbarAccessoryView: UIView {
         updateContent()
     }
 
+    func setVoicePromptAvailable(_ available: Bool) {
+        guard available != voicePromptAvailable else { return }
+        voicePromptAvailable = available
+        updateContent()
+    }
+
     var displayedButtons: [ToolbarButton] {
         guard selectionAvailable,
               !buttons.contains(where: { $0.id == ToolbarButton.copy.id }) else {
@@ -131,6 +141,7 @@ class KeyboardToolbarAccessoryView: UIView {
             activeModifiers: activeModifiers,
             selectionAvailable: selectionAvailable,
             pasteAvailable: pasteAvailable,
+            voicePromptAvailable: voicePromptAvailable,
             onButtonTap: { [weak self] button in
                 self?.handleButtonTap(button)
             },
@@ -155,6 +166,13 @@ class KeyboardToolbarAccessoryView: UIView {
             guard pasteAvailable else { return }
             HapticService.lightTap()
             onClipboardAction?(.paste)
+            return
+        }
+
+        if button.id == ToolbarButton.voicePrompt.id {
+            guard voicePromptAvailable else { return }
+            HapticService.lightTap()
+            onVoicePrompt?()
             return
         }
 
@@ -264,6 +282,7 @@ struct KeyboardToolbarContent: View {
     let activeModifiers: Set<String>
     let selectionAvailable: Bool
     let pasteAvailable: Bool
+    let voicePromptAvailable: Bool
     let onButtonTap: (ToolbarButton) -> Void
     let onSwipeArrow: ([UInt8]) -> Void
     let onEditTap: () -> Void
@@ -316,13 +335,20 @@ struct KeyboardToolbarContent: View {
         let isEnabled = switch button.id {
         case ToolbarButton.copy.id: selectionAvailable
         case ToolbarButton.paste.id: pasteAvailable
+        case ToolbarButton.voicePrompt.id: voicePromptAvailable
         default: true
         }
 
         Button {
             onButtonTap(button)
         } label: {
-            Text(button.label)
+            Group {
+                if button.id == ToolbarButton.voicePrompt.id {
+                    Image(systemName: "mic.fill")
+                } else {
+                    Text(button.label)
+                }
+            }
                 .font(.system(size: 14, weight: .medium, design: .monospaced))
                 .foregroundStyle(isHighlighted
                     ? SwiftUI.Color(AppearanceSettings.shared.currentTheme.background)
@@ -347,6 +373,7 @@ struct KeyboardToolbarContent: View {
         .accessibilityLabel(button.accessibilityLabel)
         .accessibilityValue(isModifier ? (isHighlighted ? "Active" : "Inactive") : "")
         .accessibilityHint(isModifier ? "Applies to the next key" : "")
+        .accessibilityIdentifier(button.id == ToolbarButton.voicePrompt.id ? "terminal.toolbar.voice" : "terminal.toolbar.\(button.id)")
     }
 
     // Swipe button — drag to send arrow keys, with accumulated distance tracking

@@ -34,6 +34,8 @@ targets:
         INFOPLIST_FILE: Hoshi/Info.plist
         INFOPLIST_KEY_UILaunchScreen_Generation: true
         INFOPLIST_KEY_NSFaceIDUsageDescription: "Hoshi uses Face ID to protect your terminal sessions."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Hoshi uses your microphone only while you hold the voice prompt button; audio is transcribed on this device."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Hoshi transcribes voice prompts on this device so you can review them before sending them to your terminal."
         INFOPLIST_KEY_CFBundleDisplayName: "Hoshi"
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         "INFOPLIST_KEY_UISupportedInterfaceOrientations~ipad": UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight

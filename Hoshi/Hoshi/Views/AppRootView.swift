@@ -6,6 +6,7 @@ struct AppRootView: View {
     private let appearance = AppearanceSettings.shared
     private let appLock = AppLockService.shared
     private let companion = AgentCompanionMonitor.shared
+    private let voicePrivacy = VoicePromptPrivacyCoordinator.shared
 
     var body: some View {
         ZStack {
@@ -22,6 +23,7 @@ struct AppRootView: View {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .background:
+                voicePrivacy.protectSensitiveContent()
                 appLock.lock()
                 companion.stop()
             case .active:
@@ -41,6 +43,11 @@ struct AppRootView: View {
         }
         .onOpenURL { url in
             AgentDeepLinkRouter.shared.route(url)
+        }
+        .onChange(of: appLock.isLocked) { _, locked in
+            if locked {
+                voicePrivacy.protectSensitiveContent()
+            }
         }
     }
 

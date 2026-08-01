@@ -25,12 +25,17 @@ final class ToolbarConfigurationService {
             return ToolbarButton.defaultButtons
         }
 
-        // Bring forward the previous uncustomized default when Paste was added,
+        // Upgrade previous untouched defaults as semantic Paste and Voice actions are introduced,
         // while preserving deliberately customized layouts verbatim.
-        let previousDefaultIDs = ToolbarButton.defaultButtons
-            .filter { $0.id != ToolbarButton.paste.id }
-            .map(\.id)
-        if savedIDs == previousDefaultIDs {
+        let currentDefaults = ToolbarButton.defaultButtons
+        let priorDefaultLayouts = [
+            currentDefaults.filter { $0.id != ToolbarButton.voicePrompt.id },
+            currentDefaults.filter { $0.id != ToolbarButton.paste.id },
+            currentDefaults.filter {
+                $0.id != ToolbarButton.paste.id && $0.id != ToolbarButton.voicePrompt.id
+            },
+        ]
+        if priorDefaultLayouts.contains(where: { $0.map(\.id) == savedIDs }) {
             saveButtons(ToolbarButton.defaultButtons)
             return ToolbarButton.defaultButtons
         }

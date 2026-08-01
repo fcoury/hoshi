@@ -23,6 +23,7 @@
 		1A9B8654E8CE7175BE93587A /* GhosttyKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6E2EFDD79EC2C42851A8617C /* GhosttyKit.xcframework */; };
 		1BDB27D50E388FB0BF2B5ED9 /* AgentInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B88762DDB3E3AFB6292E4A50 /* AgentInboxView.swift */; };
 		1C4F264585232B5664F22A6C /* GhosttyTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F434FC2C5E00789F32E7BF2D /* GhosttyTerminalView.swift */; };
+		1D5AD5D242776C5B8DF2EBE4 /* VoicePromptService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20A9F991093AAAF0B820E40 /* VoicePromptService.swift */; };
 		2302287519D2121C10555F48 /* ConnectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 935710390BD542E213897400 /* ConnectionViewModel.swift */; };
 		23AF2EAE8F7FC17F54CFC285 /* JetBrainsMonoNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E31F018D17922A0C005CF1D8 /* JetBrainsMonoNerdFontMono-Italic.ttf */; };
 		2674EBF76DC02237EEECE271 /* IosevkaNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A80A6C5FDC7BE7A082E500A3 /* IosevkaNerdFontMono-BoldItalic.ttf */; };
@@ -97,6 +98,7 @@
 		AE6A859A8E7ED9210A37428C /* MononokiNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 89E70FBED6094022B4F5F8D4 /* MononokiNerdFontMono-Regular.ttf */; };
 		AF9EE0A1C454D8C738E075E4 /* ToolbarButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74C7E92165EDFEF3678813D9 /* ToolbarButton.swift */; };
 		B3E276B09DC8AC366CB189E2 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = B06240B1AC6C6DB7CD56CF5B /* Citadel */; };
+		B51B0573BBFD36C62FE5AF78 /* VoicePromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2414BE0446200D11026F8A1B /* VoicePromptTests.swift */; };
 		B6C1187C1ABC1ACC105F144B /* AppearanceSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FE236F7BE9FEA21ED9BBCBC /* AppearanceSettings.swift */; };
 		B6E12D938C3010070F5453F5 /* CaskaydiaCoveNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B23BAD806015AA69E0909C84 /* CaskaydiaCoveNerdFontMono-Italic.ttf */; };
 		B808A611369E149F6B0B8088 /* ColorSchemePreference.swift in Sources */ = {isa = PBXBuildFile; fileRef = 106EC4392C230C7D203D1769 /* ColorSchemePreference.swift */; };
@@ -114,6 +116,7 @@
 		D30A82B7CDD3B69DD4FF6FE8 /* SSHService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B73D4FAFF8219BC7CB25BA12 /* SSHService.swift */; };
 		D40D2600718331C91545FA29 /* NetworkMonitorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 319B6445E2EFF983D29F19B4 /* NetworkMonitorService.swift */; };
 		D5DE239A88348AB2CC5EB72D /* MoshIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41CF781D13ED19D76B0E662E /* MoshIntegrationTests.swift */; };
+		D5F876E73E14C582D1BEC687 /* VoicePromptComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8170226DB82D210986010A32 /* VoicePromptComposerView.swift */; };
 		D67EFEFDE027566BF7E0922E /* MononokiNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D493916FB8323A0BFDB051C4 /* MononokiNerdFontMono-Italic.ttf */; };
 		D942C869818D5AE7B08AC802 /* AgentEventCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00E1688BB595A8C2E7B6CCAB /* AgentEventCenter.swift */; };
 		D9777936EE3EF82667021731 /* MesloLGSNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1774CA68622C03A3373FEB0 /* MesloLGSNerdFontMono-Bold.ttf */; };
@@ -170,6 +173,7 @@
 		20F66A8ADCC5ECAF18517229 /* AgentEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEvent.swift; sourceTree = "<group>"; };
 		22E727DDBEDCCBA321258007 /* HackNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HackNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
 		23953FB4F905A6CFC0E5B15B /* AgentNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationService.swift; sourceTree = "<group>"; };
+		2414BE0446200D11026F8A1B /* VoicePromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePromptTests.swift; sourceTree = "<group>"; };
 		24D965C6D89F8D05A184268F /* TerminalInteractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInteractionTests.swift; sourceTree = "<group>"; };
 		263F27DE87745B6CBB01F9EC /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		2AF503734734CFDC89F78788 /* KnownHostsServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsServiceTests.swift; sourceTree = "<group>"; };
@@ -211,6 +215,7 @@
 		7C85C3CAB513AE37F7EF24AC /* HapticService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticService.swift; sourceTree = "<group>"; };
 		7E7B7A33C6D07387D9708017 /* SSHConnectionError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHConnectionError.swift; sourceTree = "<group>"; };
 		80B2A4F86E488641E7497767 /* SauceCodeProNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "SauceCodeProNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
+		8170226DB82D210986010A32 /* VoicePromptComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePromptComposerView.swift; sourceTree = "<group>"; };
 		83584445F7F64462E791CA50 /* Server.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Server.swift; sourceTree = "<group>"; };
 		848D6A3E0373C1F3C67951BA /* KnownHostsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsService.swift; sourceTree = "<group>"; };
 		881C5E9A75631AA85261C1E3 /* HackNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HackNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
@@ -262,6 +267,7 @@
 		DE1DC7C7A978ED3F3F629164 /* SessionProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionProtocol.swift; sourceTree = "<group>"; };
 		DEEF1DFBFD9A93E3AFE91086 /* ToolbarConfigurationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarConfigurationService.swift; sourceTree = "<group>"; };
 		E1A17CA7267266FF635755CD /* GhosttyRuntimeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyRuntimeController.swift; sourceTree = "<group>"; };
+		E20A9F991093AAAF0B820E40 /* VoicePromptService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePromptService.swift; sourceTree = "<group>"; };
 		E2754427187BAEC4DF26A643 /* CaskaydiaCoveNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "CaskaydiaCoveNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
 		E2B9B11940723B9C53B4410C /* MoshBootstrapService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshBootstrapService.swift; sourceTree = "<group>"; };
 		E31F018D17922A0C005CF1D8 /* JetBrainsMonoNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
@@ -305,6 +311,7 @@
 				3175AF54B1CC78B801755FCF /* SessionManagerTests.swift */,
 				5EDBF8AB95AD1BD0632E9DC5 /* SSHKeyServiceTests.swift */,
 				24D965C6D89F8D05A184268F /* TerminalInteractionTests.swift */,
+				2414BE0446200D11026F8A1B /* VoicePromptTests.swift */,
 			);
 			path = HoshiTests;
 			sourceTree = "<group>";
@@ -447,6 +454,7 @@
 				DCE7EC1DDE1A89967CD4B68A /* TmuxSessionPickerView.swift */,
 				F4701DC070A2F4F79A3F9D48 /* TmuxSettingsView.swift */,
 				31A14278942E4B7AEFB3F1EB /* ToolbarEditView.swift */,
+				8170226DB82D210986010A32 /* VoicePromptComposerView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -486,6 +494,7 @@
 				9FFB21F11FD5AD284E2064AB /* TmuxConfigurationService.swift */,
 				08326AEDEEBE494F5026A5FD /* TmuxDetectionService.swift */,
 				DEEF1DFBFD9A93E3AFE91086 /* ToolbarConfigurationService.swift */,
+				E20A9F991093AAAF0B820E40 /* VoicePromptService.swift */,
 				DE41E0D0D81438CB451B49AF /* Mosh */,
 			);
 			path = Services;
@@ -733,6 +742,8 @@
 				AF9EE0A1C454D8C738E075E4 /* ToolbarButton.swift in Sources */,
 				6877532658972A191D5982CB /* ToolbarConfigurationService.swift in Sources */,
 				E6435FDC851D363CAD5BB75D /* ToolbarEditView.swift in Sources */,
+				D5F876E73E14C582D1BEC687 /* VoicePromptComposerView.swift in Sources */,
+				1D5AD5D242776C5B8DF2EBE4 /* VoicePromptService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -750,6 +761,7 @@
 				0F89014F48A47FBA641177C6 /* ServerModelTests.swift in Sources */,
 				54188D67D5A44F16D28EDCCB /* SessionManagerTests.swift in Sources */,
 				81FCCB0B4B47EA08E3C54A7E /* TerminalInteractionTests.swift in Sources */,
+				B51B0573BBFD36C62FE5AF78 /* VoicePromptTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -780,6 +792,8 @@
 				INFOPLIST_FILE = Hoshi/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Hoshi;
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hoshi uses Face ID to protect your terminal sessions.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hoshi uses your microphone only while you hold the voice prompt button; audio is transcribed on this device.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Hoshi transcribes voice prompts on this device so you can review them before sending them to your terminal.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				"INFOPLIST_KEY_UISupportedInterfaceOrientations~ipad" = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -949,6 +963,8 @@
 				INFOPLIST_FILE = Hoshi/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Hoshi;
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hoshi uses Face ID to protect your terminal sessions.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hoshi uses your microphone only while you hold the voice prompt button; audio is transcribed on this device.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Hoshi transcribes voice prompts on this device so you can review them before sending them to your terminal.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				"INFOPLIST_KEY_UISupportedInterfaceOrientations~ipad" = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
