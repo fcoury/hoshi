@@ -9,6 +9,7 @@ final class SSHSession: ObservableObject {
     @Published var connectionState: ConnectionState = .disconnected
     @Published var outputBuffer: String = ""
     private var bufferedTerminalOutput = Data()
+    private let agentEventDecoder = AgentEventStreamDecoder()
 
     private(set) var client: SSHClient?
     private(set) var untrustedHostIdentity: SSHHostKeyIdentity?
@@ -21,6 +22,7 @@ final class SSHSession: ObservableObject {
 
     // Raw data callback for feeding bytes directly to the terminal renderer
     var onDataReceived: TerminalDataCallback?
+    var onAgentEvent: (@MainActor (AgentEventEnvelope) -> Void)?
 
     // Stored credentials for reconnection after disconnect
     private var storedPassword: String?
@@ -135,6 +137,20 @@ final class SSHSession: ObservableObject {
         bufferedTerminalOutput.append(data)
         if let text = String(data: data, encoding: .utf8) {
             outputBuffer.append(text)
+        }
+    }
+
+    func processInboundOutput(_ data: Data) async {
+        let result = await agentEventDecoder.ingest(data)
+        for event in result.events {
+            onAgentEvent?(event)
+        }
+
+        guard !result.terminalOutput.isEmpty else { return }
+        if let callback = onDataReceived {
+            callback(Array(result.terminalOutput))
+        } else {
+            bufferTerminalOutput(result.terminalOutput)
         }
     }
 
@@ -320,26 +336,11 @@ final class SSHSession: ObservableObject {
                         switch output {
                         case .stdout(let buffer):
                             if let bytes = buffer.getBytes(at: buffer.readerIndex, length: buffer.readableBytes) {
-                                let callback = await MainActor.run { self.onDataReceived }
-                                // Feed raw bytes to terminal renderer if callback is set
-                                if let callback {
-                                    callback(bytes)
-                                } else {
-                                    await MainActor.run {
-                                        self.bufferTerminalOutput(Data(bytes))
-                                    }
-                                }
+                                await self.processInboundOutput(Data(bytes))
                             }
                         case .stderr(let buffer):
                             if let bytes = buffer.getBytes(at: buffer.readerIndex, length: buffer.readableBytes) {
-                                let callback = await MainActor.run { self.onDataReceived }
-                                if let callback {
-                                    callback(bytes)
-                                } else {
-                                    await MainActor.run {
-                                        self.bufferTerminalOutput(Data(bytes))
-                                    }
-                                }
+                                await self.processInboundOutput(Data(bytes))
                             }
                         }
                     }

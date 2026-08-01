@@ -27,31 +27,37 @@ struct SessionCardView: View {
                     .frame(width: cardWidth, height: thumbnailHeight)
                     .clipped()
 
-                // Status dot — pulses during connecting/reconnecting
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 8, height: 8)
-                    .scaleEffect(statusDotPulsing ? 1.3 : 1.0)
-                    .opacity(statusDotPulsing ? 0.7 : 1.0)
-                    .onAppear {
-                        if isConnecting && !reduceMotion {
-                            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                                statusDotPulsing = true
+                VStack(alignment: .trailing, spacing: 5) {
+                    AgentAttentionBadge(
+                        count: session.unreadAgentEventCount,
+                        kind: session.agentAttentionKind
+                    )
+
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 8, height: 8)
+                        .scaleEffect(statusDotPulsing ? 1.3 : 1.0)
+                        .opacity(statusDotPulsing ? 0.7 : 1.0)
+                        .onAppear {
+                            if isConnecting && !reduceMotion {
+                                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                                    statusDotPulsing = true
+                                }
                             }
                         }
-                    }
-                    .onChange(of: isConnecting) { _, pulsing in
-                        if pulsing && !reduceMotion {
-                            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                                statusDotPulsing = true
-                            }
-                        } else {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                statusDotPulsing = false
+                        .onChange(of: isConnecting) { _, pulsing in
+                            if pulsing && !reduceMotion {
+                                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                                    statusDotPulsing = true
+                                }
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    statusDotPulsing = false
+                                }
                             }
                         }
-                    }
-                    .padding(6)
+                }
+                .padding(6)
             }
 
             // Metadata bar
@@ -92,7 +98,7 @@ struct SessionCardView: View {
         .opacity(isDisconnected ? 0.5 : 1.0)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: isDisconnected)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(session.serverName), \(session.isMosh ? "Mosh" : "SSH") session")
+        .accessibilityLabel("\(session.serverName), \(session.isMosh ? "Mosh" : "SSH") session, \(session.unreadAgentEventCount) unread agent events")
     }
 
     private var isDisconnected: Bool {

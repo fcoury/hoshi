@@ -24,11 +24,14 @@ targets:
     type: application
     platform: iOS
     sources:
-      - Hoshi
+      - path: Hoshi
+        excludes:
+          - Info.plist
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_FILE: Hoshi/Info.plist
         INFOPLIST_KEY_UILaunchScreen_Generation: true
         INFOPLIST_KEY_NSFaceIDUsageDescription: "Hoshi uses Face ID to protect your terminal sessions."
         INFOPLIST_KEY_CFBundleDisplayName: "Hoshi"

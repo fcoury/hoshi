@@ -12,6 +12,7 @@ struct SettingsView: View {
             Form {
                 terminalSection
                 keyboardSection
+                agentSection
                 securitySection
                 appearanceSection
             }
@@ -19,6 +20,27 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    // MARK: - Agent monitoring
+
+    private var agentSection: some View {
+        Section("Coding Agents") {
+            NavigationLink {
+                AgentMonitoringSettingsView()
+            } label: {
+                HStack {
+                    Text("Agent Monitoring")
+                    Spacer()
+                    let count = AgentEventCenter.shared.unreadCount
+                    if count > 0 {
+                        Text("\(count) unread")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }

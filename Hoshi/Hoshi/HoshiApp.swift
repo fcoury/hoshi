@@ -1,9 +1,22 @@
 import SwiftUI
 import SwiftData
 import CoreText
+import UIKit
+
+final class HoshiAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        AgentNotificationService.shared.configure()
+        return true
+    }
+}
 
 @main
 struct HoshiApp: App {
+    @UIApplicationDelegateAdaptor(HoshiAppDelegate.self) private var appDelegate
+
     init() {
         // Register all bundled fonts with Core Text before Ghostty initializes,
         // so they're discoverable by the terminal's font lookup.

@@ -5,6 +5,7 @@ struct AppRootView: View {
 
     private let appearance = AppearanceSettings.shared
     private let appLock = AppLockService.shared
+    private let companion = AgentCompanionMonitor.shared
 
     var body: some View {
         ZStack {
@@ -22,10 +23,12 @@ struct AppRootView: View {
             switch phase {
             case .background:
                 appLock.lock()
+                companion.stop()
             case .active:
                 if appLock.isLocked {
                     Task { await appLock.unlock() }
                 }
+                companion.start()
             default:
                 break
             }
@@ -34,6 +37,10 @@ struct AppRootView: View {
             if appLock.isLocked {
                 await appLock.unlock()
             }
+            companion.start()
+        }
+        .onOpenURL { url in
+            AgentDeepLinkRouter.shared.route(url)
         }
     }
 

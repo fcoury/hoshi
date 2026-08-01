@@ -28,9 +28,19 @@ Hoshi (星, "star" in Japanese) is designed around a specific workflow: connect 
 ### tmux Integration
 
 - Automatic session detection on connect
-- Session picker showing name, window count, and attached status
+- Session picker showing name, window count, attached status, and recent activity
 - Auto-attach to saved sessions
-- Option to create a new session or skip to a raw shell
+- Named session creation or an explicit raw-shell fallback
+- Configurable tmux command palette, prefix, and custom byte sequences
+
+### Coding Agent Monitoring
+
+- Local-first inbox for completed jobs, attention requests, and approvals
+- Per-session attention badges and optional local notifications
+- Notification deep links reopen the relevant terminal
+- Versioned terminal hooks for direct SSH connections
+- Optional bearer-token-protected, self-hosted companion for tmux and Mosh
+- No account, mandatory cloud service, or automatically executed approvals
 
 ### Terminal
 
@@ -58,7 +68,7 @@ Hoshi (星, "star" in Japanese) is designed around a specific workflow: connect 
 
 ### Appearance
 
-- 6 built-in dark themes: Nord, Dracula, Solarized Dark, Gruvbox Dark, Tokyo Night, Catppuccin Mocha
+- Dark and light terminal themes, including Nord, Dracula, Solarized Dark, Solarized Light, Gruvbox Dark, Tokyo Night, and Catppuccin Mocha
 - Cursor style configuration (block, beam, underline)
 - Background opacity control
 - Scroll speed multiplier
@@ -115,6 +125,53 @@ xcodegen --spec Hoshi/project.yml --project Hoshi
 
 Live Mosh integration tests are skipped unless `HOSHI_MOSH_HOST`,
 `HOSHI_MOSH_USER`, and `HOSHI_MOSH_PASSWORD` are all set explicitly.
+
+## Agent Hooks and Self-Hosted Companion
+
+Agent events use a versioned JSON envelope with one of three kinds:
+`completed`, `needs_attention`, or `approval_requested`. Approval events only
+open the related terminal; Hoshi never executes a remotely supplied command.
+
+For a direct SSH terminal, emit an event into the terminal stream:
+
+```bash
+python3 scripts/hoshi-agent-companion.py emit completed \
+  --title "Agent finished" \
+  --message "Tests passed and the patch is ready"
+```
+
+tmux and Mosh can consume terminal escape sequences before they reach an iOS
+client. For those connections, run the optional standard-library-only Python
+companion on your own server:
+
+```bash
+# Generate a local bearer token; never commit it to the repository.
+export HOSHI_AGENT_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+
+# Listen on loopback only. Put a trusted HTTPS reverse proxy in front when the
+# iPhone or iPad connects from another device.
+python3 scripts/hoshi-agent-companion.py serve --port 8765
+
+# In a shell hook or agent callback, post an event to that companion.
+export HOSHI_AGENT_COMPANION_URL="http://127.0.0.1:8765/events"
+python3 scripts/hoshi-agent-companion.py emit approval_requested \
+  --title "Approval required" \
+  --message "Review the requested changes" \
+  --tmux-session coding-agents
+```
+
+In Hoshi, open **Settings → Coding Agents → Agent Monitoring**, enter the
+public HTTPS `/events` endpoint and the same bearer token, then enable agent
+notifications if desired. HTTP is accepted only for loopback development;
+remote endpoints require HTTPS. The bearer token is stored in the iOS Keychain,
+not in server profiles or the event archive.
+
+The companion is polled while Hoshi is active. iOS may suspend networking when
+the app is backgrounded; this local-first integration does not claim to provide
+always-on remote push notifications.
+
+See [docs/agent-events.md](docs/agent-events.md) for the complete event and
+companion HTTP protocol.
 
 ## License
 

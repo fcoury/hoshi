@@ -15,6 +15,9 @@ final class ConnectionViewModel {
     var isConnecting = false
     var errorMessage: String?
     var showError = false
+    var onAgentEvent: (@MainActor (AgentEventEnvelope) -> Void)? {
+        didSet { bindAgentEvents() }
+    }
 
     // Mosh-specific UI state
     var connectionPhase: String = ""
@@ -78,6 +81,16 @@ final class ConnectionViewModel {
                 }
         } else {
             currentSessionState = .disconnected
+        }
+        bindAgentEvents()
+    }
+
+    private func bindAgentEvents() {
+        sshSession?.onAgentEvent = { [weak self] event in
+            self?.onAgentEvent?(event)
+        }
+        moshSession?.onAgentEvent = { [weak self] event in
+            self?.onAgentEvent?(event)
         }
     }
 

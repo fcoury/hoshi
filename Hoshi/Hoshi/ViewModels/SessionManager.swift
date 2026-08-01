@@ -13,10 +13,17 @@ final class SessionManager {
     var tmuxPickerSession: ManagedSession?
     @ObservationIgnored
     private let persistenceStore: SessionPersistenceStore
+    @ObservationIgnored
+    private let agentEventCenter: AgentEventCenter?
     private var hasRestoredPersistedSessions = false
 
-    init(persistenceStore: SessionPersistenceStore = SessionPersistenceStore()) {
+    init(
+        persistenceStore: SessionPersistenceStore = SessionPersistenceStore(),
+        agentEventCenter: AgentEventCenter? = nil
+    ) {
         self.persistenceStore = persistenceStore
+        self.agentEventCenter = agentEventCenter
+        agentEventCenter?.attach(sessionManager: self)
     }
 
     var activeSession: ManagedSession? {
@@ -32,7 +39,9 @@ final class SessionManager {
     func createSession(for server: Server) -> ManagedSession? {
         guard sessions.count < Self.maxSessions else { return nil }
         let session = ManagedSession(server: server)
+        configureAgentMonitoring(for: session)
         promoteSessionToFront(session)
+        agentEventCenter?.synchronizeSessionAttention()
         persistSessionDescriptors()
         return session
     }
@@ -48,6 +57,7 @@ final class SessionManager {
         if activeSessionID == id {
             activeSessionID = nil
         }
+        agentEventCenter?.synchronizeSessionAttention()
         persistSessionDescriptors()
     }
 
@@ -69,6 +79,7 @@ final class SessionManager {
         let session = sessions[index]
         promoteSessionToFront(session)
         activeSessionID = sessionID
+        agentEventCenter?.markSessionRead(sessionID: sessionID)
         persistSessionDescriptors()
     }
 
@@ -88,6 +99,7 @@ final class SessionManager {
         if shouldRemove, let id = removingID {
             sessions.removeAll { $0.id == id }
         }
+        agentEventCenter?.synchronizeSessionAttention()
         persistSessionDescriptors()
     }
 
@@ -116,16 +128,19 @@ final class SessionManager {
             .prefix(Self.maxSessions)
             .compactMap { descriptor -> ManagedSession? in
                 guard let server = profiles[descriptor.serverID] else { return nil }
-                return ManagedSession(
+                let session = ManagedSession(
                     server: server,
                     id: descriptor.id,
                     createdAt: descriptor.createdAt,
                     lastAccessedAt: descriptor.lastAccessedAt,
                     tmuxSession: descriptor.tmuxSession
                 )
+                configureAgentMonitoring(for: session)
+                return session
             }
 
         sessions = restored
+        agentEventCenter?.synchronizeSessionAttention()
         persistSessionDescriptors()
         return restored
     }
@@ -149,5 +164,13 @@ final class SessionManager {
 
     private func persistSessionDescriptors() {
         persistenceStore.save(sessions.map(\.persistedDescriptor))
+    }
+
+    private func configureAgentMonitoring(for session: ManagedSession) {
+        guard agentEventCenter != nil else { return }
+        session.connectionVM.onAgentEvent = { [weak self, weak session] event in
+            guard let self, let session else { return }
+            self.agentEventCenter?.ingest(event, from: session)
+        }
     }
 }

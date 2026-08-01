@@ -45,6 +45,9 @@ jobs:
           xcodegen --spec Hoshi/project.yml --project Hoshi
           git diff --exit-code -- Hoshi/Hoshi.xcodeproj/project.pbxproj
 
+      - name: Test self-hosted agent companion
+        run: python3 scripts/test-hoshi-agent-companion.py
+
       - name: Prepare GhosttyKit and regenerate the project
         run: ./scripts/bootstrap.sh
 

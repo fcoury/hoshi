@@ -15,6 +15,8 @@ final class ManagedSession: Identifiable {
 
     var lastAccessedAt: Date
     var tmuxSession: String?
+    var unreadAgentEventCount = 0
+    var agentAttentionKind: AgentEventKind?
     var thumbnail: UIImage?
     // Own the actual Ghostty surface so switching sessions never discards screen state.
     @ObservationIgnored

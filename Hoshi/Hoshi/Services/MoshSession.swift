@@ -15,6 +15,7 @@ final class MoshSession: ObservableObject {
     @Published var connectionState: ConnectionState = .disconnected
     @Published var outputBuffer: String = ""
     private var bufferedTerminalOutput = Data()
+    private let agentEventDecoder = AgentEventStreamDecoder()
 
     // Mosh-specific state exposed to ViewModel for UI decisions
     @Published var moshServerStatus: MoshServerStatus?
@@ -25,6 +26,7 @@ final class MoshSession: ObservableObject {
 
     // Raw data callback for feeding bytes directly to the terminal renderer
     var onDataReceived: TerminalDataCallback?
+    var onAgentEvent: (@MainActor (AgentEventEnvelope) -> Void)?
 
     private var sshClient: SSHClient?
     private var udpConnection: MoshUDPConnection?
@@ -182,6 +184,14 @@ final class MoshSession: ObservableObject {
         if let text = String(data: data, encoding: .utf8) {
             outputBuffer.append(text)
         }
+    }
+
+    func processInboundOutput(_ data: Data) async -> Data {
+        let result = await agentEventDecoder.ingest(data)
+        for event in result.events {
+            onAgentEvent?(event)
+        }
+        return result.terminalOutput
     }
 
     // Called by ViewModel after user accepts install offer
@@ -440,7 +450,9 @@ final class MoshSession: ObservableObject {
                     let outputs = decoded.outputs
                     debugHostOutputCount += outputs.count
                     for (idx, output) in outputs.enumerated() {
-                        if let hostString = output.hostString {
+                        if let rawHostString = output.hostString {
+                            let hostString = await processInboundOutput(rawHostString)
+                            guard !hostString.isEmpty else { continue }
                             debugHostByteCount += hostString.count
 
                             // Mosh's server-side terminal emulator consumes

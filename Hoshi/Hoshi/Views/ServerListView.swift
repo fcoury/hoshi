@@ -15,9 +15,11 @@ struct ServerListView: View {
     @State private var serverPendingDeletion: Server?
     @State private var sessionPendingClosure: ManagedSession?
     @State private var showSettings = false
+    @State private var showAgentInbox = false
+    @State private var selectedInboxEvent: AgentInboxEvent?
     @State private var searchText = ""
 
-    @State private var sessionManager = SessionManager()
+    @State private var sessionManager = SessionManager(agentEventCenter: .shared)
     @State private var quickLaunching = false
     @State private var connectingSession: ManagedSession?
     @State private var quickLaunchErrorMessage: String?
@@ -25,6 +27,8 @@ struct ServerListView: View {
     @State private var splitViewVisibility = NavigationSplitViewVisibility.all
 
     private let appearance = AppearanceSettings.shared
+    private let agentEvents = AgentEventCenter.shared
+    private let deepLinks = AgentDeepLinkRouter.shared
     private var theme: TerminalTheme { appearance.currentTheme }
     private var usesSplitView: Bool { horizontalSizeClass == .regular }
     private var catalog: ServerCatalog {
@@ -38,6 +42,12 @@ struct ServerListView: View {
             }
             .sheet(isPresented: $showSettings) {
                 SettingsView()
+            }
+            .sheet(isPresented: $showAgentInbox, onDismiss: openSelectedInboxEvent) {
+                AgentInboxView { event in
+                    selectedInboxEvent = event
+                    showAgentInbox = false
+                }
             }
             .sheet(item: $editingServer) { server in
                 AddServerView(existingServer: server)
@@ -125,6 +135,17 @@ struct ServerListView: View {
                     break
                 }
             }
+            .onChange(of: deepLinks.pendingRoute) { _, route in
+                guard let route else { return }
+                handleAgentRoute(route)
+                deepLinks.clear()
+            }
+            .onAppear {
+                if let route = deepLinks.pendingRoute {
+                    handleAgentRoute(route)
+                    deepLinks.clear()
+                }
+            }
             .task(id: servers.map(\.id)) {
                 await restorePersistedSessions()
             }
@@ -196,7 +217,23 @@ struct ServerListView: View {
             .keyboardShortcut(",", modifiers: .command)
         }
 
-        ToolbarItem(placement: .topBarTrailing) {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            Button {
+                showAgentInbox = true
+            } label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "tray.full")
+                    if agentEvents.unreadCount > 0 {
+                        Circle()
+                            .fill(.red)
+                            .frame(width: 9, height: 9)
+                            .offset(x: 5, y: -4)
+                    }
+                }
+            }
+            .accessibilityLabel("Agent inbox, \(agentEvents.unreadCount) unread")
+            .keyboardShortcut("i", modifiers: [.command, .shift])
+
             Button {
                 showAddServer = true
             } label: {
@@ -231,8 +268,14 @@ struct ServerListView: View {
                         } label: {
                             Label {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(session.serverName)
-                                        .lineLimit(1)
+                                    HStack(spacing: 6) {
+                                        Text(session.serverName)
+                                            .lineLimit(1)
+                                        AgentAttentionBadge(
+                                            count: session.unreadAgentEventCount,
+                                            kind: session.agentAttentionKind
+                                        )
+                                    }
                                     if let tmux = session.tmuxSession {
                                         Text(tmux)
                                             .font(.caption.monospaced())
@@ -630,6 +673,50 @@ struct ServerListView: View {
                 _ = await session.connectionVM.completeTmuxChoice(choice)
             }
             sessionManager.recordSessionUpdate(session)
+        }
+    }
+
+    private func openSelectedInboxEvent() {
+        guard let event = selectedInboxEvent else { return }
+        selectedInboxEvent = nil
+
+        if let sessionID = event.sessionID,
+           sessionManager.sessions.contains(where: { $0.id == sessionID }) {
+            sessionManager.switchTo(sessionID: sessionID)
+            return
+        }
+
+        if let serverID = event.serverID,
+           let server = servers.first(where: { $0.id == serverID }) {
+            connectToServer(server)
+        }
+    }
+
+    private func handleAgentRoute(_ route: AgentDeepLink) {
+        switch route {
+        case .inbox(let eventID):
+            if let eventID {
+                agentEvents.markRead(eventID: eventID)
+            }
+            showAgentInbox = true
+        case .session(let sessionID, let eventID):
+            if let eventID {
+                agentEvents.markRead(eventID: eventID)
+            }
+            if sessionManager.sessions.contains(where: { $0.id == sessionID }) {
+                sessionManager.switchTo(sessionID: sessionID)
+            } else {
+                showAgentInbox = true
+            }
+        case .server(let serverID, let eventID):
+            if let eventID {
+                agentEvents.markRead(eventID: eventID)
+            }
+            if let server = servers.first(where: { $0.id == serverID }) {
+                connectToServer(server)
+            } else {
+                showAgentInbox = true
+            }
         }
     }
 }
