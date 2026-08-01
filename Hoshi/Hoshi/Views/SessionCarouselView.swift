@@ -25,14 +25,16 @@ struct SessionCarouselView: View {
             }
             .padding(.horizontal, 16)
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal) {
                 LazyHStack(spacing: 12) {
                     ForEach(sessions) { session in
-                        SessionCardView(session: session)
-                            .onTapGesture {
+                        Button {
                                 HapticService.mediumTap()
                                 onTap(session.id)
-                            }
+                        } label: {
+                            SessionCardView(session: session)
+                        }
+                        .buttonStyle(.plain)
                             .contextMenu {
                                 Button {
                                     onDuplicate(session.id)
@@ -44,10 +46,12 @@ struct SessionCarouselView: View {
                                     onClose(session.id)
                                 }
                             }
+                            .accessibilityHint("Reopens the active terminal session")
                     }
                 }
                 .padding(.horizontal, 16)
             }
+            .scrollIndicators(.hidden)
         }
         .padding(.vertical, 8)
     }

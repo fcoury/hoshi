@@ -5,12 +5,14 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     private let settings = AppearanceSettings.shared
+    private let appLock = AppLockService.shared
 
     var body: some View {
         NavigationStack {
             Form {
                 terminalSection
                 keyboardSection
+                securitySection
                 appearanceSection
             }
             .navigationTitle("Settings")
@@ -52,6 +54,7 @@ struct SettingsView: View {
                     set: { settings.fontSize = $0 }
                 ), in: 8...32, step: 1)
                 .labelsHidden()
+                .accessibilityLabel("Terminal font size")
             }
 
             // Color theme nav link
@@ -83,8 +86,8 @@ struct SettingsView: View {
                 HStack {
                     Text("Scroll Speed")
                     Spacer()
-                    Text("\(String(format: "%.1f", settings.scrollMultiplier))x")
-                        .font(.system(size: 14, design: .monospaced))
+                    Text("\(settings.scrollMultiplier, format: .number.precision(.fractionLength(1)))x")
+                        .font(.body.monospaced())
                         .foregroundStyle(.secondary)
                 }
                 Slider(
@@ -122,6 +125,18 @@ struct SettingsView: View {
 
     private var keyboardSection: some View {
         Section("Keyboard & Gestures") {
+            NavigationLink {
+                TmuxSettingsView()
+            } label: {
+                HStack {
+                    Text("tmux Shortcuts")
+                    Spacer()
+                    Text(TmuxConfigurationService.shared.prefix)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Picker("Double Tap", selection: Binding(
                 get: { settings.doubleTapAction },
                 set: { settings.doubleTapAction = $0 }
@@ -142,10 +157,34 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Security
+
+    private var securitySection: some View {
+        Section {
+            Toggle("Require \(appLock.authenticationName)", isOn: Binding(
+                get: { appLock.isEnabled },
+                set: { enabled in
+                    Task { await appLock.setEnabled(enabled) }
+                }
+            ))
+            .disabled(!appLock.isAvailable && !appLock.isEnabled)
+
+            if let errorMessage = appLock.errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        } header: {
+            Text("Security")
+        } footer: {
+            Text("When enabled, Hoshi locks your terminal sessions whenever the app enters the background.")
+        }
+    }
+
     // MARK: - Appearance
 
     private var appearanceSection: some View {
-        Section("Appearance") {
+        Section {
             Picker("Color Scheme", selection: Binding(
                 get: { settings.colorScheme },
                 set: { settings.colorScheme = $0 }
@@ -155,6 +194,10 @@ struct SettingsView: View {
                 }
             }
             .pickerStyle(.segmented)
+        } header: {
+            Text("Appearance")
+        } footer: {
+            Text("Terminal colors follow your selected color theme. Choose Solarized Light for a light terminal.")
         }
     }
 

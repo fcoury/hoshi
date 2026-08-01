@@ -11,6 +11,7 @@
 		04119B6DCA7B159DED5322F0 /* ConnectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DAAFBD67A2073274FD71E7 /* ConnectionPolicy.swift */; };
 		04891F707B323D36FB701009 /* SauceCodeProNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = EE74F42FC3581FBD6835FEE6 /* SauceCodeProNerdFontMono-Regular.ttf */; };
 		097940E5568A3DFD23FFF996 /* MononokiNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3E541CA9B24D14C5D80302FE /* MononokiNerdFontMono-Bold.ttf */; };
+		0B67E53F5AF59AC6F006596A /* AppLockService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F0A5E44FDEC0EE527C4254 /* AppLockService.swift */; };
 		0D0E8495B636DEB6E54CEAAB /* JetBrainsMonoNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CD6FB75DC159A221A4041B52 /* JetBrainsMonoNerdFontMono-BoldItalic.ttf */; };
 		0E67B26E17276804E96120A4 /* ManagedSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9EF90FB6D788D4D56A623D2 /* ManagedSession.swift */; };
 		0EFB36C307EA7314E034864D /* SessionPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1117D9EC3EC5FB7C128D2197 /* SessionPersistence.swift */; };
@@ -25,6 +26,7 @@
 		26B826D28D58615A4D882013 /* SessionProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1DC7C7A978ED3F3F629164 /* SessionProtocol.swift */; };
 		2A1A92E8FA84A48C2699FBD7 /* CryptoSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 23601A7F4BFE209BC6330B3D /* CryptoSwift */; };
 		2BD23A315F1E6A041008F973 /* VictorMonoNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 780724516B4EA0B83F0F4B64 /* VictorMonoNerdFontMono-Bold.ttf */; };
+		2D0D57999EB5B078AC8748D3 /* AppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2BC332C0E71EB17E10C140B /* AppRootView.swift */; };
 		302F1BC48FEFC232FF9D178A /* SessionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB95500B7D399772F2FB8BD8 /* SessionCardView.swift */; };
 		3ADE4D5AB0F163B3CF8730A4 /* ConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F89DF94786BEA2C04C961E48 /* ConnectView.swift */; };
 		3C42FB85D6E594C7AE94E8D3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19D8FFFF3A11114D6122B6B0 /* SettingsView.swift */; };
@@ -55,6 +57,7 @@
 		6877532658972A191D5982CB /* ToolbarConfigurationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEEF1DFBFD9A93E3AFE91086 /* ToolbarConfigurationService.swift */; };
 		6A2CB034BF21A9A113232907 /* FantasqueSansMNerdFontPropo-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D11B78874807368F1E546709 /* FantasqueSansMNerdFontPropo-Italic.ttf */; };
 		6B1F0E9D5D5C109BBEAE01F3 /* GeistMonoNerdFontMono-Regular.otf in Resources */ = {isa = PBXBuildFile; fileRef = F446ED424D69451050AA8120 /* GeistMonoNerdFontMono-Regular.otf */; };
+		6C05B19594953210B6760DA4 /* DailyWorkflowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC2A0942C17B7A59169DD26F /* DailyWorkflowTests.swift */; };
 		6C4011DD0427000483B9DC76 /* MoshCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B6C0D92DFAE29A99A64E6AF /* MoshCrypto.swift */; };
 		6F0A7C5C9CA11BD4F37DD622 /* SSHConnectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 377CA272FAF5C434090B21E5 /* SSHConnectionService.swift */; };
 		71C6EE46A566E725287FA4AA /* TmuxSessionPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCE7EC1DDE1A89967CD4B68A /* TmuxSessionPickerView.swift */; };
@@ -62,12 +65,15 @@
 		74BDDAA9CBDA058C1B8B0DA5 /* FantasqueSansMNerdFont-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CBCD39EB73247795B564239E /* FantasqueSansMNerdFont-Regular.ttf */; };
 		7B56E49F91FD048AECE71B08 /* VictorMonoNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 405617842535DD42813E4158 /* VictorMonoNerdFontMono-Italic.ttf */; };
 		7BA09D7B29B1E1612C638411 /* FontPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C0FA717B1413451034834BC /* FontPickerView.swift */; };
+		7D019FB1219572EE0FF60426 /* TmuxSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4701DC070A2F4F79A3F9D48 /* TmuxSettingsView.swift */; };
 		7DAA33FF1C9007496B2F156C /* FiraCodeNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D5EAC9D34A60A274CF4CF826 /* FiraCodeNerdFontMono-Bold.ttf */; };
 		800C2C75D46524DAE1A3D654 /* HackNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 10FDF8B29671EE2FA1E35DCE /* HackNerdFontMono-BoldItalic.ttf */; };
+		81486320546B48A0283A477F /* ServerCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9596453C4E09C6164FCA4DFD /* ServerCatalog.swift */; };
 		81FCCB0B4B47EA08E3C54A7E /* TerminalInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24D965C6D89F8D05A184268F /* TerminalInteractionTests.swift */; };
 		82E093096115FAE2667FBD39 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 33023FFA322E011C5EB6887A /* Assets.xcassets */; };
 		859DA07550EF7D6BA828D635 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 0FDE05A368097247B23D0691 /* PrivacyInfo.xcprivacy */; };
 		8638C1A18C9661397A239797 /* MesloLGSNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 168EE5B0051233375A63B33F /* MesloLGSNerdFontMono-BoldItalic.ttf */; };
+		86CD9694615F96E4A582C653 /* TmuxCommandPaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010CBDDCBB8DCAB78877157F /* TmuxCommandPaletteView.swift */; };
 		881A8187BD93A78441937C3F /* VictorMonoNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 056BD9A1394B7DE2DC974461 /* VictorMonoNerdFontMono-Regular.ttf */; };
 		949197A2CA73ECBA09B6427A /* HapticService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C85C3CAB513AE37F7EF24AC /* HapticService.swift */; };
 		94CBC132B31327A12B197002 /* FantasqueSansMNerdFont-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 68F7035092B0ACF1D4E67131 /* FantasqueSansMNerdFont-BoldItalic.ttf */; };
@@ -80,6 +86,7 @@
 		A59D11FA75665308D57A3BFC /* MononokiNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 597645D8BB146FA9A0AD9EEF /* MononokiNerdFontMono-BoldItalic.ttf */; };
 		AA960FEEACDD73F7D7DC36F3 /* MoshBootstrapService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2B9B11940723B9C53B4410C /* MoshBootstrapService.swift */; };
 		AC48C12B2115A175C1467711 /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = D93629C5FA7BBEDDD78D5478 /* OFL.txt */; };
+		ACF79F5678607650120AF1F2 /* TmuxConfigurationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FFB21F11FD5AD284E2064AB /* TmuxConfigurationService.swift */; };
 		AE6A859A8E7ED9210A37428C /* MononokiNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 89E70FBED6094022B4F5F8D4 /* MononokiNerdFontMono-Regular.ttf */; };
 		AF9EE0A1C454D8C738E075E4 /* ToolbarButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74C7E92165EDFEF3678813D9 /* ToolbarButton.swift */; };
 		B3E276B09DC8AC366CB189E2 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = B06240B1AC6C6DB7CD56CF5B /* Citadel */; };
@@ -89,6 +96,7 @@
 		B94D2D832E6A3E9262327483 /* GhosttyThemeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC5A0FB628B34BE815D797C /* GhosttyThemeAdapter.swift */; };
 		BC0B757FC86FAEB2AF4A909F /* TerminalInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B907EEA1B42E560B6C40F98 /* TerminalInteraction.swift */; };
 		BDEC5B34B7CC855EF5A4A194 /* SauceCodeProNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F7B8704BE7DEEC364B8E7530 /* SauceCodeProNerdFontMono-Bold.ttf */; };
+		C26658A5DE62821D6FBEBC35 /* TmuxCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 654CE12F3700903457773BEE /* TmuxCommand.swift */; };
 		CB925AEEE0A3FEA3532EE0E8 /* MesloLGSNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A807286CB8D9A08D5F3B2770 /* MesloLGSNerdFontMono-Regular.ttf */; };
 		CC04ED92E0B9D468CD6DEE1F /* SauceCodeProNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 80B2A4F86E488641E7497767 /* SauceCodeProNerdFontMono-BoldItalic.ttf */; };
 		CCBCF05E0F1E5A88BB203916 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1913DF729009DA8DC0A599B5 /* KeychainService.swift */; };
@@ -131,6 +139,7 @@
 
 /* Begin PBXFileReference section */
 		00A59A42868A8B1623EA7ACC /* FantasqueSansMNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
+		010CBDDCBB8DCAB78877157F /* TmuxCommandPaletteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxCommandPaletteView.swift; sourceTree = "<group>"; };
 		056BD9A1394B7DE2DC974461 /* VictorMonoNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "VictorMonoNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		08326AEDEEBE494F5026A5FD /* TmuxDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxDetectionService.swift; sourceTree = "<group>"; };
 		0BC8F5D874B7A64368CA4634 /* IosevkaNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IosevkaNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
@@ -173,6 +182,7 @@
 		5C7ACDBCAC51E50CC25A2E71 /* FantasqueSansMNerdFontPropo-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontPropo-Bold.ttf"; sourceTree = "<group>"; };
 		5EDBF8AB95AD1BD0632E9DC5 /* SSHKeyServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHKeyServiceTests.swift; sourceTree = "<group>"; };
 		64BDC91C39D6AD7FE7E87ED1 /* MoshProtocolEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshProtocolEngine.swift; sourceTree = "<group>"; };
+		654CE12F3700903457773BEE /* TmuxCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxCommand.swift; sourceTree = "<group>"; };
 		672045AE06E29F24916A802F /* IosevkaNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IosevkaNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
 		68F7035092B0ACF1D4E67131 /* FantasqueSansMNerdFont-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFont-BoldItalic.ttf"; sourceTree = "<group>"; };
 		6AEDC4750F347303ED02613A /* CursorStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorStyle.swift; sourceTree = "<group>"; };
@@ -191,6 +201,7 @@
 		8EBCF88BEC5956AC0E157B37 /* Hoshi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Hoshi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		935710390BD542E213897400 /* ConnectionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionViewModel.swift; sourceTree = "<group>"; };
 		958FD6277EBAC3147453F610 /* JetBrainsMonoNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
+		9596453C4E09C6164FCA4DFD /* ServerCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerCatalog.swift; sourceTree = "<group>"; };
 		969B9307CAA607A311D3067C /* SessionCarouselView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCarouselView.swift; sourceTree = "<group>"; };
 		9754890B02212DFC67FD26EC /* FantasqueSansMNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
 		98A8C6B94D769B9D7B243F28 /* SSHKeyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHKeyService.swift; sourceTree = "<group>"; };
@@ -198,6 +209,7 @@
 		9C0FA717B1413451034834BC /* FontPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontPickerView.swift; sourceTree = "<group>"; };
 		9F9491AA10E831DE136F59B4 /* IosevkaNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IosevkaNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		9FC5A0FB628B34BE815D797C /* GhosttyThemeAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyThemeAdapter.swift; sourceTree = "<group>"; };
+		9FFB21F11FD5AD284E2064AB /* TmuxConfigurationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxConfigurationService.swift; sourceTree = "<group>"; };
 		A807286CB8D9A08D5F3B2770 /* MesloLGSNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MesloLGSNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		A80A6C5FDC7BE7A082E500A3 /* IosevkaNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IosevkaNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		AE48E5AF93A14D87CB077564 /* AddServerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddServerView.swift; sourceTree = "<group>"; };
@@ -209,11 +221,13 @@
 		BB95500B7D399772F2FB8BD8 /* SessionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCardView.swift; sourceTree = "<group>"; };
 		BCD0BDA1F9E260CA9BF0B371 /* FantasqueSansMNerdFont-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFont-Italic.ttf"; sourceTree = "<group>"; };
 		C196748322C5769248D1E351 /* KeychainServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainServiceTests.swift; sourceTree = "<group>"; };
+		C2BC332C0E71EB17E10C140B /* AppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
 		C5B1099C69E83AC319C5CAA1 /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
 		C69A192CB8090D193F9BAE37 /* TerminalTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTheme.swift; sourceTree = "<group>"; };
 		C76E633109B9B1EEB493CC99 /* VictorMonoNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "VictorMonoNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		C83888891E5AE09F121D7AE0 /* FantasqueSansMNerdFontPropo-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontPropo-BoldItalic.ttf"; sourceTree = "<group>"; };
 		CBCD39EB73247795B564239E /* FantasqueSansMNerdFont-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFont-Regular.ttf"; sourceTree = "<group>"; };
+		CC2A0942C17B7A59169DD26F /* DailyWorkflowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyWorkflowTests.swift; sourceTree = "<group>"; };
 		CD6FB75DC159A221A4041B52 /* JetBrainsMonoNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		D11B78874807368F1E546709 /* FantasqueSansMNerdFontPropo-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontPropo-Italic.ttf"; sourceTree = "<group>"; };
 		D2A47D4DB71EA9D072DD91AE /* MoshSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshSession.swift; sourceTree = "<group>"; };
@@ -235,7 +249,9 @@
 		EE74F42FC3581FBD6835FEE6 /* SauceCodeProNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "SauceCodeProNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		F434FC2C5E00789F32E7BF2D /* GhosttyTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyTerminalView.swift; sourceTree = "<group>"; };
 		F446ED424D69451050AA8120 /* GeistMonoNerdFontMono-Regular.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "GeistMonoNerdFontMono-Regular.otf"; sourceTree = "<group>"; };
+		F4701DC070A2F4F79A3F9D48 /* TmuxSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxSettingsView.swift; sourceTree = "<group>"; };
 		F5F557CBF23A18021FB572C1 /* ConnectionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionCoordinator.swift; sourceTree = "<group>"; };
+		F6F0A5E44FDEC0EE527C4254 /* AppLockService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockService.swift; sourceTree = "<group>"; };
 		F70A34682A15DD67521724FD /* ServerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerListView.swift; sourceTree = "<group>"; };
 		F7B8704BE7DEEC364B8E7530 /* SauceCodeProNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "SauceCodeProNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
 		F89DF94786BEA2C04C961E48 /* ConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectView.swift; sourceTree = "<group>"; };
@@ -260,6 +276,7 @@
 			isa = PBXGroup;
 			children = (
 				1F24B6BD33F1E86C1264E228 /* ConnectionCoordinatorTests.swift */,
+				CC2A0942C17B7A59169DD26F /* DailyWorkflowTests.swift */,
 				C196748322C5769248D1E351 /* KeychainServiceTests.swift */,
 				2AF503734734CFDC89F78788 /* KnownHostsServiceTests.swift */,
 				41CF781D13ED19D76B0E662E /* MoshIntegrationTests.swift */,
@@ -307,8 +324,10 @@
 				20DAAFBD67A2073274FD71E7 /* ConnectionPolicy.swift */,
 				6AEDC4750F347303ED02613A /* CursorStyle.swift */,
 				83584445F7F64462E791CA50 /* Server.swift */,
+				9596453C4E09C6164FCA4DFD /* ServerCatalog.swift */,
 				7E7B7A33C6D07387D9708017 /* SSHConnectionError.swift */,
 				C69A192CB8090D193F9BAE37 /* TerminalTheme.swift */,
+				654CE12F3700903457773BEE /* TmuxCommand.swift */,
 				74C7E92165EDFEF3678813D9 /* ToolbarButton.swift */,
 			);
 			path = Models;
@@ -389,6 +408,7 @@
 			isa = PBXGroup;
 			children = (
 				AE48E5AF93A14D87CB077564 /* AddServerView.swift */,
+				C2BC332C0E71EB17E10C140B /* AppRootView.swift */,
 				F89DF94786BEA2C04C961E48 /* ConnectView.swift */,
 				9C0FA717B1413451034834BC /* FontPickerView.swift */,
 				3BE99C6A440F89020EFE0E55 /* KeyboardToolbarView.swift */,
@@ -399,7 +419,9 @@
 				19D8FFFF3A11114D6122B6B0 /* SettingsView.swift */,
 				3AF94357516E9501585160AD /* SplashScreenView.swift */,
 				C5B1099C69E83AC319C5CAA1 /* TerminalView.swift */,
+				010CBDDCBB8DCAB78877157F /* TmuxCommandPaletteView.swift */,
 				DCE7EC1DDE1A89967CD4B68A /* TmuxSessionPickerView.swift */,
+				F4701DC070A2F4F79A3F9D48 /* TmuxSettingsView.swift */,
 				31A14278942E4B7AEFB3F1EB /* ToolbarEditView.swift */,
 			);
 			path = Views;
@@ -419,6 +441,7 @@
 			isa = PBXGroup;
 			children = (
 				3FE236F7BE9FEA21ED9BBCBC /* AppearanceSettings.swift */,
+				F6F0A5E44FDEC0EE527C4254 /* AppLockService.swift */,
 				F5F557CBF23A18021FB572C1 /* ConnectionCoordinator.swift */,
 				7C85C3CAB513AE37F7EF24AC /* HapticService.swift */,
 				1913DF729009DA8DC0A599B5 /* KeychainService.swift */,
@@ -430,6 +453,7 @@
 				377CA272FAF5C434090B21E5 /* SSHConnectionService.swift */,
 				98A8C6B94D769B9D7B243F28 /* SSHKeyService.swift */,
 				B73D4FAFF8219BC7CB25BA12 /* SSHService.swift */,
+				9FFB21F11FD5AD284E2064AB /* TmuxConfigurationService.swift */,
 				08326AEDEEBE494F5026A5FD /* TmuxDetectionService.swift */,
 				DEEF1DFBFD9A93E3AFE91086 /* ToolbarConfigurationService.swift */,
 				DE41E0D0D81438CB451B49AF /* Mosh */,
@@ -617,6 +641,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				684F293C0A36B5C949433B39 /* AddServerView.swift in Sources */,
+				0B67E53F5AF59AC6F006596A /* AppLockService.swift in Sources */,
+				2D0D57999EB5B078AC8748D3 /* AppRootView.swift in Sources */,
 				B6C1187C1ABC1ACC105F144B /* AppearanceSettings.swift in Sources */,
 				B808A611369E149F6B0B8088 /* ColorSchemePreference.swift in Sources */,
 				3ADE4D5AB0F163B3CF8730A4 /* ConnectView.swift in Sources */,
@@ -647,6 +673,7 @@
 				FA6D6D0F0BE1C90760857339 /* SSHKeyService.swift in Sources */,
 				D30A82B7CDD3B69DD4FF6FE8 /* SSHService.swift in Sources */,
 				9E6DC72DB95786D85B40FA19 /* Server.swift in Sources */,
+				81486320546B48A0283A477F /* ServerCatalog.swift in Sources */,
 				557852416FD2A54EFC66DE88 /* ServerListView.swift in Sources */,
 				302F1BC48FEFC232FF9D178A /* SessionCardView.swift in Sources */,
 				65B494BB42FEEC879D910B4B /* SessionCarouselView.swift in Sources */,
@@ -658,8 +685,12 @@
 				BC0B757FC86FAEB2AF4A909F /* TerminalInteraction.swift in Sources */,
 				A08BCE350D681A0F24BF8B26 /* TerminalTheme.swift in Sources */,
 				D22DB61E421382204913A526 /* TerminalView.swift in Sources */,
+				C26658A5DE62821D6FBEBC35 /* TmuxCommand.swift in Sources */,
+				86CD9694615F96E4A582C653 /* TmuxCommandPaletteView.swift in Sources */,
+				ACF79F5678607650120AF1F2 /* TmuxConfigurationService.swift in Sources */,
 				FE7F8E8100652F86991C5D88 /* TmuxDetectionService.swift in Sources */,
 				71C6EE46A566E725287FA4AA /* TmuxSessionPickerView.swift in Sources */,
+				7D019FB1219572EE0FF60426 /* TmuxSettingsView.swift in Sources */,
 				AF9EE0A1C454D8C738E075E4 /* ToolbarButton.swift in Sources */,
 				6877532658972A191D5982CB /* ToolbarConfigurationService.swift in Sources */,
 				E6435FDC851D363CAD5BB75D /* ToolbarEditView.swift in Sources */,
@@ -671,6 +702,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				DCC2A5040703F48968E2410D /* ConnectionCoordinatorTests.swift in Sources */,
+				6C05B19594953210B6760DA4 /* DailyWorkflowTests.swift in Sources */,
 				E293E5B88435EF600774A8DA /* KeychainServiceTests.swift in Sources */,
 				D03DF791305A2316AA36EEB0 /* KnownHostsServiceTests.swift in Sources */,
 				D5DE239A88348AB2CC5EB72D /* MoshIntegrationTests.swift in Sources */,
@@ -706,10 +738,10 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Hoshi;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hoshi uses Face ID to protect your terminal sessions.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				"INFOPLIST_KEY_UISupportedInterfaceOrientations~ipad" = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
 				ITSAppUsesNonExemptEncryption = NO;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -874,10 +906,10 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Hoshi;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hoshi uses Face ID to protect your terminal sessions.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				"INFOPLIST_KEY_UISupportedInterfaceOrientations~ipad" = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
 				ITSAppUsesNonExemptEncryption = NO;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

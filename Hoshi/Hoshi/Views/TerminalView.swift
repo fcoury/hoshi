@@ -21,6 +21,7 @@ struct TerminalView: View {
     var onDismiss: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let appearanceSettings = AppearanceSettings.shared
 
@@ -29,10 +30,12 @@ struct TerminalView: View {
 
     // Toolbar edit sheet
     @State private var showToolbarEditor = false
+    @State private var showTmuxPalette = false
 
     // Keyboard visibility for explicit show/hide control
     @State private var isKeyboardVisible = true
     @State private var keyboardVisibleBeforeToolbarEditor = true
+    @State private var keyboardVisibleBeforeTmuxPalette = true
 
     // Unsafe pastes and remote clipboard requests require explicit approval.
     @State private var pendingClipboardRequest: TerminalClipboardRequest?
@@ -92,7 +95,7 @@ struct TerminalView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(.spring(duration: 0.35), value: connectionVM.connectionState)
+        .animation(reduceMotion ? nil : .spring(duration: 0.35), value: connectionVM.connectionState)
         .onChange(of: fontSize) { _, newSize in
             appearanceSettings.fontSize = newSize
         }
@@ -120,7 +123,6 @@ struct TerminalView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
         .onChange(of: showToolbarEditor) { _, isPresented in
             if isPresented {
                 keyboardVisibleBeforeToolbarEditor = isKeyboardVisible
@@ -128,10 +130,22 @@ struct TerminalView: View {
                 isKeyboardVisible = true
             }
         }
+        .onChange(of: showTmuxPalette) { _, isPresented in
+            if isPresented {
+                keyboardVisibleBeforeTmuxPalette = isKeyboardVisible
+            } else if keyboardVisibleBeforeTmuxPalette {
+                isKeyboardVisible = true
+            }
+        }
         .sheet(isPresented: $showToolbarEditor) {
             ToolbarEditView(onSave: {
                 // GhosttyTerminalView reloads toolbar buttons after dismissal.
             })
+        }
+        .sheet(isPresented: $showTmuxPalette) {
+            TmuxCommandPaletteView { bytes in
+                Task { await connectionVM.sendBytes(ArraySlice(bytes)) }
+            }
         }
         .alert(
             pendingClipboardRequest?.kind.title ?? "Confirm Paste",
@@ -195,16 +209,16 @@ struct TerminalView: View {
     }
 
     private var statusBar: some View {
-        HStack {
+        HStack(spacing: 8) {
             // Connection status indicator — pulses during transient states
             Circle()
                 .fill(statusColor)
                 .frame(width: 8, height: 8)
                 .scaleEffect(statusDotPulsing ? 1.3 : 1.0)
                 .opacity(statusDotPulsing ? 0.7 : 1.0)
-                .animation(.easeInOut(duration: 0.4), value: statusColor)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.4), value: statusColor)
                 .onChange(of: isTransientState) { _, pulsing in
-                    if pulsing {
+                    if pulsing && !reduceMotion {
                         withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
                             statusDotPulsing = true
                         }
@@ -215,43 +229,62 @@ struct TerminalView: View {
                     }
                 }
                 .onAppear {
-                    if isTransientState {
+                    if isTransientState && !reduceMotion {
                         withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
                             statusDotPulsing = true
                         }
                     }
                 }
+                .accessibilityLabel(connectionAccessibilityLabel)
 
-            Text(serverName)
-                .font(.system(size: 15, weight: .semibold))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Text(serverName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color(appearanceSettings.currentTheme.foreground))
+                        .lineLimit(1)
 
-            Text(serverDetail)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(.secondary)
+                    if isMosh {
+                        Text("MOSH")
+                            .font(.caption2.weight(.bold).monospaced())
+                            .foregroundStyle(Color(appearanceSettings.currentTheme.accentGreen))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(Color(appearanceSettings.currentTheme.accentGreen).opacity(0.15), in: .rect(cornerRadius: 4))
+                    }
+                }
 
-            // Mosh indicator — themed green
-            if isMosh {
-                Text("MOSH")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.accentGreen))
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 2)
-                    .background(SwiftUI.Color(appearanceSettings.currentTheme.accentGreen).opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                Text(serverDetail)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
+            .layoutPriority(1)
 
-            Spacer()
+            Spacer(minLength: 0)
+
+            Button {
+                showTmuxPalette = true
+            } label: {
+                Image(systemName: "rectangle.split.3x1")
+                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .accessibilityLabel("Open tmux command palette")
+            .keyboardShortcut("p", modifiers: [.command, .shift])
 
             Button {
                 isKeyboardVisible.toggle()
             } label: {
                 Image(systemName: isKeyboardVisible ? "keyboard.chevron.compact.down" : "keyboard")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
                     .frame(minWidth: 44, minHeight: 44)
             }
             .accessibilityLabel(isKeyboardVisible ? "Hide keyboard" : "Show keyboard")
             .accessibilityHint("Toggles the terminal software keyboard")
             .accessibilityIdentifier("terminal.keyboard.toggle")
+            .keyboardShortcut("k", modifiers: [.command, .shift])
 
             // Swap — toggle to the previous session (only visible with 2+ sessions)
             if canSwapSession {
@@ -260,10 +293,11 @@ struct TerminalView: View {
                     onSwapSession?()
                 } label: {
                     Image(systemName: "rectangle.2.swap")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
                         .frame(minWidth: 44, minHeight: 44)
                 }
                 .accessibilityLabel("Switch to previous session")
+                .keyboardShortcut("]", modifiers: [.command, .shift])
             }
 
             // Minimize — return to server list, keep session alive in carousel
@@ -271,13 +305,14 @@ struct TerminalView: View {
                 onDismiss?()
             } label: {
                 Image(systemName: "rectangle.compress.vertical")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
                     .frame(minWidth: 44, minHeight: 44)
             }
             .accessibilityLabel("Return to servers")
             .accessibilityHint("Keeps this terminal session running")
+            .keyboardShortcut("w", modifiers: .command)
         }
-        .padding(.horizontal)
+        .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(SwiftUI.Color(appearanceSettings.currentTheme.chromeSurface))
     }
@@ -353,6 +388,18 @@ struct TerminalView: View {
         case .reconnecting: return .orange
         case .disconnected: return .red
         case .error: return .red
+        }
+    }
+
+    private var connectionAccessibilityLabel: String {
+        switch connectionVM.connectionState {
+        case .connected: "Connected"
+        case .connecting: "Connecting"
+        case .sshBootstrap: "Establishing SSH connection"
+        case .moshStarting: "Starting Mosh"
+        case .reconnecting: "Reconnecting"
+        case .disconnected: "Disconnected"
+        case .error: "Connection error"
         }
     }
 }

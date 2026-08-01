@@ -7,10 +7,12 @@ struct TmuxSessionPickerView: View {
     let onChoice: (TmuxChoice) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
+    @State private var showCreateSession = false
+    @State private var newSessionName = ""
 
     private var filteredSessions: [TmuxSessionInfo] {
         guard !searchText.isEmpty else { return sessions }
-        return sessions.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        return sessions.filter { $0.name.localizedStandardContains(searchText) }
     }
 
     var body: some View {
@@ -29,8 +31,8 @@ struct TmuxSessionPickerView: View {
                 // Sessions list with "New Session" as first item
                 Section("tmux Sessions") {
                     Button {
-                        onChoice(.newSession)
-                        dismiss()
+                        newSessionName = ""
+                        showCreateSession = true
                     } label: {
                         Label("New Session", systemImage: "plus.rectangle")
                     }
@@ -48,9 +50,15 @@ struct TmuxSessionPickerView: View {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(session.name)
                                             .font(.headline)
-                                        Text("\(session.windows) window\(session.windows == 1 ? "" : "s")")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                        HStack(spacing: 6) {
+                                            Text("\(session.windows) window\(session.windows == 1 ? "" : "s")")
+                                            if let activity = session.lastActivity {
+                                                Text("·")
+                                                Text(activity, style: .relative)
+                                            }
+                                        }
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                     }
 
                                     Spacer()
@@ -67,6 +75,8 @@ struct TmuxSessionPickerView: View {
                                 }
                             }
                             .tint(.primary)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityHint("Attaches to this tmux session")
                         }
                     }
                 }
@@ -74,6 +84,20 @@ struct TmuxSessionPickerView: View {
             .navigationTitle("tmux")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchText, prompt: "Find tmux sessions")
+            .alert("New tmux Session", isPresented: $showCreateSession) {
+                TextField("Session name (optional)", text: $newSessionName)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                Button("Cancel", role: .cancel) {}
+                Button("Create") {
+                    let name = newSessionName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    onChoice(name.isEmpty ? .newSession : .newNamedSession(name))
+                    dismiss()
+                }
+                .disabled(!newSessionName.isEmpty && !TmuxDetectionService.isValidSessionName(newSessionName))
+            } message: {
+                Text("Leave the name empty to let tmux choose one. Names cannot contain a colon or period.")
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     if let onRefresh {

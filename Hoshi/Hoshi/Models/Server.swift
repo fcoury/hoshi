@@ -18,6 +18,7 @@ final class Server {
     // Keychain tag of the SSH key explicitly selected for this connection.
     var keyID: String?
     var useMosh: Bool
+    var isFavorite: Bool = false
     var lastConnected: Date?
     // When set, this entry auto-attaches to the named tmux session on connect
     var tmuxSession: String?
@@ -60,6 +61,7 @@ final class Server {
         authMethod: AuthMethod = .password,
         keyID: String? = nil,
         useMosh: Bool = false,
+        isFavorite: Bool = false,
         tmuxSession: String? = nil,
         transportPolicy: ConnectionTransportPolicy? = nil,
         tmuxPolicy: TmuxConnectionPolicy? = nil,
@@ -74,6 +76,7 @@ final class Server {
         self.authMethod = authMethod
         self.keyID = keyID
         self.useMosh = transportPolicy.map { $0 != .ssh } ?? useMosh
+        self.isFavorite = isFavorite
         self.tmuxSession = tmuxSession
         self.transportPolicyRawValue = transportPolicy?.rawValue
         self.tmuxPolicyRawValue = tmuxPolicy?.rawValue

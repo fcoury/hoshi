@@ -190,6 +190,8 @@ final class ConnectionCoordinator {
             command = TmuxDetectionService.attachCommand(sessionName: session.name)
         case .newSession:
             command = TmuxDetectionService.newSessionCommand()
+        case .newNamedSession(let name):
+            command = TmuxDetectionService.newSessionCommand(sessionName: name)
         case .skip:
             command = nil
         }

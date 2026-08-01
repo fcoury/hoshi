@@ -40,17 +40,28 @@ struct TerminalTheme: Identifiable, Equatable {
 
     /// Status bars and navigation bars — highest elevation chrome surface.
     var chromeSurface: UIColor {
-        background.adjustedBrightness(by: 0.08)
+        background.adjustedBrightness(by: isLight ? -0.08 : 0.08)
     }
 
     /// Page-level background behind content (server list, toolbar editor).
     var chromeBackground: UIColor {
-        background.adjustedBrightness(by: 0.04)
+        background.adjustedBrightness(by: isLight ? -0.04 : 0.04)
     }
 
     /// Elevated interactive elements (toolbar button fills, card backgrounds).
     var cardSurface: UIColor {
-        background.adjustedBrightness(by: 0.06)
+        background.adjustedBrightness(by: isLight ? -0.06 : 0.06)
+    }
+
+    var isLight: Bool {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard background.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            return false
+        }
+        return red * 0.299 + green * 0.587 + blue * 0.114 > 0.65
     }
 
     // MARK: - Semantic accent colors (derived from ANSI palette)
@@ -76,7 +87,7 @@ struct TerminalTheme: Identifiable, Equatable {
 
     // All built-in themes
     static let allThemes: [TerminalTheme] = [
-        .nord, .dracula, .solarizedDark, .gruvboxDark, .tokyoNight, .catppuccinMocha
+        .nord, .dracula, .solarizedDark, .solarizedLight, .gruvboxDark, .tokyoNight, .catppuccinMocha
     ]
 
     static func theme(for id: String) -> TerminalTheme {
@@ -146,6 +157,23 @@ extension TerminalTheme {
         cursorText: c(0x00, 0x2B, 0x36),
         selectionBackground: c(0x07, 0x36, 0x42),
         selectionForeground: c(0x93, 0xA1, 0xA1)
+    )
+
+    static let solarizedLight = TerminalTheme(
+        id: "solarized-light",
+        name: "Solarized Light",
+        palette: [
+            c(0x07, 0x36, 0x42), c(0xDC, 0x32, 0x2F), c(0x85, 0x99, 0x00), c(0xB5, 0x89, 0x00),
+            c(0x26, 0x8B, 0xD2), c(0xD3, 0x36, 0x82), c(0x2A, 0xA1, 0x98), c(0xEE, 0xE8, 0xD5),
+            c(0x00, 0x2B, 0x36), c(0xCB, 0x4B, 0x16), c(0x58, 0x6E, 0x75), c(0x65, 0x7B, 0x83),
+            c(0x83, 0x94, 0x96), c(0x6C, 0x71, 0xC4), c(0x93, 0xA1, 0xA1), c(0xFD, 0xF6, 0xE3),
+        ],
+        background: c(0xFD, 0xF6, 0xE3),
+        foreground: c(0x65, 0x7B, 0x83),
+        cursorColor: c(0x58, 0x6E, 0x75),
+        cursorText: c(0xFD, 0xF6, 0xE3),
+        selectionBackground: c(0xEE, 0xE8, 0xD5),
+        selectionForeground: c(0x58, 0x6E, 0x75)
     )
 
     static let gruvboxDark = TerminalTheme(
@@ -223,7 +251,7 @@ extension UIColor {
         return UIColor(
             hue: hue,
             saturation: saturation,
-            brightness: min(brightness + amount, 1.0),
+            brightness: max(0, min(brightness + amount, 1.0)),
             alpha: alpha
         )
     }

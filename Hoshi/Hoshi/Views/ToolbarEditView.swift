@@ -76,7 +76,6 @@ struct ToolbarEditView: View {
             } message: {
                 Text("This will restore the default toolbar layout.")
             }
-            .preferredColorScheme(.dark)
         }
     }
 

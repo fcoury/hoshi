@@ -9,6 +9,7 @@ struct AddServerView: View {
     @State private var hostname = ""
     @State private var port = "22"
     @State private var username = ""
+    @State private var isFavorite = false
     @State private var authMethod: AuthMethod = .password
     @State private var password = ""
     @State private var selectedKeyTag: String?
@@ -23,6 +24,8 @@ struct AddServerView: View {
 
     // When editing an existing server
     var existingServer: Server?
+    var duplicatedServer: Server?
+    var suggestedName: String?
 
     var body: some View {
         NavigationStack {
@@ -42,6 +45,7 @@ struct AddServerView: View {
                         .textContentType(.username)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                    Toggle("Favorite", isOn: $isFavorite)
                 }
 
                 Section("Authentication") {
@@ -109,7 +113,7 @@ struct AddServerView: View {
                     }
                 }
             }
-            .navigationTitle(existingServer != nil ? "Edit Server" : "Add Server")
+            .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -132,6 +136,10 @@ struct AddServerView: View {
             .onAppear {
                 if let server = existingServer {
                     populateFromServer(server)
+                } else if let server = duplicatedServer {
+                    populateFromServer(server)
+                    name = suggestedName ?? "\(server.name) Copy"
+                    isFavorite = false
                 }
                 isNameFocused = true
             }
@@ -205,6 +213,7 @@ struct AddServerView: View {
             server.username = username
             server.authMethod = authMethod
             server.keyID = selectedKeyID
+            server.isFavorite = isFavorite
             server.transportPolicy = transportPolicy
             server.tmuxPolicy = tmuxPolicy
             server.tmuxSession = tmuxValue
@@ -220,6 +229,7 @@ struct AddServerView: View {
                 authMethod: authMethod,
                 keyID: selectedKeyID,
                 useMosh: transportPolicy != .ssh,
+                isFavorite: isFavorite,
                 tmuxSession: tmuxValue,
                 transportPolicy: transportPolicy,
                 tmuxPolicy: tmuxPolicy,
@@ -246,6 +256,7 @@ struct AddServerView: View {
         port = String(server.port)
         username = server.username
         authMethod = server.authMethod
+        isFavorite = server.isFavorite
         selectedKeyTag = server.keyID
         transportPolicy = server.transportPolicy
         tmuxPolicy = server.tmuxPolicy
@@ -278,6 +289,12 @@ struct AddServerView: View {
             }
             try KeychainService.shared.deletePassword(forServer: serverID)
         }
+    }
+
+    private var navigationTitle: String {
+        if existingServer != nil { return "Edit Server" }
+        if duplicatedServer != nil { return "Duplicate Server" }
+        return "Add Server"
     }
 }
 

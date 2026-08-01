@@ -9,6 +9,8 @@ import SwiftUI
 struct SessionCardView: View {
     let session: ManagedSession
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private let cardWidth: CGFloat = 260
     private let thumbnailHeight: CGFloat = 140
     private let metadataHeight: CGFloat = 40
@@ -32,14 +34,14 @@ struct SessionCardView: View {
                     .scaleEffect(statusDotPulsing ? 1.3 : 1.0)
                     .opacity(statusDotPulsing ? 0.7 : 1.0)
                     .onAppear {
-                        if isConnecting {
+                        if isConnecting && !reduceMotion {
                             withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
                                 statusDotPulsing = true
                             }
                         }
                     }
                     .onChange(of: isConnecting) { _, pulsing in
-                        if pulsing {
+                        if pulsing && !reduceMotion {
                             withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
                                 statusDotPulsing = true
                             }
@@ -56,7 +58,8 @@ struct SessionCardView: View {
             HStack(spacing: 4) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.serverName)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(.caption.weight(.medium).monospaced())
+                        .foregroundStyle(Color(theme.foreground))
                         .lineLimit(1)
 
                     HStack(spacing: 4) {
@@ -87,7 +90,9 @@ struct SessionCardView: View {
         )
         // Fade disconnected/error sessions
         .opacity(isDisconnected ? 0.5 : 1.0)
-        .animation(.easeInOut(duration: 0.6), value: isDisconnected)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: isDisconnected)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(session.serverName), \(session.isMosh ? "Mosh" : "SSH") session")
     }
 
     private var isDisconnected: Bool {

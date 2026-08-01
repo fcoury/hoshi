@@ -324,12 +324,16 @@ struct KeyboardToolbarContent: View {
         } label: {
             Text(button.label)
                 .font(.system(size: 14, weight: .medium, design: .monospaced))
-                .foregroundStyle(isHighlighted ? SwiftUI.Color.black : SwiftUI.Color.primary)
+                .foregroundStyle(isHighlighted
+                    ? SwiftUI.Color(AppearanceSettings.shared.currentTheme.background)
+                    : SwiftUI.Color(AppearanceSettings.shared.currentTheme.foreground))
                 .frame(minWidth: 44, minHeight: 44)
                 .padding(.horizontal, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(isHighlighted ? SwiftUI.Color.white : SwiftUI.Color(AppearanceSettings.shared.currentTheme.cardSurface))
+                        .fill(isHighlighted
+                            ? SwiftUI.Color(AppearanceSettings.shared.currentTheme.foreground)
+                            : SwiftUI.Color(AppearanceSettings.shared.currentTheme.cardSurface))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
@@ -382,11 +386,15 @@ private struct SwipeArrowButton: View {
     var body: some View {
         Text(label)
             .font(.system(size: 14, weight: .medium, design: .monospaced))
-            .foregroundStyle(isDragging ? SwiftUI.Color.black : SwiftUI.Color.primary)
+            .foregroundStyle(isDragging
+                ? SwiftUI.Color(AppearanceSettings.shared.currentTheme.background)
+                : SwiftUI.Color(AppearanceSettings.shared.currentTheme.foreground))
             .frame(width: 50, height: 44)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(isDragging ? SwiftUI.Color.white : SwiftUI.Color(AppearanceSettings.shared.currentTheme.cardSurface))
+                    .fill(isDragging
+                        ? SwiftUI.Color(AppearanceSettings.shared.currentTheme.foreground)
+                        : SwiftUI.Color(AppearanceSettings.shared.currentTheme.cardSurface))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6)

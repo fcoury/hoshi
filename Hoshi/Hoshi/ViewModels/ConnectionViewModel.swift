@@ -186,6 +186,12 @@ final class ConnectionViewModel {
                 }
                 return session.name
             }
+            if case .newNamedSession(let name) = choice {
+                if pendingServer?.tmuxPolicy == .autoAttachLast {
+                    pendingServer?.tmuxSession = name
+                }
+                return name
+            }
             return nil
         } catch {
             presentConnectionError(error)
