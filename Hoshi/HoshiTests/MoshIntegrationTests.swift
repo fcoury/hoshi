@@ -4,9 +4,11 @@ import XCTest
 final class MoshIntegrationTests: XCTestCase {
     func testMoshConnectAndEcho() async throws {
         let environment = ProcessInfo.processInfo.environment
-        let host = environment["HOSHI_MOSH_HOST"] ?? "m3pro"
-        let user = environment["HOSHI_MOSH_USER"] ?? "fcoury"
-        let password = environment["HOSHI_MOSH_PASSWORD"] ?? ""
+        guard let host = environment["HOSHI_MOSH_HOST"], !host.isEmpty,
+              let user = environment["HOSHI_MOSH_USER"], !user.isEmpty,
+              let password = environment["HOSHI_MOSH_PASSWORD"], !password.isEmpty else {
+            throw XCTSkip("Set HOSHI_MOSH_HOST, HOSHI_MOSH_USER, and HOSHI_MOSH_PASSWORD to run live Mosh integration tests.")
+        }
 
         let server = Server(
             name: "Integration",
