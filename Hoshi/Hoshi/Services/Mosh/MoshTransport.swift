@@ -2,7 +2,7 @@ import Foundation
 
 // A single transport fragment within a mosh datagram
 // Wire format: 8-byte instruction ID + 2-byte fragment number (high bit = final) + payload
-struct MoshFragment {
+struct MoshFragment: Sendable {
     static let headerLength = 10
 
     let instructionID: UInt64
@@ -154,7 +154,7 @@ final class MoshFragmenter {
 
 // Mosh transport instruction encoding/decoding
 // Uses a simplified binary format matching the mosh protobuf wire layout
-struct MoshTransportInstruction {
+struct MoshTransportInstruction: Sendable {
     var protocolVersion: UInt32 = 2
     var oldNum: UInt64 = 0
     var newNum: UInt64 = 0
@@ -327,7 +327,7 @@ struct MoshUserInput {
 }
 
 // Decoded host output from server
-struct MoshHostOutput {
+struct MoshHostOutput: Sendable {
     let hostString: Data?
     let echoAck: Int64?
 

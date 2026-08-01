@@ -34,9 +34,9 @@ struct ConnectView: View {
                         Text(server.authMethod == .password ? "Password" : "SSH Key")
                             .font(.system(size: 14, design: .monospaced))
                     }
-                    if server.useMosh {
+                    if server.transportPolicy != .ssh {
                         LabeledContent("Mode") {
-                            Text("MOSH")
+                            Text(server.transportPolicy.displayName.uppercased())
                                 .font(.system(size: 14, weight: .bold, design: .monospaced))
                                 .foregroundStyle(.green)
                         }
@@ -102,6 +102,7 @@ struct ConnectView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
+                        connectionVM.cancelConnection()
                         dismiss()
                     }
                 }

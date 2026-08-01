@@ -5,6 +5,7 @@ import QuartzCore
 
 struct GhosttyTerminalView: UIViewRepresentable {
     let connectionVM: ConnectionViewModel
+    var managedSession: ManagedSession?
     let appearanceSettings: AppearanceSettings
     @Binding var fontSize: CGFloat
     @Binding var showToolbarEditor: Bool
@@ -18,6 +19,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
             connectionVM: connectionVM,
             showToolbarEditorBinding: $showToolbarEditor,
             keyboardVisibleBinding: $keyboardVisible,
+            managedSession: managedSession,
             onClipboardRequest: onClipboardRequest,
             onSwapSession: onSwapSession
         )
@@ -25,7 +27,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> GhosttyTerminalSurfaceView {
         let runtime = GhosttyRuntimeController.shared
-        let view = GhosttyTerminalSurfaceView(
+        let view = managedSession?.surfaceView ?? GhosttyTerminalSurfaceView(
             app: runtime.app,
             fontSize: fontSize,
             keyboardVisible: keyboardVisible
@@ -108,13 +110,18 @@ struct GhosttyTerminalView: UIViewRepresentable {
         uiView.onSwapSession = nil
         uiView.onClipboardRequest = nil
         uiView.onKeyboardVisibilityChanged = nil
-        coordinator.connectionVM.setDataCallback(nil)
+        // A retained surface keeps receiving bytes while hidden, preserving its
+        // real scrollback, cursor, selections, and alternate-screen state.
+        if coordinator.managedSession?.surfaceView !== uiView {
+            coordinator.connectionVM.setDataCallback(nil)
+        }
     }
 
     final class Coordinator {
         let connectionVM: ConnectionViewModel
         var showToolbarEditorBinding: Binding<Bool>?
         var keyboardVisibleBinding: Binding<Bool>?
+        weak var managedSession: ManagedSession?
         var onClipboardRequest: (TerminalClipboardRequest) -> Void
         var onSwapSession: (() -> Void)?
         var wasEditingToolbar = false
@@ -123,12 +130,14 @@ struct GhosttyTerminalView: UIViewRepresentable {
             connectionVM: ConnectionViewModel,
             showToolbarEditorBinding: Binding<Bool>?,
             keyboardVisibleBinding: Binding<Bool>?,
+            managedSession: ManagedSession?,
             onClipboardRequest: @escaping (TerminalClipboardRequest) -> Void,
             onSwapSession: (() -> Void)?
         ) {
             self.connectionVM = connectionVM
             self.showToolbarEditorBinding = showToolbarEditorBinding
             self.keyboardVisibleBinding = keyboardVisibleBinding
+            self.managedSession = managedSession
             self.onClipboardRequest = onClipboardRequest
             self.onSwapSession = onSwapSession
         }

@@ -2,6 +2,7 @@ import Foundation
 import Network
 
 // Manages the NWConnection-based UDP link to the remote mosh-server
+@MainActor
 final class MoshUDPConnection {
     private var connection: NWConnection?
     private let host: NWEndpoint.Host
@@ -29,16 +30,24 @@ final class MoshUDPConnection {
         let conn = NWConnection(host: host, port: port, using: params)
         self.connection = conn
 
-        conn.stateUpdateHandler = { [weak self] state in
-            switch state {
-            case .ready:
-                self?.isReady = true
-            case .failed, .cancelled:
-                self?.isReady = false
-            default:
-                break
+        conn.stateUpdateHandler = { [weak self, weak conn] state in
+            Task { @MainActor in
+                guard let self,
+                      let conn,
+                      self.connection === conn else {
+                    return
+                }
+
+                switch state {
+                case .ready:
+                    self.isReady = true
+                case .failed, .cancelled:
+                    self.isReady = false
+                default:
+                    break
+                }
+                stateHandler(state)
             }
-            stateHandler(state)
         }
 
         conn.start(queue: .global(qos: .userInteractive))
@@ -105,15 +114,20 @@ final class MoshUDPConnection {
 
     // Disconnect and release resources
     func disconnect() {
+        let wasConnecting = connection != nil
         connection?.cancel()
         connection = nil
         isReady = false
+        if wasConnecting {
+            stateHandler?(.cancelled)
+        }
     }
 
     // Reconnect after network change — create a new NWConnection to the same endpoint
     func reconnect() {
+        let handler = stateHandler
         disconnect()
-        if let handler = stateHandler {
+        if let handler {
             connect(stateHandler: handler)
         }
     }

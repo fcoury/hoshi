@@ -2,7 +2,7 @@ import Foundation
 import Citadel
 
 // A single tmux session parsed from `tmux list-sessions`
-struct TmuxSessionInfo: Identifiable {
+struct TmuxSessionInfo: Identifiable, Equatable, Sendable {
     let name: String
     let windows: Int
     let isAttached: Bool
@@ -11,10 +11,11 @@ struct TmuxSessionInfo: Identifiable {
 }
 
 // The user's choice from the tmux session picker
-enum TmuxChoice {
+enum TmuxChoice: Sendable {
     case attach(TmuxSessionInfo)
     case newSession
     case skip
+    case cancel
 }
 
 // Detects tmux on a remote host and lists active sessions

@@ -2,7 +2,7 @@ import Foundation
 import CryptoSwift
 
 // Direction of a mosh datagram (encoded in the nonce)
-enum MoshDirection: UInt8 {
+enum MoshDirection: UInt8, Sendable {
     case toServer = 0
     case toClient = 1
 }
@@ -101,6 +101,11 @@ final class MoshCryptoSession {
         let wireBytes = Array(datagram[0..<MoshNonce.wireLength])
         let cipherAndTag = Array(datagram[MoshNonce.wireLength...])
 
+        let encodedDirection: MoshDirection = (wireBytes[0] & 0x80) == 0 ? .toServer : .toClient
+        guard encodedDirection == direction else {
+            throw MoshCryptoError.unexpectedDirection
+        }
+
         let nonce = MoshNonce(wireBytes: wireBytes, direction: direction)
 
         let ocb = OCB(
@@ -119,6 +124,7 @@ enum MoshCryptoError: LocalizedError {
     case invalidKeyLength(Int)
     case datagramTooShort
     case decryptionFailed
+    case unexpectedDirection
 
     var errorDescription: String? {
         switch self {
@@ -128,6 +134,8 @@ enum MoshCryptoError: LocalizedError {
             return "Received mosh datagram too short to contain valid data"
         case .decryptionFailed:
             return "Failed to decrypt mosh datagram"
+        case .unexpectedDirection:
+            return "Received a mosh datagram with an invalid nonce direction"
         }
     }
 }

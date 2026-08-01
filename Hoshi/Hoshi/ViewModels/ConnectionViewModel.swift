@@ -44,6 +44,11 @@ final class ConnectionViewModel {
     // Combine subscription that forwards session state changes
     @ObservationIgnored
     private var sessionStateCancellable: AnyCancellable?
+    @ObservationIgnored
+    private var coordinator: ConnectionCoordinator?
+    @ObservationIgnored
+    private var connectionTask: Task<Void, Never>?
+    private var connectionGeneration: UUID?
 
     // The active session's connection state — suppress .connected until terminal is open
     var connectionState: ConnectionState {
@@ -102,6 +107,14 @@ final class ConnectionViewModel {
     func setDataCallback(_ callback: TerminalDataCallback?) {
         sshSession?.onDataReceived = callback
         moshSession?.onDataReceived = callback
+
+        guard let callback else { return }
+        let bufferedOutput = moshSession?.consumeBufferedTerminalOutput()
+            ?? sshSession?.consumeBufferedTerminalOutput()
+            ?? Data()
+        if !bufferedOutput.isEmpty {
+            callback(Array(bufferedOutput))
+        }
     }
 
     // Send raw keystroke bytes to the active session
@@ -111,12 +124,17 @@ final class ConnectionViewModel {
         else if let sshSession { await sshSession.send(data) }
     }
 
-    // Connect to a server, routing to SSH or Mosh based on toggle
+    // Connect through one verified bootstrap, transport policy, and tmux pipeline.
     func connect(server: Server, password: String?, keyTag: String?) async {
+        connectionTask?.cancel()
+        let generation = UUID()
+        connectionGeneration = generation
         isConnecting = true
         errorMessage = nil
         showError = false
         connectionPhase = ""
+        showMoshInstallOffer = false
+        detectedTmuxSessions = []
 
         if server.authMethod == .key {
             guard let keyTag else {
@@ -133,76 +151,78 @@ final class ConnectionViewModel {
         pendingPassword = password
         pendingKeyTag = keyTag
 
-        while true {
-            pendingHostKeyIdentity = nil
-
-            if server.useMosh {
-                await connectMosh(server: server, password: password, keyTag: keyTag)
-            } else {
-                await connectSSH(server: server, password: password, keyTag: keyTag)
-            }
-
-            guard let identity = pendingHostKeyIdentity else {
-                break
-            }
-
-            connectionPhase = "Verify the SSH host-key fingerprint..."
-            let trusted = await HostKeyTrustCoordinator.shared.requestTrust(for: identity)
-            guard trusted else {
-                errorMessage = SSHHostKeyTrustError.declined(
-                    hostname: identity.hostname,
-                    port: identity.port
-                ).localizedDescription
-                showError = true
-                break
-            }
-
-            do {
-                try KnownHostsService.shared.trust(identity)
-            } catch {
-                errorMessage = error.localizedDescription
-                showError = true
-                break
-            }
-
-            errorMessage = nil
-            showError = false
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.performConnection(
+                server: server,
+                password: password,
+                keyTag: keyTag,
+                generation: generation
+            )
         }
+        connectionTask = task
+        await task.value
 
-        isConnecting = false
-
-        // Update lastConnected on success (unless waiting for tmux picker)
-        if connectionState == .connected {
-            server.lastConnected = Date()
+        if connectionGeneration == generation {
+            connectionTask = nil
         }
     }
 
     // Handle the user's tmux session choice — returns the chosen session name for display
     func completeTmuxChoice(_ choice: TmuxChoice) async -> String? {
         showTmuxPicker = false
-        guard let sshSession else { return nil }
+        guard let coordinator else { return nil }
 
-        var chosenSession: String? = nil
+        do {
+            let outcome = try await coordinator.completeTmuxChoice(choice)
+            adoptCoordinatorSessions(coordinator)
 
-        // Set the initial command based on user choice
-        switch choice {
-        case .attach(let session):
-            sshSession.initialCommand = TmuxDetectionService.attachCommand(sessionName: session.name)
-            chosenSession = session.name
-        case .newSession:
-            sshSession.initialCommand = TmuxDetectionService.newSessionCommand()
-        case .skip:
-            break
-        }
-
-        // Open the PTY (sends initial command if set)
-        await sshSession.openTerminal()
-
-        if connectionState == .connected {
+            guard case .connected = outcome else { return nil }
             pendingServer?.lastConnected = Date()
-        }
 
-        return chosenSession
+            if case .attach(let session) = choice {
+                if pendingServer?.tmuxPolicy == .autoAttachLast {
+                    pendingServer?.tmuxSession = session.name
+                }
+                return session.name
+            }
+            return nil
+        } catch {
+            presentConnectionError(error)
+            return nil
+        }
+    }
+
+    func refreshTmuxSessions() async {
+        guard let coordinator else { return }
+        do {
+            detectedTmuxSessions = try await coordinator.refreshTmuxSessions()
+        } catch {
+            errorMessage = "Unable to refresh tmux sessions: \(error.localizedDescription)"
+            showError = true
+        }
+    }
+
+    func cancelConnection() {
+        if let pendingHostKeyIdentity,
+           HostKeyTrustCoordinator.shared.pendingIdentity == pendingHostKeyIdentity {
+            HostKeyTrustCoordinator.shared.resolvePendingIdentity(trusted: false)
+        }
+        pendingHostKeyIdentity = nil
+        connectionGeneration = nil
+        connectionTask?.cancel()
+        connectionTask = nil
+        isConnecting = false
+        connectionPhase = ""
+
+        let coordinator = self.coordinator
+        self.coordinator = nil
+        Task { [weak self] in
+            await coordinator?.cancel()
+            self?.sshSession = nil
+            self?.moshSession = nil
+            self?.showTmuxPicker = false
+        }
     }
 
     // Handle app returning to foreground — check session health and reconnect if needed
@@ -229,14 +249,22 @@ final class ConnectionViewModel {
 
     // Disconnect the current session (user-initiated)
     func disconnect() async {
-        if let moshSession {
-            await moshSession.disconnect()
-            self.moshSession = nil
+        if let pendingHostKeyIdentity,
+           HostKeyTrustCoordinator.shared.pendingIdentity == pendingHostKeyIdentity {
+            HostKeyTrustCoordinator.shared.resolvePendingIdentity(trusted: false)
         }
-        if let sshSession {
-            await sshSession.disconnect()
-            self.sshSession = nil
+        connectionGeneration = nil
+        connectionTask?.cancel()
+        connectionTask = nil
+        if let coordinator {
+            await coordinator.cancel()
+            self.coordinator = nil
+        } else {
+            await moshSession?.disconnect()
+            await sshSession?.disconnect()
         }
+        moshSession = nil
+        sshSession = nil
         showTmuxPicker = false
         detectedTmuxSessions = []
         pendingServer = nil
@@ -265,25 +293,22 @@ final class ConnectionViewModel {
 
     // Called when user accepts mosh-server installation
     func installMoshServer() async {
-        guard let moshSession, let pm = detectedPackageManager else { return }
+        guard let coordinator, let pm = detectedPackageManager else { return }
         showMoshInstallOffer = false
         isConnecting = true
         connectionPhase = "Installing mosh-server..."
 
-        await moshSession.installAndConnect(
-            using: pm,
-            password: pendingPassword,
-            privateKeyTag: pendingKeyTag
-        )
-
-        if case .error(let msg) = moshSession.connectionState {
-            errorMessage = msg
-            showError = true
+        do {
+            let outcome = try await coordinator.finishMoshInstallation(using: pm)
+            adoptCoordinatorSessions(coordinator)
+            applyCoordinatorOutcome(outcome)
+        } catch {
+            presentConnectionError(error)
         }
 
         isConnecting = false
 
-        if moshSession.connectionState == .connected {
+        if connectionState == .connected {
             pendingServer?.lastConnected = Date()
         }
     }
@@ -292,15 +317,16 @@ final class ConnectionViewModel {
     func declineMoshInstall() async {
         showMoshInstallOffer = false
 
-        // Clean up mosh session
-        await moshSession?.disconnect()
-        moshSession = nil
-
-        // Fall back to plain SSH
-        guard let server = pendingServer else { return }
+        guard let coordinator, let server = pendingServer else { return }
         isConnecting = true
         connectionPhase = "Falling back to SSH..."
-        await connectSSH(server: server, password: pendingPassword, keyTag: pendingKeyTag)
+        do {
+            let outcome = try await coordinator.fallBackToSSH()
+            adoptCoordinatorSessions(coordinator)
+            applyCoordinatorOutcome(outcome)
+        } catch {
+            presentConnectionError(error)
+        }
         isConnecting = false
 
         if connectionState == .connected {
@@ -351,135 +377,112 @@ final class ConnectionViewModel {
 
     // MARK: - Private
 
-    private func connectSSH(server: Server, password: String?, keyTag: String?) async {
-        connectionPhase = "Connecting via SSH..."
-        let session = SSHSession(server: server)
-        self.sshSession = session
-
-        // Establish SSH connection without opening PTY yet
-        await session.connectOnly(password: password, privateKeyTag: keyTag)
-
-        if let identity = session.untrustedHostIdentity {
-            pendingHostKeyIdentity = identity
-            self.sshSession = nil
-            return
+    private func performConnection(
+        server: Server,
+        password: String?,
+        keyTag: String?,
+        generation: UUID
+    ) async {
+        defer {
+            if connectionGeneration == generation {
+                isConnecting = false
+            }
         }
 
-        if case .error(let message) = session.connectionState {
-            errorMessage = message
-            showError = true
-            self.sshSession = nil
-            return
-        }
+        while !Task.isCancelled, connectionGeneration == generation {
+            let coordinator = ConnectionCoordinator()
+            self.coordinator = coordinator
+            coordinator.onPhaseChanged = { [weak self] phase in
+                self?.connectionPhase = phase.statusText
+            }
 
-        // If this server has a saved tmux session, validate it still exists before auto-attaching
-        if let tmux = server.tmuxSession {
-            connectionPhase = "Checking tmux session: \(tmux)..."
-            if let client = session.client {
-                let tmuxService = TmuxDetectionService(client: client)
-                let sessionExists = await validateTmuxSession(tmux, using: tmuxService)
-
-                if sessionExists {
-                    // Session still exists — auto-attach
-                    connectionPhase = "Attaching to tmux: \(tmux)..."
-                    session.initialCommand = TmuxDetectionService.attachCommand(sessionName: tmux)
-                    await session.openTerminal()
+            do {
+                let outcome = try await coordinator.prepare(
+                    server: server,
+                    password: password,
+                    keyTag: keyTag
+                )
+                guard !Task.isCancelled, connectionGeneration == generation else {
+                    await coordinator.cancel()
                     return
-                } else {
-                    // Session no longer exists — fall back to tmux picker
-                    connectionPhase = "Session '\(tmux)' not found, loading sessions..."
-                    do {
-                        let sessions = try await tmuxService.listSessions()
-                        detectedTmuxSessions = sessions
-                        showTmuxPicker = true
-                        return
-                    } catch {
-                        // tmux detection failed — open terminal without tmux
-                        await session.openTerminal()
-                        return
-                    }
                 }
-            } else {
-                // No client available — fall back to direct attach (best effort)
-                connectionPhase = "Attaching to tmux: \(tmux)..."
-                session.initialCommand = TmuxDetectionService.attachCommand(sessionName: tmux)
-                await session.openTerminal()
+
+                adoptCoordinatorSessions(coordinator)
+                applyCoordinatorOutcome(outcome)
+                if connectionState == .connected {
+                    server.lastConnected = Date()
+                }
+                return
+            } catch is CancellationError {
+                await coordinator.cancel()
+                return
+            } catch let error as SSHHostKeyTrustError {
+                guard case .untrusted(let identity) = error else {
+                    presentConnectionError(error)
+                    return
+                }
+
+                pendingHostKeyIdentity = identity
+                connectionPhase = "Verify the SSH host-key fingerprint..."
+                let trusted = await HostKeyTrustCoordinator.shared.requestTrust(for: identity)
+                guard !Task.isCancelled, connectionGeneration == generation else {
+                    await coordinator.cancel()
+                    return
+                }
+                guard trusted else {
+                    presentConnectionError(SSHHostKeyTrustError.declined(
+                        hostname: identity.hostname,
+                        port: identity.port
+                    ))
+                    return
+                }
+
+                do {
+                    try KnownHostsService.shared.trust(identity)
+                } catch {
+                    presentConnectionError(error)
+                    return
+                }
+
+                await coordinator.cancel()
+                errorMessage = nil
+                showError = false
+                pendingHostKeyIdentity = nil
+            } catch {
+                presentConnectionError(error)
+                await coordinator.cancel()
+                self.coordinator = nil
                 return
             }
         }
+    }
 
-        // Detect tmux sessions on the remote host
-        guard let client = session.client else {
-            // Fallback: open terminal without tmux
-            await session.openTerminal()
-            return
-        }
+    private func adoptCoordinatorSessions(_ coordinator: ConnectionCoordinator) {
+        sshSession = coordinator.sshSession
+        moshSession = coordinator.moshSession
+    }
 
-        connectionPhase = "Checking for tmux sessions..."
-        let tmuxService = TmuxDetectionService(client: client)
-
-        do {
-            let tmuxAvailable = try await tmuxService.isTmuxAvailable()
-            guard tmuxAvailable else {
-                // tmux not installed — go straight to shell
-                await session.openTerminal()
-                return
-            }
-
-            let sessions = try await tmuxService.listSessions()
-            // Show the picker — user can attach, create new, or skip
+    private func applyCoordinatorOutcome(_ outcome: ConnectionCoordinatorOutcome) {
+        switch outcome {
+        case .connected:
+            showTmuxPicker = false
+        case .awaitingTmuxChoice(let sessions):
             detectedTmuxSessions = sessions
             showTmuxPicker = true
-
-        } catch {
-            // tmux detection failed — proceed without it
-            await session.openTerminal()
-        }
-    }
-
-    // Check if a specific tmux session still exists on the remote host
-    private func validateTmuxSession(_ sessionName: String, using service: TmuxDetectionService) async -> Bool {
-        do {
-            let sessions = try await service.listSessions()
-            return sessions.contains { $0.name == sessionName }
-        } catch {
-            return false
-        }
-    }
-
-    private func connectMosh(server: Server, password: String?, keyTag: String?) async {
-        connectionPhase = "Connecting via SSH..."
-        let session = MoshSession(server: server)
-        self.moshSession = session
-
-        await session.connect(password: password, privateKeyTag: keyTag)
-
-        if let identity = session.untrustedHostIdentity {
-            pendingHostKeyIdentity = identity
-            self.moshSession = nil
-            return
-        }
-
-        // Check if mosh-server was not found — offer installation
-        if let status = session.moshServerStatus {
-            switch status {
-            case .notFound(let pm):
-                detectedPackageManager = pm
+        case .moshInstallationRequired(let packageManager):
+            detectedPackageManager = packageManager
+            if packageManager == nil {
+                presentConnectionError(ConnectionCoordinatorError.moshUnavailable)
+            } else {
                 showMoshInstallOffer = true
-                return
-            case .notFoundNoPackageManager:
-                errorMessage = "mosh-server not found and no package manager detected on the remote host."
-                showError = true
-                return
-            case .available:
-                break
             }
+        case .cancelled:
+            showTmuxPicker = false
         }
+    }
 
-        if case .error(let message) = session.connectionState {
-            errorMessage = message
-            showError = true
-            self.moshSession = nil
-        }
+    private func presentConnectionError(_ error: Error) {
+        errorMessage = error.localizedDescription
+        showError = true
     }
 }

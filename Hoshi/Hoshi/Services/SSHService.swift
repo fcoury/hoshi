@@ -1,15 +1,14 @@
 import Foundation
 import Citadel
-import Crypto
 import NIOCore
 import NIOSSH
-@preconcurrency import CCryptoBoringSSL
 
 // Represents an active SSH terminal session
 @MainActor
 final class SSHSession: ObservableObject {
     @Published var connectionState: ConnectionState = .disconnected
     @Published var outputBuffer: String = ""
+    private var bufferedTerminalOutput = Data()
 
     private(set) var client: SSHClient?
     private(set) var untrustedHostIdentity: SSHHostKeyIdentity?
@@ -34,13 +33,13 @@ final class SSHSession: ObservableObject {
     // Reconnection state
     private var isReconnecting = false
     private var reconnectTask: Task<Void, Never>?
-    private let maxReconnectAttempts = 3
-    private let reconnectDelay: TimeInterval = 2.0
+    private let reconnectionPolicy: ReconnectionPolicy
 
     let server: Server
 
-    init(server: Server) {
+    init(server: Server, reconnectionPolicy: ReconnectionPolicy = .ssh) {
         self.server = server
+        self.reconnectionPolicy = reconnectionPolicy
     }
 
     // Connect to the server and open an interactive terminal
@@ -53,40 +52,21 @@ final class SSHSession: ObservableObject {
         storedKeyTag = privateKeyTag
 
         do {
-            // Build the authentication method
-            let authMethod = try buildAuthMethod(
+            let client = try await SSHConnectionService.connect(
                 server: server,
                 password: password,
                 privateKeyTag: privateKeyTag
             )
-
-            // Establish SSH connection
-            let client = try await SSHClient.connect(
-                host: server.hostname,
-                port: server.port,
-                authenticationMethod: authMethod,
-                hostKeyValidator: KnownHostsService.shared.validator(
-                    hostname: server.hostname,
-                    port: server.port
-                ),
-                reconnect: .never
-            )
-
-            self.client = client
-
-            // Watch for disconnection — trigger automatic reconnection
-            client.onDisconnect { [weak self] in
-                Task { @MainActor in
-                    self?.handleDisconnect()
-                }
-            }
-
-            connectionState = .connected
+            adoptBootstrapClient(client, password: password, privateKeyTag: privateKeyTag)
 
             // Open an interactive PTY session
             await startTerminalSession()
 
         } catch {
+            if error is CancellationError {
+                connectionState = .disconnected
+                return
+            }
             captureUntrustedHostIdentity(from: error)
             let errorMessage = mapError(error)
             connectionState = .error(errorMessage.errorDescription ?? "Unknown error")
@@ -103,35 +83,18 @@ final class SSHSession: ObservableObject {
         storedKeyTag = privateKeyTag
 
         do {
-            let authMethod = try buildAuthMethod(
+            let client = try await SSHConnectionService.connect(
                 server: server,
                 password: password,
                 privateKeyTag: privateKeyTag
             )
-
-            let client = try await SSHClient.connect(
-                host: server.hostname,
-                port: server.port,
-                authenticationMethod: authMethod,
-                hostKeyValidator: KnownHostsService.shared.validator(
-                    hostname: server.hostname,
-                    port: server.port
-                ),
-                reconnect: .never
-            )
-
-            self.client = client
-
-            // Watch for disconnection — trigger automatic reconnection
-            client.onDisconnect { [weak self] in
-                Task { @MainActor in
-                    self?.handleDisconnect()
-                }
-            }
-
-            connectionState = .connected
+            adoptBootstrapClient(client, password: password, privateKeyTag: privateKeyTag)
 
         } catch {
+            if error is CancellationError {
+                connectionState = .disconnected
+                return
+            }
             captureUntrustedHostIdentity(from: error)
             let errorMessage = mapError(error)
             connectionState = .error(errorMessage.errorDescription ?? "Unknown error")
@@ -141,6 +104,38 @@ final class SSHSession: ObservableObject {
     // Open the PTY session (call after connectOnly + tmux detection)
     func openTerminal() async {
         await startTerminalSession()
+    }
+
+    func adoptBootstrapClient(
+        _ client: SSHClient,
+        password: String?,
+        privateKeyTag: String?
+    ) {
+        self.client = client
+        self.storedPassword = password
+        self.storedKeyTag = privateKeyTag
+        self.connectionState = .connected
+
+        client.onDisconnect { [weak self] in
+            Task { @MainActor in
+                self?.handleDisconnect()
+            }
+        }
+    }
+
+    func consumeBufferedTerminalOutput() -> Data {
+        let output = bufferedTerminalOutput
+        bufferedTerminalOutput.removeAll(keepingCapacity: true)
+        outputBuffer = ""
+        return output
+    }
+
+    func bufferTerminalOutput(_ data: Data) {
+        guard !data.isEmpty else { return }
+        bufferedTerminalOutput.append(data)
+        if let text = String(data: data, encoding: .utf8) {
+            outputBuffer.append(text)
+        }
     }
 
     // Send data (keystrokes) to the remote terminal
@@ -185,6 +180,7 @@ final class SSHSession: ObservableObject {
         // Clear stored credentials
         storedPassword = nil
         storedKeyTag = nil
+        bufferedTerminalOutput.removeAll()
 
         connectionState = .disconnected
     }
@@ -204,40 +200,25 @@ final class SSHSession: ObservableObject {
         client = nil
 
         // Retry with exponential backoff
-        for attempt in 1...maxReconnectAttempts {
-            let delay = reconnectDelay * Double(attempt)
-            try? await Task.sleep(for: .seconds(delay))
+        for attempt in 1...reconnectionPolicy.maximumAttempts {
+            let delay = reconnectionPolicy.delay(forAttempt: attempt)
+            do {
+                try await Task.sleep(for: .seconds(delay))
+                try Task.checkCancellation()
+            } catch {
+                isReconnecting = false
+                return
+            }
 
             guard isReconnecting else { return }
 
             do {
-                let authMethod = try buildAuthMethod(
+                let client = try await SSHConnectionService.connect(
                     server: server,
                     password: storedPassword,
                     privateKeyTag: storedKeyTag
                 )
-
-                let client = try await SSHClient.connect(
-                    host: server.hostname,
-                    port: server.port,
-                    authenticationMethod: authMethod,
-                    hostKeyValidator: KnownHostsService.shared.validator(
-                        hostname: server.hostname,
-                        port: server.port
-                    ),
-                    reconnect: .never
-                )
-
-                self.client = client
-
-                // Watch for future disconnections
-                client.onDisconnect { [weak self] in
-                    Task { @MainActor in
-                        self?.handleDisconnect()
-                    }
-                }
-
-                connectionState = .connected
+                adoptBootstrapClient(client, password: storedPassword, privateKeyTag: storedKeyTag)
                 isReconnecting = false
 
                 // Re-open the PTY session
@@ -343,9 +324,9 @@ final class SSHSession: ObservableObject {
                                 // Feed raw bytes to terminal renderer if callback is set
                                 if let callback {
                                     callback(bytes)
-                                } else if let text = String(bytes: bytes, encoding: .utf8) {
+                                } else {
                                     await MainActor.run {
-                                        self.outputBuffer.append(text)
+                                        self.bufferTerminalOutput(Data(bytes))
                                     }
                                 }
                             }
@@ -354,9 +335,9 @@ final class SSHSession: ObservableObject {
                                 let callback = await MainActor.run { self.onDataReceived }
                                 if let callback {
                                     callback(bytes)
-                                } else if let text = String(bytes: bytes, encoding: .utf8) {
+                                } else {
                                     await MainActor.run {
-                                        self.outputBuffer.append(text)
+                                        self.bufferTerminalOutput(Data(bytes))
                                     }
                                 }
                             }
@@ -383,63 +364,6 @@ final class SSHSession: ObservableObject {
                     }
                 }
             }
-        }
-    }
-
-    // Build the appropriate authentication method based on server config
-    private func buildAuthMethod(
-        server: Server,
-        password: String?,
-        privateKeyTag: String?
-    ) throws -> SSHAuthenticationMethod {
-        switch server.authMethod {
-        case .password:
-            guard let password else {
-                throw SSHConnectionError.authenticationFailed(method: "password")
-            }
-            return .passwordBased(username: server.username, password: password)
-
-        case .key:
-            guard let tag = privateKeyTag else {
-                throw SSHConnectionError.keyNotFound
-            }
-
-            guard let keyData = try KeychainService.shared.retrievePrivateKey(withTag: tag) else {
-                throw SSHConnectionError.keyNotFound
-            }
-
-            // Try Ed25519 first (32 bytes raw representation)
-            if keyData.count == 32 {
-                let privateKey = try Curve25519.Signing.PrivateKey(rawRepresentation: keyData)
-                return .ed25519(
-                    username: server.username,
-                    privateKey: privateKey
-                )
-            }
-
-            // Parse PKCS#1 DER to extract RSA components (n, e, d)
-            let components = try SSHKeyService.parseRSAPrivateKeyDER(keyData)
-
-            // Convert raw byte arrays to BoringSSL BIGNUMs
-            let modulus = CCryptoBoringSSL_BN_bin2bn(
-                components.n, components.n.count, nil
-            )!
-            let publicExponent = CCryptoBoringSSL_BN_bin2bn(
-                components.e, components.e.count, nil
-            )!
-            let privateExponent = CCryptoBoringSSL_BN_bin2bn(
-                components.d, components.d.count, nil
-            )!
-
-            let rsaKey = Insecure.RSA.PrivateKey(
-                privateExponent: privateExponent,
-                publicExponent: publicExponent,
-                modulus: modulus
-            )
-            return .rsa(
-                username: server.username,
-                privateKey: rsaKey
-            )
         }
     }
 

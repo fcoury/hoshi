@@ -20,6 +20,7 @@ struct TerminalView: View {
     var onSwapSession: (() -> Void)?
     var onDismiss: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     private let appearanceSettings = AppearanceSettings.shared
 
@@ -73,6 +74,7 @@ struct TerminalView: View {
 
             GhosttyTerminalView(
                 connectionVM: connectionVM,
+                managedSession: managedSession,
                 appearanceSettings: appearanceSettings,
                 fontSize: $fontSize,
                 showToolbarEditor: $showToolbarEditor,
@@ -151,6 +153,22 @@ struct TerminalView: View {
         } message: { request in
             Text(request.message)
         }
+        .overlay {
+            if scenePhase != .active {
+                privacyCover
+            }
+        }
+    }
+
+    private var privacyCover: some View {
+        ZStack {
+            SwiftUI.Color(appearanceSettings.currentTheme.background)
+            Image(systemName: "lock.shield")
+                .font(.system(size: 32, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+        .ignoresSafeArea()
+        .accessibilityLabel("Terminal contents hidden")
     }
 
     private func resolveClipboardRequest(_ request: TerminalClipboardRequest, approved: Bool) {

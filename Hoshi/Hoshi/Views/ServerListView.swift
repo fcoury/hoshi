@@ -94,11 +94,22 @@ struct ServerListView: View {
             // Tmux session picker — shown per-session after SSH connects
             .sheet(item: $sessionManager.tmuxPickerSession) { session in
                 TmuxSessionPickerView(
-                    sessions: session.connectionVM.detectedTmuxSessions
+                    sessions: session.connectionVM.detectedTmuxSessions,
+                    onRefresh: {
+                        Task {
+                            await session.connectionVM.refreshTmuxSessions()
+                        }
+                    }
                 ) { choice in
                     Task {
                         let tmuxName = await session.connectionVM.completeTmuxChoice(choice)
+                        if case .cancel = choice {
+                            sessionManager.tmuxPickerSession = nil
+                            await sessionManager.closeSession(id: session.id)
+                            return
+                        }
                         session.tmuxSession = tmuxName
+                        sessionManager.recordSessionUpdate(session)
                         sessionManager.tmuxPickerSession = nil
                         // Open the session full-screen after tmux attach
                         sessionManager.switchTo(sessionID: session.id)
@@ -154,6 +165,14 @@ struct ServerListView: View {
                              : session.connectionVM.connectionPhase)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                        Button("Cancel") {
+                            session.connectionVM.cancelConnection()
+                            quickLaunching = false
+                            connectingSession = nil
+                            Task {
+                                await sessionManager.closeSession(id: session.id)
+                            }
+                        }
                     }
                     .padding(24)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
@@ -171,6 +190,15 @@ struct ServerListView: View {
                 sessionManager.handleSceneBackground()
             default:
                 break
+            }
+        }
+        .task(id: servers.map(\.id)) {
+            await restorePersistedSessions()
+        }
+        .overlay {
+            if scenePhase != .active {
+                SwiftUI.Color(theme.background)
+                    .ignoresSafeArea()
             }
         }
         .hostKeyTrustPrompt(enabled: selectedServer == nil)
@@ -343,7 +371,11 @@ struct ServerListView: View {
             authMethod: server.authMethod,
             keyID: server.keyID,
             useMosh: server.useMosh,
-            tmuxSession: tmuxOverride ?? server.tmuxSession
+            tmuxSession: tmuxOverride ?? server.tmuxSession,
+            transportPolicy: server.transportPolicy,
+            tmuxPolicy: server.tmuxPolicy,
+            moshServerPath: server.moshServerPath,
+            moshUDPPortRange: server.moshUDPPortRange
         )
         copy.id = server.id
         copy.lastConnected = server.lastConnected
@@ -368,7 +400,11 @@ struct ServerListView: View {
             authMethod: server.authMethod,
             keyID: server.keyID,
             useMosh: server.useMosh,
-            tmuxSession: server.tmuxSession
+            tmuxSession: server.tmuxSession,
+            transportPolicy: server.transportPolicy,
+            tmuxPolicy: server.tmuxPolicy,
+            moshServerPath: server.moshServerPath,
+            moshUDPPortRange: server.moshUDPPortRange
         )
 
         if server.authMethod == .password {
@@ -394,6 +430,26 @@ struct ServerListView: View {
             return
         }
         server.keyID = keyID
+    }
+
+    private func restorePersistedSessions() async {
+        let restoredSessions = sessionManager.restoreSessions(using: servers)
+        for session in restoredSessions {
+            guard ConnectionViewModel.hasStoredCredentials(for: session.server) else { continue }
+
+            await session.connectionVM.quickLaunch(server: session.server)
+            if session.connectionVM.showTmuxPicker {
+                let choice: TmuxChoice
+                if let sessionName = session.tmuxSession,
+                   let existing = session.connectionVM.detectedTmuxSessions.first(where: { $0.name == sessionName }) {
+                    choice = .attach(existing)
+                } else {
+                    choice = .skip
+                }
+                _ = await session.connectionVM.completeTmuxChoice(choice)
+            }
+            sessionManager.recordSessionUpdate(session)
+        }
     }
 
     private func duplicatedServerName(from originalName: String) -> String {
@@ -446,7 +502,7 @@ struct ServerRow: View {
 
             HStack(spacing: 6) {
                 // Protocol badge — themed green for Mosh, blue for SSH
-                Text(server.useMosh ? "MOSH" : "SSH")
+                Text(server.transportPolicy.displayName.uppercased())
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .foregroundStyle(SwiftUI.Color(server.useMosh ? theme.accentGreen : theme.accentBlue))
                     .padding(.horizontal, 4)

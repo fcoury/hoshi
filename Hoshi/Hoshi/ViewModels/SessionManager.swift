@@ -11,6 +11,13 @@ final class SessionManager {
 
     // Track which session triggered the tmux picker
     var tmuxPickerSession: ManagedSession?
+    @ObservationIgnored
+    private let persistenceStore: SessionPersistenceStore
+    private var hasRestoredPersistedSessions = false
+
+    init(persistenceStore: SessionPersistenceStore = SessionPersistenceStore()) {
+        self.persistenceStore = persistenceStore
+    }
 
     var activeSession: ManagedSession? {
         sessions.first { $0.id == activeSessionID }
@@ -26,6 +33,7 @@ final class SessionManager {
         guard sessions.count < Self.maxSessions else { return nil }
         let session = ManagedSession(server: server)
         promoteSessionToFront(session)
+        persistSessionDescriptors()
         return session
     }
 
@@ -40,6 +48,7 @@ final class SessionManager {
         if activeSessionID == id {
             activeSessionID = nil
         }
+        persistSessionDescriptors()
     }
 
     // Toggle to the previous (MRU) session — called by the swap button and 2-finger swipe
@@ -60,6 +69,7 @@ final class SessionManager {
         let session = sessions[index]
         promoteSessionToFront(session)
         activeSessionID = sessionID
+        persistSessionDescriptors()
     }
 
     // Return to the server list: capture thumbnail and clear active session.
@@ -78,10 +88,12 @@ final class SessionManager {
         if shouldRemove, let id = removingID {
             sessions.removeAll { $0.id == id }
         }
+        persistSessionDescriptors()
     }
 
     // Forward scene-active to all sessions for reconnect handling
     func handleSceneActive() {
+        activeSession?.captureThumbnail()
         for session in sessions {
             session.connectionVM.handleSceneActive()
         }
@@ -90,8 +102,37 @@ final class SessionManager {
     // Capture thumbnail of the active session when entering background
     func handleSceneBackground() {
         if let current = activeSession {
-            current.captureThumbnail()
+            current.redactThumbnail()
         }
+        persistSessionDescriptors()
+    }
+
+    func restoreSessions(using servers: [Server]) -> [ManagedSession] {
+        guard !hasRestoredPersistedSessions, !servers.isEmpty, sessions.isEmpty else { return [] }
+        hasRestoredPersistedSessions = true
+
+        let profiles = Dictionary(uniqueKeysWithValues: servers.map { ($0.id, $0) })
+        let restored = persistenceStore.load()
+            .prefix(Self.maxSessions)
+            .compactMap { descriptor -> ManagedSession? in
+                guard let server = profiles[descriptor.serverID] else { return nil }
+                return ManagedSession(
+                    server: server,
+                    id: descriptor.id,
+                    createdAt: descriptor.createdAt,
+                    lastAccessedAt: descriptor.lastAccessedAt,
+                    tmuxSession: descriptor.tmuxSession
+                )
+            }
+
+        sessions = restored
+        persistSessionDescriptors()
+        return restored
+    }
+
+    func recordSessionUpdate(_ session: ManagedSession) {
+        guard sessions.contains(where: { $0.id == session.id }) else { return }
+        persistSessionDescriptors()
     }
 
     private func promoteSessionToFront(_ session: ManagedSession) {
@@ -104,5 +145,9 @@ final class SessionManager {
         } else {
             sessions.insert(session, at: 0)
         }
+    }
+
+    private func persistSessionDescriptors() {
+        persistenceStore.save(sessions.map(\.persistedDescriptor))
     }
 }

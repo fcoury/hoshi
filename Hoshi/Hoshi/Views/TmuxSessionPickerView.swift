@@ -3,19 +3,26 @@ import SwiftUI
 // Shows detected tmux sessions and lets the user attach, create new, or skip
 struct TmuxSessionPickerView: View {
     let sessions: [TmuxSessionInfo]
+    var onRefresh: (() -> Void)?
     let onChoice: (TmuxChoice) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var searchText = ""
+
+    private var filteredSessions: [TmuxSessionInfo] {
+        guard !searchText.isEmpty else { return sessions }
+        return sessions.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                // Quick escape at the top
+                // Raw-shell access is an explicit action, distinct from cancelling the connection.
                 Section {
                     Button {
                         onChoice(.skip)
                         dismiss()
                     } label: {
-                        Label("Skip", systemImage: "arrow.right.circle")
+                        Label("Open Raw Shell", systemImage: "terminal")
                     }
                 }
 
@@ -28,11 +35,11 @@ struct TmuxSessionPickerView: View {
                         Label("New Session", systemImage: "plus.rectangle")
                     }
 
-                    if sessions.isEmpty {
+                    if filteredSessions.isEmpty {
                         Label("No sessions found", systemImage: "text.rectangle.page")
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(sessions) { session in
+                        ForEach(filteredSessions) { session in
                             Button {
                                 onChoice(.attach(session))
                                 dismiss()
@@ -66,10 +73,21 @@ struct TmuxSessionPickerView: View {
             }
             .navigationTitle("tmux")
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText, prompt: "Find tmux sessions")
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if let onRefresh {
+                        Button {
+                            onRefresh()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .accessibilityLabel("Refresh tmux sessions")
+                    }
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
-                        onChoice(.skip)
+                        onChoice(.cancel)
                         dismiss()
                     }
                 }

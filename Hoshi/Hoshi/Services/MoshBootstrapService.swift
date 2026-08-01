@@ -2,7 +2,7 @@ import Foundation
 import Citadel
 
 // Result of starting mosh-server over SSH
-struct MoshConnectionInfo {
+struct MoshConnectionInfo: Sendable {
     let udpPort: UInt16
     let sessionKey: Data
     let sessionKeyBase64: String
@@ -10,7 +10,7 @@ struct MoshConnectionInfo {
 }
 
 // Package managers we can detect on the remote host
-enum RemotePackageManager: String, CaseIterable {
+enum RemotePackageManager: String, CaseIterable, Sendable {
     case apt
     case brew
     case yum
@@ -30,7 +30,7 @@ enum RemotePackageManager: String, CaseIterable {
 }
 
 // Outcomes of mosh-server detection
-enum MoshServerStatus {
+enum MoshServerStatus: Sendable {
     case available(path: String)
     case notFound(packageManager: RemotePackageManager?)
     case notFoundNoPackageManager
@@ -40,15 +40,26 @@ enum MoshServerStatus {
 final class MoshBootstrapService {
     private let client: SSHClient
     private let hostname: String
+    private let configuredServerPath: String?
+    private let portRange: MoshPortRange?
 
-    init(client: SSHClient, hostname: String) {
+    init(
+        client: SSHClient,
+        hostname: String,
+        configuredServerPath: String? = nil,
+        portRange: MoshPortRange? = nil
+    ) {
         self.client = client
         self.hostname = hostname
+        self.configuredServerPath = configuredServerPath
+        self.portRange = portRange
     }
 
     // Check if mosh-server exists on the remote host
     func detectMoshServer() async throws -> MoshServerStatus {
-        let output = try await runCommand("which mosh-server 2>/dev/null || echo __NOT_FOUND__")
+        let executable = configuredServerPath?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let command = executable.flatMap { $0.isEmpty ? nil : $0 } ?? "mosh-server"
+        let output = try await runCommand("command -v \(Self.shellEscape(command)) 2>/dev/null || echo __NOT_FOUND__")
         let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if trimmed.contains("__NOT_FOUND__") || trimmed.isEmpty {
@@ -89,12 +100,12 @@ final class MoshBootstrapService {
 
     // Start mosh-server and parse connection info from its output
     // mosh-server prints: MOSH CONNECT <port> <base64-key>
-    func startMoshServer() async throws -> MoshConnectionInfo {
-        // Match upstream behavior: emit SSH_CONNECTION so the client can pick
-        // the remote server IP on multihomed hosts.
-        let output = try await runCommand(
-            "sh -lc '[ -n \"$SSH_CONNECTION\" ] && printf \"\\nMOSH SSH_CONNECTION %s\\n\" \"$SSH_CONNECTION\"; mosh-server new -s -c 256 -l LANG=en_US.UTF-8' 2>&1"
-        )
+    func startMoshServer(initialCommand: String? = nil) async throws -> MoshConnectionInfo {
+        let output = try await runCommand(Self.serverLaunchCommand(
+            configuredServerPath: configuredServerPath,
+            portRange: portRange,
+            initialCommand: initialCommand
+        ))
 
         // Parse the MOSH CONNECT line
         let (port, keyString) = try MoshBootstrapService.parseMoshConnect(output)
@@ -152,15 +163,34 @@ final class MoshBootstrapService {
         return Data(base64Encoded: key + "==")
     }
 
+    static func serverLaunchCommand(
+        configuredServerPath: String?,
+        portRange: MoshPortRange?,
+        initialCommand: String?
+    ) -> String {
+        let binary = configuredServerPath?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let executable = shellEscape(binary.flatMap { $0.isEmpty ? nil : $0 } ?? "mosh-server")
+        let rangeArgument = portRange.map { " -p \(shellEscape($0.argument))" } ?? ""
+        let commandArgument = initialCommand.map { " -- sh -lc \(shellEscape($0))" } ?? ""
+        let command = "[ -n \"$SSH_CONNECTION\" ] && printf \"\\nMOSH SSH_CONNECTION %s\\n\" \"$SSH_CONNECTION\"; \(executable) new -s -c 256 -l LANG=en_US.UTF-8\(rangeArgument)\(commandArgument)"
+        return "sh -lc \(shellEscape(command)) 2>&1"
+    }
+
     // MARK: - Private
 
     // Execute a command over SSH and return its output
     private func runCommand(_ command: String) async throws -> String {
+        try Task.checkCancellation()
         let buffer = try await client.executeCommand(command)
+        try Task.checkCancellation()
         guard let output = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) else {
             return ""
         }
         return output
+    }
+
+    static func shellEscape(_ string: String) -> String {
+        "'" + string.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }
 

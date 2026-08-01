@@ -1,13 +1,9 @@
 import Foundation
 import Citadel
-import Crypto
 import NIOCore
-import NIOSSH
 import Network
-import zlib
 import os.log
 import QuartzCore
-@preconcurrency import CCryptoBoringSSL
 
 private let sspLog = Logger(subsystem: "com.hoshi.app.dev", category: "SSP")
 
@@ -18,6 +14,7 @@ final class MoshSession: ObservableObject {
     private static let sspTraceEnabled = false
     @Published var connectionState: ConnectionState = .disconnected
     @Published var outputBuffer: String = ""
+    private var bufferedTerminalOutput = Data()
 
     // Mosh-specific state exposed to ViewModel for UI decisions
     @Published var moshServerStatus: MoshServerStatus?
@@ -31,10 +28,9 @@ final class MoshSession: ObservableObject {
 
     private var sshClient: SSHClient?
     private var udpConnection: MoshUDPConnection?
-    private var cryptoSession: MoshCryptoSession?
-    private var fragmentAssembly = MoshFragmentAssembly()
-    private var fragmenter = MoshFragmenter()
+    private var protocolEngine: MoshProtocolEngine?
     private var networkMonitor = NetworkMonitorService()
+    private let reconnectionPolicy: ReconnectionPolicy
 
     private var receiveTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
@@ -42,10 +38,8 @@ final class MoshSession: ObservableObject {
     private var isReconnecting = false
 
     // SSP state tracking
-    private var sendSequenceNumber: UInt64 = 0
     private var localStateNum: UInt64 = 0
     private var remoteStateNum: UInt64 = 0
-    private var lastRemoteTimestamp: UInt16 = 0
     private var consecutiveDatagramFailures = 0
     // When we skip diffs due to base mismatch, we send an immediate
     // ack so the server retransmits from our actual state quickly
@@ -88,59 +82,127 @@ final class MoshSession: ObservableObject {
         )
     }
 
-    init(server: Server) {
+    init(server: Server, reconnectionPolicy: ReconnectionPolicy = .mosh) {
         self.server = server
+        self.reconnectionPolicy = reconnectionPolicy
     }
 
     // Full connection flow: SSH -> detect mosh-server -> start it -> UDP
     func connect(password: String? = nil, privateKeyTag: String? = nil) async {
+        do {
+            let status = try await prepareBootstrap(password: password, privateKeyTag: privateKeyTag)
+            guard case .available = status else { return }
+            try await startPreparedConnection()
+        } catch {
+            handleConnectionFailure(error)
+        }
+    }
+
+    var bootstrapClient: SSHClient? {
+        sshClient
+    }
+
+    func prepareBootstrap(
+        password: String? = nil,
+        privateKeyTag: String? = nil
+    ) async throws -> MoshServerStatus {
         connectionState = .connecting
         untrustedHostIdentity = nil
 
         do {
-            // Step 1: SSH connect
             connectionState = .sshBootstrap
-            let client = try await sshConnect(password: password, privateKeyTag: privateKeyTag)
+            let client = try await SSHConnectionService.connect(
+                server: server,
+                password: password,
+                privateKeyTag: privateKeyTag
+            )
+            try Task.checkCancellation()
             self.sshClient = client
 
-            // Step 2: Detect mosh-server
             connectionState = .moshStarting
-            let bootstrap = MoshBootstrapService(client: client, hostname: server.hostname)
+            let bootstrap = try makeBootstrapService(client: client)
             let status = try await bootstrap.detectMoshServer()
+            try Task.checkCancellation()
             self.moshServerStatus = status
 
             switch status {
             case .available:
-                // mosh-server found — start it
-                let info = try await bootstrap.startMoshServer()
-                // Close SSH connection (mosh-server is detached)
-                try? await client.close()
-                self.sshClient = nil
-                // Establish UDP
-                try await establishUDP(info: info)
-
-            case .notFound(let pm):
-                self.detectedPackageManager = pm
-                // Signal to ViewModel that install offer is needed
+                break
+            case .notFound(let packageManager):
+                detectedPackageManager = packageManager
                 connectionState = .error("mosh-server not found on remote host")
-                return
-
             case .notFoundNoPackageManager:
                 connectionState = .error("mosh-server not found and no package manager detected")
-                return
             }
-
+            return status
         } catch {
-            if let hostKeyError = error as? SSHHostKeyTrustError,
-               case .untrusted(let identity) = hostKeyError {
-                untrustedHostIdentity = identity
-            }
-            connectionState = .error(error.localizedDescription)
+            handleConnectionFailure(error)
+            throw error
+        }
+    }
+
+    func startPreparedConnection(
+        initialCommand: String? = nil,
+        udpTimeout: TimeInterval = ConnectionTimeouts.default.udpConnection
+    ) async throws {
+        guard let client = sshClient else {
+            throw ConnectionCoordinatorError.bootstrapUnavailable
+        }
+
+        do {
+            connectionState = .moshStarting
+            let bootstrap = try makeBootstrapService(client: client)
+            let info = try await bootstrap.startMoshServer(initialCommand: initialCommand)
+            try Task.checkCancellation()
+            try? await client.close()
+            sshClient = nil
+            try await establishUDP(info: info, timeout: udpTimeout)
+        } catch {
+            handleConnectionFailure(error)
+            throw error
+        }
+    }
+
+    func takeBootstrapClient() -> SSHClient? {
+        let client = sshClient
+        sshClient = nil
+        return client
+    }
+
+    func consumeBufferedTerminalOutput() -> Data {
+        let output = bufferedTerminalOutput
+        bufferedTerminalOutput.removeAll(keepingCapacity: true)
+        outputBuffer = ""
+        return output
+    }
+
+    func bufferTerminalOutput(_ data: Data) {
+        guard !data.isEmpty else { return }
+        bufferedTerminalOutput.append(data)
+        if let text = String(data: data, encoding: .utf8) {
+            outputBuffer.append(text)
         }
     }
 
     // Called by ViewModel after user accepts install offer
     func installAndConnect(using packageManager: RemotePackageManager, password: String? = nil, privateKeyTag: String? = nil) async {
+        do {
+            try await installServer(
+                using: packageManager,
+                password: password,
+                privateKeyTag: privateKeyTag
+            )
+            try await startPreparedConnection()
+        } catch {
+            handleConnectionFailure(error)
+        }
+    }
+
+    func installServer(
+        using packageManager: RemotePackageManager,
+        password: String? = nil,
+        privateKeyTag: String? = nil
+    ) async throws {
         do {
             // Reuse existing SSH client or reconnect
             let client: SSHClient
@@ -148,28 +210,24 @@ final class MoshSession: ObservableObject {
                 client = existing
             } else {
                 connectionState = .sshBootstrap
-                client = try await sshConnect(password: password, privateKeyTag: privateKeyTag)
+                client = try await SSHConnectionService.connect(
+                    server: server,
+                    password: password,
+                    privateKeyTag: privateKeyTag
+                )
                 self.sshClient = client
             }
 
             connectionState = .moshStarting
-            let bootstrap = MoshBootstrapService(client: client, hostname: server.hostname)
+            let bootstrap = try makeBootstrapService(client: client)
 
             // Install mosh-server
             try await bootstrap.installMoshServer(using: packageManager)
-
-            // Start mosh-server
-            let info = try await bootstrap.startMoshServer()
-
-            // Close SSH
-            try? await client.close()
-            self.sshClient = nil
-
-            // Establish UDP
-            try await establishUDP(info: info)
+            moshServerStatus = try await bootstrap.detectMoshServer()
 
         } catch {
-            connectionState = .error(error.localizedDescription)
+            handleConnectionFailure(error)
+            throw error
         }
     }
 
@@ -244,8 +302,8 @@ final class MoshSession: ObservableObject {
         sshClient = nil
 
         networkMonitor.stop()
-        cryptoSession = nil
-        lastRemoteTimestamp = 0
+        protocolEngine = nil
+        bufferedTerminalOutput.removeAll()
         consecutiveDatagramFailures = 0
         debugSendInstructionCount = 0
         debugSendDatagramCount = 0
@@ -259,42 +317,19 @@ final class MoshSession: ObservableObject {
 
     // MARK: - Private
 
-    // SSH connect reusing the same auth logic as SSHSession
-    private func sshConnect(password: String?, privateKeyTag: String?) async throws -> SSHClient {
-        let authMethod = try buildAuthMethod(
-            server: server,
-            password: password,
-            privateKeyTag: privateKeyTag
-        )
-
-        return try await SSHClient.connect(
-            host: server.hostname,
-            port: server.port,
-            authenticationMethod: authMethod,
-            hostKeyValidator: KnownHostsService.shared.validator(
-                hostname: server.hostname,
-                port: server.port
-            ),
-            reconnect: .never
-        )
-    }
-
     // Establish UDP connection and start receive loop
-    private func establishUDP(info: MoshConnectionInfo) async throws {
+    private func establishUDP(info: MoshConnectionInfo, timeout: TimeInterval) async throws {
         // Set up crypto
-        cryptoSession = try MoshCryptoSession(key: info.sessionKey)
+        protocolEngine = try MoshProtocolEngine(key: info.sessionKey)
 
         // Create UDP connection
         let udp = MoshUDPConnection(host: info.serverIP, port: info.udpPort)
         self.udpConnection = udp
-        sendSequenceNumber = 0
         localStateNum = 0
         remoteStateNum = 0
         needsImmediateAck = false
         mouseTrackingActive = false
-        lastRemoteTimestamp = 0
         consecutiveDatagramFailures = 0
-        fragmentAssembly.reset()
         debugSendInstructionCount = 0
         debugSendDatagramCount = 0
         debugReceiveDatagramCount = 0
@@ -303,23 +338,34 @@ final class MoshSession: ObservableObject {
         debugHostOutputCount = 0
         debugHostByteCount = 0
 
-        // Connect and wait for ready state
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            var resumed = false
-            udp.connect { state in
-                guard !resumed else { return }
-                switch state {
-                case .ready:
-                    resumed = true
-                    continuation.resume()
-                case .failed(let error):
-                    resumed = true
-                    continuation.resume(throwing: error)
-                case .cancelled:
-                    resumed = true
-                    continuation.resume(throwing: MoshUDPError.connectionFailed("cancelled"))
-                default:
-                    break
+        try await ConnectionDeadline.run(
+            timeout: timeout,
+            phase: .udpConnection,
+            onTimeout: { udp.disconnect() }
+        ) {
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    var resumed = false
+                    udp.connect { state in
+                        guard !resumed else { return }
+                        switch state {
+                        case .ready:
+                            resumed = true
+                            continuation.resume()
+                        case .failed(let error):
+                            resumed = true
+                            continuation.resume(throwing: error)
+                        case .cancelled:
+                            resumed = true
+                            continuation.resume(throwing: CancellationError())
+                        default:
+                            break
+                        }
+                    }
+                }
+            } onCancel: {
+                Task { @MainActor in
+                    udp.disconnect()
                 }
             }
         }
@@ -350,29 +396,16 @@ final class MoshSession: ObservableObject {
 
     // Decrypt, reassemble, and decode a received datagram
     private func processDatagram(_ datagram: Data) async {
-        guard let cryptoSession else { return }
+        guard let protocolEngine else { return }
         debugReceiveDatagramCount += 1
 
         do {
-            // Decrypt
-            let (plaintext, _) = try cryptoSession.decrypt(
-                datagram: datagram,
-                direction: .toClient
-            )
-            debugDecryptSuccessCount += 1
-            let packetPayload = try depacketize(plaintext)
-
-            // Parse transport fragment
-            let fragment = try MoshFragment(fromPayload: packetPayload)
-
-            // Reassemble (most messages are single-fragment)
-            guard let completeInstruction = fragmentAssembly.addFragment(fragment) else {
-                return // Waiting for more fragments
+            guard let decoded = try await protocolEngine.decode(datagram) else {
+                debugDecryptSuccessCount += 1
+                return
             }
-
-            // Transport instruction payload is zlib-compressed.
-            let instructionBytes = try decompressInstruction(completeInstruction)
-            let instruction = try MoshTransportInstruction.decode(from: instructionBytes)
+            debugDecryptSuccessCount += 1
+            let instruction = decoded.instruction
             debugInstructionDecodeCount += 1
 
             // SSP overlap guard with exact-base matching.
@@ -404,7 +437,7 @@ final class MoshSession: ObservableObject {
                 needsImmediateAck = true
 
                 if !instruction.diff.isEmpty {
-                    let outputs = try MoshHostOutput.decode(from: instruction.diff)
+                    let outputs = decoded.outputs
                     debugHostOutputCount += outputs.count
                     for (idx, output) in outputs.enumerated() {
                         if let hostString = output.hostString {
@@ -459,8 +492,8 @@ final class MoshSession: ObservableObject {
                                         sspLog.notice("[SSP]   → INJECTED screen clear (app exit: mouse+paste disabled)")
                                     }
                                 }
-                            } else if let text = String(data: hostString, encoding: .utf8) {
-                                outputBuffer.append(text)
+                            } else {
+                                bufferTerminalOutput(hostString)
                             }
                         } else if Self.sspTraceEnabled {
                             sspLog.notice("[SSP]   output[\(idx)] nil hostString (echoAck=\(output.echoAck ?? -1))")
@@ -561,25 +594,41 @@ final class MoshSession: ObservableObject {
         isReconnecting = true
         defer { isReconnecting = false }
 
-        let previousState = connectionState
         connectionState = .reconnecting
 
         // Cancel the receive loop and discard stale partial fragments
         receiveTask?.cancel()
-        fragmentAssembly.reset()
+        await protocolEngine?.discardIncompleteFragments()
 
-        // Reconnect the UDP socket (new local port, same remote endpoint)
-        udpConnection?.reconnect()
+        for attempt in 1...reconnectionPolicy.maximumAttempts {
+            guard !Task.isCancelled else { return }
 
-        // Brief wait for connection to establish
-        try? await Task.sleep(for: .milliseconds(500))
+            if !networkMonitor.isConnected {
+                do {
+                    try await Task.sleep(for: .seconds(reconnectionPolicy.delay(forAttempt: attempt)))
+                } catch {
+                    return
+                }
+                continue
+            }
 
-        if udpConnection?.isReady == true {
-            connectionState = .connected
-            startReceiveLoop()
-        } else {
-            connectionState = previousState
+            udpConnection?.reconnect()
+
+            do {
+                try await Task.sleep(for: .seconds(reconnectionPolicy.delay(forAttempt: attempt)))
+                try Task.checkCancellation()
+            } catch {
+                return
+            }
+
+            if udpConnection?.isReady == true {
+                connectionState = .connected
+                startReceiveLoop()
+                return
+            }
         }
+
+        connectionState = .error("Mosh could not restore its UDP connection. Check network access and retry.")
     }
 
     // Detect full-screen repaints by counting erase-to-end-of-line
@@ -606,156 +655,55 @@ final class MoshSession: ObservableObject {
     }
 
     private func sendTransportInstruction(_ instruction: MoshTransportInstruction) async throws {
-        guard let cryptoSession, let udpConnection, udpConnection.isReady else {
+        guard let protocolEngine, let udpConnection, udpConnection.isReady else {
             throw MoshSessionError.udpNotReady
         }
 
-        let encoded = instruction.encode()
-        let compressed = try compressInstruction(encoded)
-        let fragments = fragmenter.fragment(compressed)
+        let datagrams = try await protocolEngine.encode(instruction)
         debugSendInstructionCount += 1
 
-        for fragment in fragments {
-            let fragmentData = fragment.toData()
-            let packet = packetize(fragmentData)
-            sendSequenceNumber += 1
-            let nonce = MoshNonce(direction: .toServer, sequenceNumber: sendSequenceNumber)
-            let datagram = try cryptoSession.encrypt(plaintext: packet, nonce: nonce)
+        for datagram in datagrams {
+            try Task.checkCancellation()
             try await udpConnection.send(datagram)
             debugSendDatagramCount += 1
         }
-    }
-
-    private func packetize(_ payload: Data) -> Data {
-        var packet = Data(capacity: 4 + payload.count)
-        let timestamp = currentTimestamp()
-        packet.append(UInt8((timestamp >> 8) & 0xFF))
-        packet.append(UInt8(timestamp & 0xFF))
-        packet.append(UInt8((lastRemoteTimestamp >> 8) & 0xFF))
-        packet.append(UInt8(lastRemoteTimestamp & 0xFF))
-        packet.append(payload)
-        return packet
-    }
-
-    private func depacketize(_ packet: Data) throws -> Data {
-        guard packet.count >= 4 else {
-            throw MoshSessionError.packetTooShort(packet.count)
-        }
-
-        let remoteTimestamp = (UInt16(packet[0]) << 8) | UInt16(packet[1])
-        lastRemoteTimestamp = remoteTimestamp
-        return Data(packet.dropFirst(4))
-    }
-
-    private func currentTimestamp() -> UInt16 {
-        let millis = UInt64(Date().timeIntervalSince1970 * 1000)
-        return UInt16(truncatingIfNeeded: millis)
     }
 
     private func reportNonFatalError(_ error: Error, context: String) {
         print("[MoshSession] \(context): \(error.localizedDescription)")
     }
 
-    private func compressInstruction(_ instruction: Data) throws -> Data {
-        var destinationLength = compressBound(uLong(instruction.count))
-        var destination = Data(count: Int(destinationLength))
-
-        let status = destination.withUnsafeMutableBytes { destinationBuffer in
-            instruction.withUnsafeBytes { sourceBuffer in
-                compress(
-                    destinationBuffer.bindMemory(to: Bytef.self).baseAddress,
-                    &destinationLength,
-                    sourceBuffer.bindMemory(to: Bytef.self).baseAddress,
-                    uLong(instruction.count)
-                )
+    private func makeBootstrapService(client: SSHClient) throws -> MoshBootstrapService {
+        let portRange: MoshPortRange?
+        if let rawRange = server.moshUDPPortRange,
+           !rawRange.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard let parsed = MoshPortRange(rawRange) else {
+                throw ConnectionCoordinatorError.invalidMoshPortRange(rawRange)
             }
+            portRange = parsed
+        } else {
+            portRange = nil
         }
 
-        guard status == Z_OK else {
-            throw MoshSessionError.compressionFailed(Int(status))
-        }
-
-        destination.removeSubrange(Int(destinationLength)..<destination.count)
-        return destination
+        return MoshBootstrapService(
+            client: client,
+            hostname: server.hostname,
+            configuredServerPath: server.moshServerPath,
+            portRange: portRange
+        )
     }
 
-    private func decompressInstruction(_ compressedInstruction: Data) throws -> Data {
-        // Upstream mosh caps this at 2048 * 2048.
-        let maxBufferSize = 4 * 1024 * 1024
-        var bufferSize = max(1024, compressedInstruction.count * 8)
-
-        while bufferSize <= maxBufferSize {
-            var destinationLength = uLong(bufferSize)
-            var destination = Data(count: bufferSize)
-
-            let status = destination.withUnsafeMutableBytes { destinationBuffer in
-                compressedInstruction.withUnsafeBytes { sourceBuffer in
-                    uncompress(
-                        destinationBuffer.bindMemory(to: Bytef.self).baseAddress,
-                        &destinationLength,
-                        sourceBuffer.bindMemory(to: Bytef.self).baseAddress,
-                        uLong(compressedInstruction.count)
-                    )
-                }
-            }
-
-            if status == Z_OK {
-                destination.removeSubrange(Int(destinationLength)..<destination.count)
-                return destination
-            }
-
-            if status == Z_BUF_ERROR {
-                bufferSize *= 2
-                continue
-            }
-
-            throw MoshSessionError.decompressionFailed(Int(status))
+    private func handleConnectionFailure(_ error: Error) {
+        if error is CancellationError {
+            connectionState = .disconnected
+            return
         }
 
-        throw MoshSessionError.decompressionOverflow
-    }
-
-    // Build SSH auth method (duplicated from SSHSession to avoid tight coupling)
-    private func buildAuthMethod(
-        server: Server,
-        password: String?,
-        privateKeyTag: String?
-    ) throws -> SSHAuthenticationMethod {
-        switch server.authMethod {
-        case .password:
-            guard let password else {
-                throw SSHConnectionError.authenticationFailed(method: "password")
-            }
-            return .passwordBased(username: server.username, password: password)
-
-        case .key:
-            guard let tag = privateKeyTag else {
-                throw SSHConnectionError.keyNotFound
-            }
-
-            guard let keyData = try KeychainService.shared.retrievePrivateKey(withTag: tag) else {
-                throw SSHConnectionError.keyNotFound
-            }
-
-            // Ed25519 (32 bytes)
-            if keyData.count == 32 {
-                let privateKey = try Curve25519.Signing.PrivateKey(rawRepresentation: keyData)
-                return .ed25519(username: server.username, privateKey: privateKey)
-            }
-
-            // RSA (PKCS#1 DER)
-            let components = try SSHKeyService.parseRSAPrivateKeyDER(keyData)
-            let modulus = CCryptoBoringSSL_BN_bin2bn(components.n, components.n.count, nil)!
-            let publicExponent = CCryptoBoringSSL_BN_bin2bn(components.e, components.e.count, nil)!
-            let privateExponent = CCryptoBoringSSL_BN_bin2bn(components.d, components.d.count, nil)!
-
-            let rsaKey = Insecure.RSA.PrivateKey(
-                privateExponent: privateExponent,
-                publicExponent: publicExponent,
-                modulus: modulus
-            )
-            return .rsa(username: server.username, privateKey: rsaKey)
+        if let hostKeyError = error as? SSHHostKeyTrustError,
+           case .untrusted(let identity) = hostKeyError {
+            untrustedHostIdentity = identity
         }
+        connectionState = .error(error.localizedDescription)
     }
 }
 

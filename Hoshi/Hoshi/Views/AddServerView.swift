@@ -13,8 +13,11 @@ struct AddServerView: View {
     @State private var password = ""
     @State private var selectedKeyTag: String?
     @State private var showKeyGenerator = false
-    @State private var useMosh = false
+    @State private var transportPolicy: ConnectionTransportPolicy = .auto
+    @State private var tmuxPolicy: TmuxConnectionPolicy = .alwaysAsk
     @State private var tmuxSession = ""
+    @State private var moshServerPath = ""
+    @State private var moshUDPPortRange = ""
     @State private var errorMessage: String?
     @FocusState private var isNameFocused: Bool
 
@@ -56,23 +59,46 @@ struct AddServerView: View {
                 }
 
                 Section("Connection Mode") {
-                    Toggle("Use Mosh", isOn: $useMosh)
+                    Picker("Transport", selection: $transportPolicy) {
+                        ForEach(ConnectionTransportPolicy.allCases) { policy in
+                            Text(policy.displayName).tag(policy)
+                        }
+                    }
 
-                    if useMosh {
-                        Text("Mosh provides a resilient connection that survives network changes and sleep. Requires mosh-server on the remote host.")
+                    if transportPolicy != .ssh {
+                        TextField("mosh-server path (optional)", text: $moshServerPath)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+
+                        TextField("UDP range, e.g. 60000:61000", text: $moshUDPPortRange)
+                            .keyboardType(.numbersAndPunctuation)
+
+                        Text(transportPolicy == .auto
+                             ? "Prefer Mosh and fall back to SSH when the remote host cannot use it."
+                             : "Require Mosh, which survives network changes and sleep.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
 
                 Section("tmux Session") {
-                    TextField("Session name (optional)", text: $tmuxSession)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
+                    Picker("Behavior", selection: $tmuxPolicy) {
+                        ForEach(TmuxConnectionPolicy.allCases) { policy in
+                            Text(policy.displayName).tag(policy)
+                        }
+                    }
 
-                    Text("When set, this connection auto-attaches to the named tmux session. Leave blank to be prompted on each connection.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if tmuxPolicy != .rawShell {
+                        TextField("Session name (optional)", text: $tmuxSession)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+
+                        Text(tmuxPolicy == .autoAttachLast
+                             ? "Attach to this session automatically when it is available."
+                             : "Show available tmux sessions whenever you connect.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 if let errorMessage {
@@ -148,9 +174,20 @@ struct AddServerView: View {
             return
         }
 
+        let trimmedMoshPortRange = moshUDPPortRange.trimmingCharacters(in: .whitespacesAndNewlines)
+        if transportPolicy != .ssh,
+           !trimmedMoshPortRange.isEmpty,
+           MoshPortRange(trimmedMoshPortRange) == nil {
+            errorMessage = "Mosh UDP range must be a valid port or range, such as 60000:61000."
+            return
+        }
+
         // Store password in Keychain if using password auth
         let trimmedTmux = tmuxSession.trimmingCharacters(in: .whitespaces)
         let tmuxValue: String? = trimmedTmux.isEmpty ? nil : trimmedTmux
+        let trimmedMoshServerPath = moshServerPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let configuredMoshServerPath: String? = trimmedMoshServerPath.isEmpty ? nil : trimmedMoshServerPath
+        let configuredMoshPortRange: String? = trimmedMoshPortRange.isEmpty ? nil : trimmedMoshPortRange
         let selectedKeyID = authMethod == .key ? selectedKeyTag : nil
 
         if let server = existingServer {
@@ -168,8 +205,11 @@ struct AddServerView: View {
             server.username = username
             server.authMethod = authMethod
             server.keyID = selectedKeyID
-            server.useMosh = useMosh
+            server.transportPolicy = transportPolicy
+            server.tmuxPolicy = tmuxPolicy
             server.tmuxSession = tmuxValue
+            server.moshServerPath = configuredMoshServerPath
+            server.moshUDPPortRange = configuredMoshPortRange
         } else {
             // Create new server
             let server = Server(
@@ -179,8 +219,12 @@ struct AddServerView: View {
                 username: username,
                 authMethod: authMethod,
                 keyID: selectedKeyID,
-                useMosh: useMosh,
-                tmuxSession: tmuxValue
+                useMosh: transportPolicy != .ssh,
+                tmuxSession: tmuxValue,
+                transportPolicy: transportPolicy,
+                tmuxPolicy: tmuxPolicy,
+                moshServerPath: configuredMoshServerPath,
+                moshUDPPortRange: configuredMoshPortRange
             )
 
             do {
@@ -203,8 +247,11 @@ struct AddServerView: View {
         username = server.username
         authMethod = server.authMethod
         selectedKeyTag = server.keyID
-        useMosh = server.useMosh
+        transportPolicy = server.transportPolicy
+        tmuxPolicy = server.tmuxPolicy
         tmuxSession = server.tmuxSession ?? ""
+        moshServerPath = server.moshServerPath ?? ""
+        moshUDPPortRange = server.moshUDPPortRange ?? ""
 
         // Retrieve stored password if available
         if server.authMethod == .password {
