@@ -30,6 +30,12 @@ struct SettingsView: View {
     private var agentSection: some View {
         Section("Coding Agents") {
             NavigationLink {
+                FileUploadSettingsView()
+            } label: {
+                Label("File Uploads", systemImage: "paperclip")
+            }
+
+            NavigationLink {
                 VoicePromptSettingsView()
             } label: {
                 Label("Voice Prompts", systemImage: "mic")
@@ -197,10 +203,8 @@ struct SettingsView: View {
             ))
             .disabled(!appLock.isAvailable && !appLock.isEnabled)
 
-            if let errorMessage = appLock.errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+            if let presentation = appLock.presentedError {
+                ErrorPresentationView(presentation: presentation)
             }
         } header: {
             Text("Security")

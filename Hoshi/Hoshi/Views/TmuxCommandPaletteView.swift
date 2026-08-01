@@ -5,7 +5,7 @@ struct TmuxCommandPaletteView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
-    @State private var errorMessage: String?
+    @State private var presentedError: ErrorPresentation?
 
     private let configuration = TmuxConfigurationService.shared
 
@@ -54,13 +54,13 @@ struct TmuxCommandPaletteView: View {
                     }
                 }
             }
-            .alert("Unable to Send Shortcut", isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
+            .alert(presentedError?.title ?? "Unable to Send Shortcut", isPresented: Binding(
+                get: { presentedError != nil },
+                set: { if !$0 { presentedError = nil } }
             )) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text(errorMessage ?? "")
+                Text(presentedError?.fullMessage ?? "")
             }
         }
     }
@@ -82,7 +82,10 @@ struct TmuxCommandPaletteView: View {
                 onCommand(bytes)
                 dismiss()
             } catch {
-                errorMessage = error.localizedDescription
+                presentedError = ErrorPresentation.classify(
+                    error,
+                    context: ErrorContext(operation: .tmux)
+                )
             }
         } label: {
             Label {

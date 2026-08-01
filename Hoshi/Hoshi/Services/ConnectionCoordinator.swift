@@ -130,6 +130,7 @@ final class ConnectionCoordinator {
         }
 
         let candidates = server.transportPolicy.candidateTransports
+        var moshFailure: (any Error)?
         for (index, transport) in candidates.enumerated() {
             try checkCancellation()
 
@@ -160,14 +161,26 @@ final class ConnectionCoordinator {
                       server.transportPolicy == .auto,
                       index + 1 < candidates.count,
                       shouldFallback(after: error) else {
+                    if transport == .ssh, let moshFailure {
+                        throw ConnectionFallbackError(moshError: moshFailure, sshError: error)
+                    }
                     throw error
                 }
 
+                moshFailure = error
                 if moshSession?.bootstrapClient != nil {
-                    if let outcome = try await transitionToSSHFallback() {
-                        return outcome
+                    do {
+                        if let outcome = try await transitionToSSHFallback() {
+                            return outcome
+                        }
+                        return try await prepareMultiplexer()
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch let error as SSHHostKeyTrustError {
+                        throw error
+                    } catch {
+                        throw ConnectionFallbackError(moshError: moshFailure ?? error, sshError: error)
                     }
-                    return try await prepareMultiplexer()
                 }
 
                 await moshSession?.disconnect()
@@ -199,18 +212,27 @@ final class ConnectionCoordinator {
         do {
             return try await startTransport(command: command)
         } catch {
+            let moshError = error
             guard server?.transportPolicy == .auto,
                   activeTransport == .mosh,
                   shouldFallback(after: error) else {
                 throw error
             }
 
-            if let outcome = try await transitionToSSHFallback() {
-                if case .connected = outcome {
-                    return outcome
+            do {
+                if let outcome = try await transitionToSSHFallback() {
+                    if case .connected = outcome {
+                        return outcome
+                    }
                 }
+                return try await startTransport(command: command)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as SSHHostKeyTrustError {
+                throw error
+            } catch {
+                throw ConnectionFallbackError(moshError: moshError, sshError: error)
             }
-            return try await startTransport(command: command)
         }
     }
 
@@ -276,7 +298,7 @@ final class ConnectionCoordinator {
                 throw SSHHostKeyTrustError.untrusted(identity)
             }
             if case .error(let message) = session.connectionState {
-                throw ConnectionCoordinatorError.transportFailed(message)
+                throw session.connectionError ?? ConnectionCoordinatorError.transportFailed(message)
             }
             try Task.checkCancellation()
         }
@@ -421,18 +443,44 @@ final class ConnectionCoordinator {
         }
     }
 
-    private func shouldFallback(after error: Error) -> Bool {
-        if error is CancellationError || error is SSHHostKeyTrustError {
+    static func shouldFallback(after error: any Error) -> Bool {
+        if !ErrorPresentation.shouldPresent(error) || error is SSHHostKeyTrustError {
+            return false
+        }
+        if let clientError = error as? SSHClientError {
+            switch clientError {
+            case .allAuthenticationOptionsFailed,
+                 .unsupportedPasswordAuthentication,
+                 .unsupportedPrivateKeyAuthentication,
+                 .unsupportedHostBasedAuthentication:
+                return false
+            case .channelCreationFailed:
+                break
+            }
+        }
+        if error is AuthenticationFailed {
             return false
         }
         if let sshError = error as? SSHConnectionError,
            case .authenticationFailed = sshError {
             return false
         }
+        if let sshError = error as? SSHConnectionError {
+            switch sshError {
+            case .passwordNotFound, .keyNotFound:
+                return false
+            default:
+                break
+            }
+        }
         if let coordinatorError = error as? ConnectionCoordinatorError,
            case .invalidMoshPortRange = coordinatorError {
             return false
         }
         return true
+    }
+
+    private func shouldFallback(after error: any Error) -> Bool {
+        Self.shouldFallback(after: error)
     }
 }

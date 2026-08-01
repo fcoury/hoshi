@@ -13,6 +13,7 @@ final class SSHSession: ObservableObject {
 
     private(set) var client: SSHClient?
     private(set) var untrustedHostIdentity: SSHHostKeyIdentity?
+    private(set) var connectionError: (any Error)?
     private var stdinWriter: TTYStdinWriter?
     private var sessionTask: Task<Void, Never>?
     private var pendingTerminalSize: (cols: Int, rows: Int)?
@@ -48,6 +49,7 @@ final class SSHSession: ObservableObject {
     func connect(password: String? = nil, privateKeyTag: String? = nil) async {
         connectionState = .connecting
         untrustedHostIdentity = nil
+        connectionError = nil
 
         // Store credentials for reconnection
         storedPassword = password
@@ -70,8 +72,8 @@ final class SSHSession: ObservableObject {
                 return
             }
             captureUntrustedHostIdentity(from: error)
-            let errorMessage = mapError(error)
-            connectionState = .error(errorMessage.errorDescription ?? "Unknown error")
+            connectionError = error
+            connectionState = .error(presentedError(for: error).explanation)
         }
     }
 
@@ -79,6 +81,7 @@ final class SSHSession: ObservableObject {
     func connectOnly(password: String? = nil, privateKeyTag: String? = nil) async {
         connectionState = .connecting
         untrustedHostIdentity = nil
+        connectionError = nil
 
         // Store credentials for reconnection
         storedPassword = password
@@ -98,8 +101,8 @@ final class SSHSession: ObservableObject {
                 return
             }
             captureUntrustedHostIdentity(from: error)
-            let errorMessage = mapError(error)
-            connectionState = .error(errorMessage.errorDescription ?? "Unknown error")
+            connectionError = error
+            connectionState = .error(presentedError(for: error).explanation)
         }
     }
 
@@ -116,6 +119,7 @@ final class SSHSession: ObservableObject {
         self.client = client
         self.storedPassword = password
         self.storedKeyTag = privateKeyTag
+        self.connectionError = nil
         self.connectionState = .connected
 
         client.onDisconnect { [weak self] in
@@ -244,9 +248,9 @@ final class SSHSession: ObservableObject {
             } catch {
                 if error is SSHHostKeyTrustError {
                     captureUntrustedHostIdentity(from: error)
-                    let errorMessage = mapError(error)
+                    connectionError = error
                     isReconnecting = false
-                    connectionState = .error(errorMessage.errorDescription ?? "Unknown error")
+                    connectionState = .error(presentedError(for: error).explanation)
                     return
                 }
 
@@ -361,14 +365,15 @@ final class SSHSession: ObservableObject {
                             self.connectionState = .disconnected
                         }
                     } else if !Task.isCancelled {
-                        self.connectionState = .error("Terminal session ended: \(error.localizedDescription)")
+                        self.connectionError = error
+                        self.connectionState = .error(self.presentedError(for: error).explanation)
                     }
                 }
             }
         }
     }
 
-    // Map raw errors to user-facing SSHConnectionError
+    // Keep the typed transport error available while providing a concise terminal-state summary.
     private func captureUntrustedHostIdentity(from error: Error) {
         guard let hostKeyError = error as? SSHHostKeyTrustError,
               case .untrusted(let identity) = hostKeyError else {
@@ -377,31 +382,8 @@ final class SSHSession: ObservableObject {
         untrustedHostIdentity = identity
     }
 
-    private func mapError(_ error: Error) -> SSHConnectionError {
-        if let hostKeyError = error as? SSHHostKeyTrustError {
-            return .hostKeyVerificationFailed(reason: hostKeyError.localizedDescription)
-        }
-        if let connectionError = error as? SSHConnectionError {
-            return connectionError
-        }
-
-        let message = error.localizedDescription.lowercased()
-
-        if message.contains("connection refused") {
-            return .connectionRefused(hostname: server.hostname, port: server.port)
-        } else if message.contains("authentication") || message.contains("auth") {
-            return .authenticationFailed(method: server.authMethod.rawValue)
-        } else if message.contains("timeout") || message.contains("timed out") {
-            return .timeout(hostname: server.hostname)
-        } else if message.contains("network") || message.contains("unreachable") || message.contains("no route") {
-            return .networkUnreachable
-        } else if message.contains("host key") {
-            return .hostKeyVerificationFailed(reason: error.localizedDescription)
-        } else if message.contains("channel") {
-            return .channelOpenFailed
-        }
-
-        return .unexpected(message: error.localizedDescription)
+    private func presentedError(for error: any Error) -> ErrorPresentation {
+        ErrorPresentation.classify(error, context: .connection(server: server))
     }
 }
 

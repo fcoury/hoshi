@@ -23,7 +23,7 @@ struct ConnectView: View {
                             .font(.system(size: 14, design: .monospaced))
                     }
                     LabeledContent("Host") {
-                        Text("\(server.hostname):\(server.port)")
+                        Text(verbatim: server.endpoint)
                             .font(.system(size: 14, design: .monospaced))
                     }
                     LabeledContent("User") {
@@ -79,21 +79,9 @@ struct ConnectView: View {
                     }
                 }
 
-                if let error = connectionVM.errorMessage {
+                if let presentation = connectionVM.presentedError {
                     Section {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("Connection Failed", systemImage: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.red)
-                                .font(.headline)
-                            Text(error)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                            if let suggestion = recoverySuggestion(for: error) {
-                                Text(suggestion)
-                                    .font(.caption)
-                                    .foregroundStyle(.blue)
-                            }
-                        }
+                        ErrorPresentationView(presentation: presentation)
                     }
                 }
             }
@@ -143,8 +131,7 @@ struct ConnectView: View {
                     do {
                         password = try KeychainService.shared.retrievePassword(forServer: server.id) ?? ""
                     } catch {
-                        connectionVM.errorMessage = error.localizedDescription
-                        connectionVM.showError = true
+                        connectionVM.presentConnectionError(error, server: server, operation: .credentials)
                     }
                 case .key:
                     if let selectedKeyID = server.keyID,
@@ -191,25 +178,6 @@ struct ConnectView: View {
             && !server.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    // Map error messages back to recovery suggestions
-    private func recoverySuggestion(for errorMessage: String) -> String? {
-        if errorMessage.contains("refused") {
-            return "Verify the server is running and the port is correct. Check firewall rules."
-        } else if errorMessage.contains("Authentication") || errorMessage.contains("auth") {
-            return "Check your credentials and try again."
-        } else if errorMessage.contains("timed out") {
-            return "Check your network connection and verify the server is reachable."
-        } else if errorMessage.localizedCaseInsensitiveContains("host key") {
-            return "Verify the server's fingerprint independently. A changed key may indicate a security issue."
-        } else if errorMessage.contains("unreachable") {
-            return "Check your WiFi or cellular connection."
-        } else if errorMessage.contains("mosh-server") {
-            return "Install mosh-server on the remote host or disable Mosh in server settings."
-        } else if errorMessage.contains("UDP") {
-            return "Check that UDP ports 60000-61000 are open on the server firewall."
-        }
-        return "Try reconnecting. If the problem persists, check server logs."
-    }
 }
 
 private struct HostKeyTrustPromptModifier: ViewModifier {

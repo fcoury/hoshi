@@ -6,28 +6,35 @@ import XCTest
 @MainActor
 final class TerminalInteractionTests: XCTestCase {
     private var savedToolbarButtons: [ToolbarButton] = []
-    private var savedPasteboardItems: [[String: Any]] = []
+    private var pasteboard: UIPasteboard!
     private var savedDoubleTapAction: TerminalDoubleTapAction = .selectWord
     private var savedTwoFingerTapAction: TerminalTwoFingerTapAction = .paste
 
     override func setUp() {
         super.setUp()
         savedToolbarButtons = ToolbarConfigurationService.shared.loadButtons()
-        savedPasteboardItems = UIPasteboard.general.items
+        pasteboard = UIPasteboard.withUniqueName()
+        TerminalPasteboard.shared = pasteboard
         savedDoubleTapAction = AppearanceSettings.shared.doubleTapAction
         savedTwoFingerTapAction = AppearanceSettings.shared.twoFingerTapAction
         ToolbarConfigurationService.shared.resetToDefaults()
-        UIPasteboard.general.items = []
         AppearanceSettings.shared.doubleTapAction = .selectWord
         AppearanceSettings.shared.twoFingerTapAction = .paste
     }
 
     override func tearDown() {
         ToolbarConfigurationService.shared.saveButtons(savedToolbarButtons)
-        UIPasteboard.general.items = savedPasteboardItems
+        TerminalPasteboard.shared = .general
+        UIPasteboard.remove(withName: pasteboard.name)
+        pasteboard = nil
         AppearanceSettings.shared.doubleTapAction = savedDoubleTapAction
         AppearanceSettings.shared.twoFingerTapAction = savedTwoFingerTapAction
         super.tearDown()
+    }
+
+    func testTerminalClipboardTestsUsePrivateNamedPasteboard() {
+        XCTAssertNotEqual(pasteboard.name, UIPasteboard.general.name)
+        XCTAssertTrue(TerminalPasteboard.shared === pasteboard)
     }
 
     func testOrdinaryPasteDoesNotRequireConfirmation() {
@@ -354,7 +361,7 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertTrue(surface.interactions.contains { $0 is UIEditMenuInteraction })
         XCTAssertFalse(surface.canPerformAction(#selector(UIResponderStandardEditActions.copy(_:)), withSender: nil))
 
-        UIPasteboard.general.string = "paste me"
+        pasteboard.string = "paste me"
 
         XCTAssertTrue(surface.canPerformAction(#selector(UIResponderStandardEditActions.paste(_:)), withSender: nil))
     }
@@ -389,7 +396,7 @@ final class TerminalInteractionTests: XCTestCase {
 
     func testDisabledGestureDoesNotPasteClipboard() throws {
         let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
-        UIPasteboard.general.string = "echo first\necho second"
+        pasteboard.string = "echo first\necho second"
         AppearanceSettings.shared.doubleTapAction = .disabled
         AppearanceSettings.shared.twoFingerTapAction = .disabled
         var request: TerminalClipboardRequest?
@@ -403,7 +410,7 @@ final class TerminalInteractionTests: XCTestCase {
 
     func testDoubleTapCanBeConfiguredToPaste() throws {
         let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
-        UIPasteboard.general.string = "echo first\necho second"
+        pasteboard.string = "echo first\necho second"
         AppearanceSettings.shared.doubleTapAction = .paste
         var request: TerminalClipboardRequest?
         surface.onClipboardRequest = { request = $0 }
@@ -415,23 +422,23 @@ final class TerminalInteractionTests: XCTestCase {
 
     func testRemoteClipboardWriteRequiresApproval() {
         let surface = GhosttyTerminalSurfaceView(app: nil, fontSize: 14, keyboardVisible: false)
-        UIPasteboard.general.string = "original"
+        pasteboard.string = "original"
         var request: TerminalClipboardRequest?
         surface.onClipboardRequest = { request = $0 }
 
         surface.requestRemoteClipboardWrite("remote replacement")
 
         XCTAssertEqual(request?.kind, .remoteWrite)
-        XCTAssertEqual(UIPasteboard.general.string, "original")
+        XCTAssertEqual(pasteboard.string, "original")
 
         request?.onDecision(false)
 
-        XCTAssertEqual(UIPasteboard.general.string, "original")
+        XCTAssertEqual(pasteboard.string, "original")
 
         surface.requestRemoteClipboardWrite("approved replacement")
         request?.onDecision(true)
 
-        XCTAssertEqual(UIPasteboard.general.string, "approved replacement")
+        XCTAssertEqual(pasteboard.string, "approved replacement")
     }
 
     func testLiveGhosttySurfaceResizesWhenKeyboardAppearsAndDisappears() throws {
@@ -462,7 +469,7 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertTrue(surface.hasSelection())
         XCTAssertTrue(surface.readSelection()?.contains("hello from the remote terminal") == true)
         XCTAssertTrue(surface.copyToClipboard())
-        XCTAssertTrue(UIPasteboard.general.string?.contains("hello from the remote terminal") == true)
+        XCTAssertTrue(pasteboard.string?.contains("hello from the remote terminal") == true)
         XCTAssertTrue(surface.toolbarAccessory.selectionAvailable)
         XCTAssertTrue(surface.toolbarAccessory.displayedButtons.contains(.copy))
     }
@@ -482,7 +489,7 @@ final class TerminalInteractionTests: XCTestCase {
 
     func testUnsafeLivePasteRequiresApprovalAndCancellationSendsNothing() throws {
         let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
-        UIPasteboard.general.string = "echo first\necho second"
+        pasteboard.string = "echo first\necho second"
         var request: TerminalClipboardRequest?
         var sent: [Data] = []
         surface.onClipboardRequest = { request = $0 }
@@ -501,7 +508,7 @@ final class TerminalInteractionTests: XCTestCase {
 
     func testApprovedLiveMultilinePasteSendsEncodedTerminalInput() async throws {
         let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
-        UIPasteboard.general.string = "echo first\necho second"
+        pasteboard.string = "echo first\necho second"
         var request: TerminalClipboardRequest?
         var sent: [Data] = []
         surface.onClipboardRequest = { request = $0 }
@@ -517,7 +524,7 @@ final class TerminalInteractionTests: XCTestCase {
     func testBracketedLivePastePreservesMultilineDataWithoutPrompt() async throws {
         let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
         surface.writeRemoteOutput(Array("\u{1B}[?2004h".utf8))
-        UIPasteboard.general.string = "echo first\necho second"
+        pasteboard.string = "echo first\necho second"
         var request: TerminalClipboardRequest?
         var sent: [Data] = []
         surface.onClipboardRequest = { request = $0 }
@@ -538,9 +545,9 @@ final class TerminalInteractionTests: XCTestCase {
         let payload = Data("copied through OSC52".utf8).base64EncodedString()
 
         surface.writeRemoteOutput(Array("\u{1B}]52;c;\(payload)\u{07}".utf8))
-        await waitUntil { UIPasteboard.general.string == "copied through OSC52" }
+        await waitUntil { self.pasteboard.string == "copied through OSC52" }
 
-        XCTAssertEqual(UIPasteboard.general.string, "copied through OSC52")
+        XCTAssertEqual(pasteboard.string, "copied through OSC52")
     }
 
     func testLiveOSC52WriteHonorsGhosttyConfirmationPolicy() async throws {
@@ -555,7 +562,7 @@ final class TerminalInteractionTests: XCTestCase {
         ghostty_config_finalize(config)
         ghostty_surface_update_config(handle, config)
 
-        UIPasteboard.general.string = "existing clipboard"
+        pasteboard.string = "existing clipboard"
         let payload = Data("approved remote clipboard".utf8).base64EncodedString()
         var request: TerminalClipboardRequest?
         surface.onClipboardRequest = { request = $0 }
@@ -564,16 +571,16 @@ final class TerminalInteractionTests: XCTestCase {
         await waitUntil { request != nil }
 
         XCTAssertEqual(request?.kind, .remoteWrite)
-        XCTAssertEqual(UIPasteboard.general.string, "existing clipboard")
+        XCTAssertEqual(pasteboard.string, "existing clipboard")
 
         request?.onDecision(true)
 
-        XCTAssertEqual(UIPasteboard.general.string, "approved remote clipboard")
+        XCTAssertEqual(pasteboard.string, "approved remote clipboard")
     }
 
     func testLiveOSC52ClipboardReadRequiresApproval() async throws {
         let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
-        UIPasteboard.general.string = "private clipboard"
+        pasteboard.string = "private clipboard"
         var request: TerminalClipboardRequest?
         var sent: [Data] = []
         surface.onClipboardRequest = { request = $0 }

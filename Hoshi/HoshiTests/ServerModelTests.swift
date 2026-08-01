@@ -36,6 +36,31 @@ final class ServerModelTests: XCTestCase {
         XCTAssertEqual(server.authMethod, .key)
     }
 
+    func testServerEndpointNeverGroupsPortDigits() {
+        let server = Server(
+            name: "Local",
+            hostname: "localhost",
+            port: 2222,
+            username: "felipe.coury"
+        )
+
+        XCTAssertEqual(2222.formatted(.number.locale(Locale(identifier: "pt_BR"))), "2.222")
+        XCTAssertEqual(server.endpoint, "localhost:2222")
+        XCTAssertEqual(server.loginEndpoint, "felipe.coury@localhost:2222")
+    }
+
+    func testServerEndpointPreservesFiveDigitPortsWithoutGrouping() {
+        let server = Server(
+            name: "Remote",
+            hostname: "server.example",
+            port: 65_535,
+            username: "deploy"
+        )
+
+        XCTAssertEqual(server.endpoint, "server.example:65535")
+        XCTAssertEqual(server.loginEndpoint, "deploy@server.example:65535")
+    }
+
     func testAuthMethodCodable() throws {
         let encoder = JSONEncoder()
         let decoder = JSONDecoder()

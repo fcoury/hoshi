@@ -314,6 +314,7 @@ final class AgentCompanionMonitor {
     private(set) var isPolling = false
     private(set) var lastSync: Date?
     private(set) var lastError: String?
+    private(set) var presentedError: ErrorPresentation?
 
     init(
         configuration: AgentCompanionConfiguration? = nil,
@@ -344,7 +345,22 @@ final class AgentCompanionMonitor {
                 } catch is CancellationError {
                     break
                 } catch {
-                    self.lastError = error.localizedDescription
+                    guard !Task.isCancelled,
+                          self.pollingGeneration == generation,
+                          ErrorPresentation.shouldPresent(error) else {
+                        break
+                    }
+                    let endpoint = self.configuration.endpoint
+                    let presentation = ErrorPresentation.classify(
+                        error,
+                        context: ErrorContext(
+                            operation: .companion,
+                            hostname: endpoint?.host,
+                            port: endpoint?.port
+                        )
+                    )
+                    self.presentedError = presentation
+                    self.lastError = presentation.explanation
                     failures = min(failures + 1, 5)
                 }
 
@@ -393,6 +409,7 @@ final class AgentCompanionMonitor {
         configuration.updateCursor(batch.nextCursor)
         lastSync = Date()
         lastError = nil
+        presentedError = nil
         return accepted
     }
 }

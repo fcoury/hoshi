@@ -19,7 +19,7 @@ struct AddServerView: View {
     @State private var tmuxSession = ""
     @State private var moshServerPath = ""
     @State private var moshUDPPortRange = ""
-    @State private var errorMessage: String?
+    @State private var presentedError: ErrorPresentation?
     @FocusState private var isNameFocused: Bool
 
     // When editing an existing server
@@ -105,11 +105,9 @@ struct AddServerView: View {
                     }
                 }
 
-                if let errorMessage {
+                if let presentedError {
                     Section {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
-                            .font(.caption)
+                        ErrorPresentationView(presentation: presentedError)
                     }
                 }
             }
@@ -176,9 +174,9 @@ struct AddServerView: View {
     }
 
     private func save() {
-        errorMessage = nil
+        presentedError = nil
         guard let portNumber = Int(port), portNumber > 0, portNumber <= 65535 else {
-            errorMessage = "Port must be a number between 1 and 65535."
+            presentError(ErrorMessageFailure(message: "Port must be a number between 1 and 65535."))
             return
         }
 
@@ -186,7 +184,7 @@ struct AddServerView: View {
         if transportPolicy != .ssh,
            !trimmedMoshPortRange.isEmpty,
            MoshPortRange(trimmedMoshPortRange) == nil {
-            errorMessage = "Mosh UDP range must be a valid port or range, such as 60000:61000."
+            presentError(ConnectionCoordinatorError.invalidMoshPortRange(trimmedMoshPortRange))
             return
         }
 
@@ -202,7 +200,7 @@ struct AddServerView: View {
             do {
                 try updateCredentials(forServer: server.id)
             } catch {
-                errorMessage = error.localizedDescription
+                presentError(error)
                 return
             }
 
@@ -240,7 +238,7 @@ struct AddServerView: View {
             do {
                 try updateCredentials(forServer: server.id)
             } catch {
-                errorMessage = error.localizedDescription
+                presentError(error)
                 return
             }
 
@@ -269,9 +267,22 @@ struct AddServerView: View {
             do {
                 password = try KeychainService.shared.retrievePassword(forServer: server.id) ?? ""
             } catch {
-                errorMessage = error.localizedDescription
+                presentError(error)
             }
         }
+    }
+
+    private func presentError(_ error: any Error) {
+        presentedError = ErrorPresentation.classify(
+            error,
+            context: ErrorContext(
+                operation: .credentials,
+                hostname: hostname,
+                port: Int(port),
+                username: username,
+                authenticationMethod: authMethod.rawValue
+            )
+        )
     }
 
     private func updateCredentials(forServer serverID: UUID) throws {

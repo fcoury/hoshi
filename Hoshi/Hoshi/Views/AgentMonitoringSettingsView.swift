@@ -4,7 +4,7 @@ import UIKit
 struct AgentMonitoringSettingsView: View {
     @State private var endpoint = ""
     @State private var token = ""
-    @State private var errorMessage: String?
+    @State private var presentedError: ErrorPresentation?
     @State private var showRemoveConfirmation = false
 
     private let events = AgentEventCenter.shared
@@ -17,11 +17,9 @@ struct AgentMonitoringSettingsView: View {
             companionSection
             hookSection
 
-            if let errorMessage {
+            if let presentedError {
                 Section {
-                    Text(errorMessage)
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                    ErrorPresentationView(presentation: presentedError)
                 }
             }
         }
@@ -47,10 +45,8 @@ struct AgentMonitoringSettingsView: View {
                 }
             ))
 
-            if let error = events.notificationError {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+            if let presentation = events.presentedNotificationError {
+                ErrorPresentationView(presentation: presentation)
             }
         } header: {
             Text("Local Notifications")
@@ -93,10 +89,8 @@ struct AgentMonitoringSettingsView: View {
                     }
                 }
 
-                if let error = monitor.lastError {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                if let presentation = monitor.presentedError {
+                    ErrorPresentationView(presentation: presentation)
                 }
 
                 Button("Remove Companion", role: .destructive) {
@@ -135,11 +129,11 @@ struct AgentMonitoringSettingsView: View {
             }
             try configuration.configure(endpoint: endpoint, token: value)
             token = ""
-            errorMessage = nil
+            presentedError = nil
             monitor.stop()
             monitor.start()
         } catch {
-            errorMessage = error.localizedDescription
+            presentCompanionError(error)
         }
     }
 
@@ -151,9 +145,9 @@ struct AgentMonitoringSettingsView: View {
             } else {
                 monitor.stop()
             }
-            errorMessage = nil
+            presentedError = nil
         } catch {
-            errorMessage = error.localizedDescription
+            presentCompanionError(error)
         }
     }
 
@@ -163,9 +157,21 @@ struct AgentMonitoringSettingsView: View {
             try configuration.removeConfiguration()
             endpoint = ""
             token = ""
-            errorMessage = nil
+            presentedError = nil
         } catch {
-            errorMessage = error.localizedDescription
+            presentCompanionError(error)
         }
+    }
+
+    private func presentCompanionError(_ error: any Error) {
+        let endpoint = configuration.endpoint
+        presentedError = ErrorPresentation.classify(
+            error,
+            context: ErrorContext(
+                operation: .companion,
+                hostname: endpoint?.host,
+                port: endpoint?.port
+            )
+        )
     }
 }

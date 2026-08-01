@@ -15,6 +15,7 @@ final class AgentEventCenter {
     private(set) var events: [AgentInboxEvent]
     private(set) var notificationsEnabled: Bool
     private(set) var notificationError: String?
+    private(set) var presentedNotificationError: ErrorPresentation?
 
     var unreadCount: Int {
         events.lazy.filter(\.isUnread).count
@@ -79,6 +80,7 @@ final class AgentEventCenter {
 
     func setNotificationsEnabled(_ enabled: Bool) async {
         notificationError = nil
+        presentedNotificationError = nil
 
         guard enabled else {
             notificationsEnabled = false
@@ -90,14 +92,16 @@ final class AgentEventCenter {
         do {
             let granted = try await notifications.requestAuthorization()
             guard granted else {
-                notificationError = "Enable notifications for Hoshi in iOS Settings."
+                presentNotificationError(ErrorMessageFailure(
+                    message: "Enable notifications for Hoshi in iOS Settings."
+                ))
                 return
             }
             notificationsEnabled = true
             defaults.set(true, forKey: Self.notificationSettingKey)
             await notifications.setBadgeCount(unreadCount)
         } catch {
-            notificationError = error.localizedDescription
+            presentNotificationError(error)
         }
     }
 
@@ -220,11 +224,20 @@ final class AgentEventCenter {
                         self.notifications.remove(eventID: event.id)
                     }
                 } catch {
-                    self.notificationError = error.localizedDescription
+                    self.presentNotificationError(error)
                 }
             }
         }
 
         return event
+    }
+
+    private func presentNotificationError(_ error: any Error) {
+        let presentation = ErrorPresentation.classify(
+            error,
+            context: ErrorContext(operation: .notifications)
+        )
+        presentedNotificationError = presentation
+        notificationError = presentation.explanation
     }
 }

@@ -33,12 +33,14 @@ struct TerminalView: View {
     @State private var showToolbarEditor = false
     @State private var showTmuxPalette = false
     @State private var showVoiceComposer = false
+    @State private var showFileUploader = false
 
     // Keyboard visibility for explicit show/hide control
     @State private var isKeyboardVisible = true
     @State private var keyboardVisibleBeforeToolbarEditor = true
     @State private var keyboardVisibleBeforeTmuxPalette = true
     @State private var keyboardVisibleBeforeVoiceComposer = true
+    @State private var keyboardVisibleBeforeFileUploader = true
 
     // Unsafe pastes and remote clipboard requests require explicit approval.
     @State private var pendingClipboardRequest: TerminalClipboardRequest?
@@ -85,6 +87,7 @@ struct TerminalView: View {
                 fontSize: $fontSize,
                 showToolbarEditor: $showToolbarEditor,
                 showVoiceComposer: $showVoiceComposer,
+                showFileUploader: $showFileUploader,
                 keyboardVisible: $isKeyboardVisible,
                 voicePromptsEnabled: voiceSettings.isEnabled,
                 onClipboardRequest: { request in
@@ -150,6 +153,14 @@ struct TerminalView: View {
                 isKeyboardVisible = keyboardVisibleBeforeVoiceComposer
             }
         }
+        .onChange(of: showFileUploader) { _, isPresented in
+            if isPresented {
+                keyboardVisibleBeforeFileUploader = isKeyboardVisible
+                isKeyboardVisible = false
+            } else {
+                isKeyboardVisible = keyboardVisibleBeforeFileUploader
+            }
+        }
         .sheet(isPresented: $showToolbarEditor) {
             ToolbarEditView(onSave: {
                 // GhosttyTerminalView reloads toolbar buttons after dismissal.
@@ -163,6 +174,13 @@ struct TerminalView: View {
         .sheet(isPresented: $showVoiceComposer) {
             VoicePromptComposerView { data in
                 await connectionVM.send(data)
+            }
+        }
+        .sheet(isPresented: $showFileUploader) {
+            FileUploadView(connection: connectionVM) { data in
+                guard connectionVM.connectionState == .connected else { return false }
+                await connectionVM.send(data)
+                return true
             }
         }
         .alert(
@@ -281,6 +299,18 @@ struct TerminalView: View {
             .layoutPriority(1)
 
             Spacer(minLength: 0)
+
+            Button {
+                showFileUploader = true
+            } label: {
+                Image(systemName: "paperclip")
+                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .accessibilityLabel("Upload a file or photo securely")
+            .accessibilityHint("Transfers the selected item using verified SSH and SFTP")
+            .accessibilityIdentifier("terminal.upload.open")
+            .keyboardShortcut("u", modifiers: [.command, .shift])
 
             if voiceSettings.isEnabled {
                 Button {

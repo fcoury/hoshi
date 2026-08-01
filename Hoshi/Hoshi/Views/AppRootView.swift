@@ -7,6 +7,7 @@ struct AppRootView: View {
     private let appLock = AppLockService.shared
     private let companion = AgentCompanionMonitor.shared
     private let voicePrivacy = VoicePromptPrivacyCoordinator.shared
+    private let uploadPrivacy = FileUploadPrivacyCoordinator.shared
 
     var body: some View {
         ZStack {
@@ -24,6 +25,7 @@ struct AppRootView: View {
             switch phase {
             case .background:
                 voicePrivacy.protectSensitiveContent()
+                uploadPrivacy.protectSensitiveContent()
                 appLock.lock()
                 companion.stop()
             case .active:
@@ -47,6 +49,7 @@ struct AppRootView: View {
         .onChange(of: appLock.isLocked) { _, locked in
             if locked {
                 voicePrivacy.protectSensitiveContent()
+                uploadPrivacy.protectSensitiveContent()
             }
         }
     }
@@ -70,11 +73,8 @@ struct AppRootView: View {
                 }
                 .buttonStyle(.borderedProminent)
 
-                if let error = appLock.errorMessage {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(Color(appearance.currentTheme.secondaryForeground))
-                        .multilineTextAlignment(.center)
+                if let presentation = appLock.presentedError {
+                    ErrorPresentationView(presentation: presentation)
                 }
             }
             .padding()

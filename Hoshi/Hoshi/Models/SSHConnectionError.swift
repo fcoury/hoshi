@@ -10,6 +10,7 @@ enum SSHConnectionError: LocalizedError {
     case networkUnreachable
     case channelOpenFailed
     case keyNotFound
+    case passwordNotFound
     case keyGenerationFailed(reason: String)
     case keychainError(reason: String)
     case unexpected(message: String)
@@ -39,6 +40,8 @@ enum SSHConnectionError: LocalizedError {
             return "Failed to open SSH channel"
         case .keyNotFound:
             return "SSH key not found"
+        case .passwordNotFound:
+            return "The saved SSH password could not be found"
         case .keyGenerationFailed(let reason):
             return "Key generation failed: \(reason)"
         case .keychainError(let reason):
@@ -78,7 +81,9 @@ enum SSHConnectionError: LocalizedError {
         case .channelOpenFailed:
             return "The server may have reached its maximum number of sessions. Try again later."
         case .keyNotFound:
-            return "Generate a new SSH key pair or import an existing one."
+            return "Generate a fresh Ed25519 key in Hoshi and add its public key to ~/.ssh/authorized_keys."
+        case .passwordNotFound:
+            return "Edit the connection and save the SSH password again."
         case .keyGenerationFailed:
             return "Try generating the key again. If the problem persists, restart the app."
         case .keychainError:

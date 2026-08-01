@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import Citadel
 
 @MainActor
 @Observable
@@ -14,6 +15,7 @@ final class ConnectionViewModel {
     }
     var isConnecting = false
     var errorMessage: String?
+    var presentedError: ErrorPresentation?
     var showError = false
     var onAgentEvent: (@MainActor (AgentEventEnvelope) -> Void)? {
         didSet { bindAgentEvents() }
@@ -103,6 +105,71 @@ final class ConnectionViewModel {
         pendingKeyTag
     }
 
+    enum FileTransferConnectionSource: Equatable {
+        case activeSSH
+        case retainedMoshBootstrap
+        case verifiedMoshReconnect
+    }
+
+    var fileTransferConnectionSource: FileTransferConnectionSource? {
+        guard connectionState == .connected else { return nil }
+        if sshSession?.client != nil { return .activeSSH }
+        if moshSession?.bootstrapClient != nil { return .retainedMoshBootstrap }
+        if moshSession != nil { return .verifiedMoshReconnect }
+        return nil
+    }
+
+    /// Mosh closes its bootstrap after UDP starts, so file transfer reconnects through pinned-host SSH.
+    func withVerifiedFileTransferClient<Result: Sendable>(
+        _ operation: @escaping @Sendable (SSHClient) async throws -> Result
+    ) async throws -> Result {
+        guard connectionState == .connected else { throw FileUploadError.disconnected }
+
+        if let client = sshSession?.client {
+            return try await operation(client)
+        }
+        if let client = moshSession?.bootstrapClient {
+            return try await operation(client)
+        }
+
+        guard let server = pendingServer ?? moshSession?.server else {
+            throw FileUploadError.disconnected
+        }
+
+        let password: String?
+        switch server.authMethod {
+        case .password:
+            if let pendingPassword {
+                password = pendingPassword
+            } else {
+                password = try KeychainService.shared.retrievePassword(forServer: server.id)
+            }
+            guard password != nil else { throw FileUploadError.missingCredentials }
+        case .key:
+            password = nil
+        }
+
+        let keyTag = pendingKeyTag ?? server.keyID
+        if server.authMethod == .key, keyTag == nil {
+            throw FileUploadError.missingCredentials
+        }
+
+        let client = try await SSHConnectionService.connect(
+            server: server,
+            password: password,
+            privateKeyTag: keyTag
+        )
+
+        do {
+            let result = try await operation(client)
+            try? await client.close()
+            return result
+        } catch {
+            try? await client.close()
+            throw error
+        }
+    }
+
     // The active session's output buffer (fallback for plain text mode)
     var outputBuffer: String {
         get {
@@ -144,6 +211,7 @@ final class ConnectionViewModel {
         connectionGeneration = generation
         isConnecting = true
         errorMessage = nil
+        presentedError = nil
         showError = false
         connectionPhase = ""
         showMoshInstallOffer = false
@@ -151,8 +219,7 @@ final class ConnectionViewModel {
 
         if server.authMethod == .key {
             guard let keyTag else {
-                errorMessage = SSHConnectionError.keyNotFound.localizedDescription
-                showError = true
+                presentConnectionError(SSHConnectionError.keyNotFound, server: server)
                 isConnecting = false
                 return
             }
@@ -217,8 +284,7 @@ final class ConnectionViewModel {
         do {
             detectedTmuxSessions = try await coordinator.refreshTmuxSessions()
         } catch {
-            errorMessage = "Unable to refresh tmux sessions: \(error.localizedDescription)"
-            showError = true
+            presentConnectionError(error, operation: .tmux)
         }
     }
 
@@ -359,7 +425,7 @@ final class ConnectionViewModel {
             switch server.authMethod {
             case .password:
                 guard let password = try KeychainService.shared.retrievePassword(forServer: server.id) else {
-                    throw SSHConnectionError.authenticationFailed(method: "password")
+                    throw SSHConnectionError.passwordNotFound
                 }
                 await connect(server: server, password: password, keyTag: nil)
             case .key:
@@ -370,8 +436,7 @@ final class ConnectionViewModel {
                 await connect(server: server, password: nil, keyTag: keyID)
             }
         } catch {
-            errorMessage = error.localizedDescription
-            showError = true
+            presentConnectionError(error, server: server)
         }
     }
 
@@ -465,6 +530,7 @@ final class ConnectionViewModel {
 
                 await coordinator.cancel()
                 errorMessage = nil
+                presentedError = nil
                 showError = false
                 pendingHostKeyIdentity = nil
             } catch {
@@ -500,8 +566,24 @@ final class ConnectionViewModel {
         }
     }
 
-    private func presentConnectionError(_ error: Error) {
-        errorMessage = error.localizedDescription
+    func presentConnectionError(
+        _ error: any Error,
+        server: Server? = nil,
+        operation: ErrorOperation = .connection
+    ) {
+        guard ErrorPresentation.shouldPresent(error) else {
+            presentedError = nil
+            errorMessage = nil
+            showError = false
+            return
+        }
+        let server = server ?? pendingServer ?? sshSession?.server ?? moshSession?.server
+        let context = server.map {
+            ErrorContext.connection(server: $0, phase: connectionPhase, operation: operation)
+        } ?? ErrorContext(operation: operation, phase: connectionPhase)
+        let presentation = ErrorPresentation.classify(error, context: context)
+        presentedError = presentation
+        errorMessage = presentation.explanation
         showError = true
     }
 }

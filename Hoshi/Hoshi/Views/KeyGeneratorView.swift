@@ -7,7 +7,7 @@ struct KeyGeneratorView: View {
     @State private var keyTag = ""
     @State private var generatedKey: SSHKeyPair?
     @State private var isGenerating = false
-    @State private var errorMessage: String?
+    @State private var presentedError: ErrorPresentation?
     @State private var copied = false
 
     let onKeyGenerated: (String) -> Void
@@ -37,10 +37,9 @@ struct KeyGeneratorView: View {
                     }
                 }
 
-                if let errorMessage {
+                if let presentedError {
                     Section {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
+                        ErrorPresentationView(presentation: presentedError)
                     }
                 }
 
@@ -117,14 +116,17 @@ struct KeyGeneratorView: View {
         guard !keyTag.isEmpty else { return }
 
         isGenerating = true
-        errorMessage = nil
+        presentedError = nil
 
         Task {
             do {
                 let keyPair = try SSHKeyService.shared.generateKeyPair(type: keyType, tag: keyTag)
                 generatedKey = keyPair
             } catch {
-                errorMessage = error.localizedDescription
+                presentedError = ErrorPresentation.classify(
+                    error,
+                    context: ErrorContext(operation: .credentials)
+                )
             }
             isGenerating = false
         }

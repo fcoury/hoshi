@@ -22,7 +22,7 @@ struct ServerListView: View {
     @State private var sessionManager = SessionManager(agentEventCenter: .shared)
     @State private var quickLaunching = false
     @State private var connectingSession: ManagedSession?
-    @State private var quickLaunchErrorMessage: String?
+    @State private var quickLaunchError: ErrorPresentation?
     @State private var showMaxSessionsAlert = false
     @State private var splitViewVisibility = NavigationSplitViewVisibility.all
 
@@ -112,13 +112,13 @@ struct ServerListView: View {
             } message: {
                 Text("You can have up to \(SessionManager.maxSessions) active sessions. Close an existing session to open a new one.")
             }
-            .alert("Unable to Complete Action", isPresented: Binding(
-                get: { quickLaunchErrorMessage != nil },
-                set: { if !$0 { quickLaunchErrorMessage = nil } }
+            .alert(quickLaunchError?.title ?? "Unable to Complete Action", isPresented: Binding(
+                get: { quickLaunchError != nil },
+                set: { if !$0 { quickLaunchError = nil } }
             )) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text(quickLaunchErrorMessage ?? "")
+                Text(quickLaunchError?.fullMessage ?? "")
             }
             .overlay {
                 if quickLaunching, let session = connectingSession {
@@ -461,8 +461,10 @@ struct ServerListView: View {
                 }
 
                 guard session.connectionVM.connectionState == .connected else {
-                    quickLaunchErrorMessage = session.connectionVM.errorMessage
-                        ?? "Unable to start the selected terminal session."
+                    quickLaunchError = session.connectionVM.presentedError ?? ErrorPresentation.classify(
+                        ErrorMessageFailure(message: "Unable to start the selected terminal session."),
+                        context: .connection(server: session.server, operation: .tmux)
+                    )
                     sessionManager.tmuxPickerSession = nil
                     await sessionManager.closeSession(id: session.id)
                     return
@@ -542,7 +544,11 @@ struct ServerListView: View {
 
         guard let sourceSession = sessionManager.sessions.first(where: { $0.id == id }) else { return }
         guard let sourceServer = servers.first(where: { $0.id == sourceSession.serverID }) else {
-            quickLaunchErrorMessage = "Unable to duplicate \(sourceSession.serverName) because its server profile no longer exists."
+            quickLaunchError = ErrorPresentation.classify(
+                ErrorMessageFailure(
+                    message: "Unable to duplicate \(sourceSession.serverName) because its server profile no longer exists."
+                )
+            )
             return
         }
 
@@ -550,7 +556,7 @@ struct ServerListView: View {
     }
 
     private func launchSession(for server: Server, tmuxOverride: String? = nil) {
-        quickLaunchErrorMessage = nil
+        quickLaunchError = nil
         let connectionServer = connectionServer(from: server, tmuxOverride: tmuxOverride)
 
         guard let session = sessionManager.createSession(for: connectionServer) else {
@@ -577,8 +583,10 @@ struct ServerListView: View {
                     sessionManager.switchTo(sessionID: session.id)
                     connectingSession = nil
                 } else {
-                    quickLaunchErrorMessage = session.connectionVM.errorMessage
-                        ?? "Unable to connect to \(connectionServer.name)."
+                    quickLaunchError = session.connectionVM.presentedError ?? ErrorPresentation.classify(
+                        ErrorMessageFailure(message: "Unable to connect to \(connectionServer.name)."),
+                        context: .connection(server: connectionServer)
+                    )
                     await sessionManager.closeSession(id: session.id)
                     connectingSession = nil
                 }
@@ -624,7 +632,10 @@ struct ServerListView: View {
             modelContext.delete(server)
             try modelContext.save()
         } catch {
-            quickLaunchErrorMessage = error.localizedDescription
+            quickLaunchError = ErrorPresentation.classify(
+                error,
+                context: .connection(server: server, operation: .credentials)
+            )
         }
     }
 
@@ -642,7 +653,7 @@ struct ServerListView: View {
         do {
             try modelContext.save()
         } catch {
-            quickLaunchErrorMessage = error.localizedDescription
+            quickLaunchError = ErrorPresentation.classify(error)
         }
     }
 
@@ -753,7 +764,7 @@ struct ServerRow: View {
                     }
                 }
 
-                Text("\(server.username)@\(server.hostname):\(server.port)")
+                Text(verbatim: server.loginEndpoint)
                     .font(.caption.monospaced())
                     .foregroundStyle(Color(theme.secondaryForeground))
                     .lineLimit(1)

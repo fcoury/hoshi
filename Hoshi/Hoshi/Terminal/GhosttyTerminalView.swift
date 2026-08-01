@@ -10,6 +10,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
     @Binding var fontSize: CGFloat
     @Binding var showToolbarEditor: Bool
     @Binding var showVoiceComposer: Bool
+    @Binding var showFileUploader: Bool
     @Binding var keyboardVisible: Bool
     let voicePromptsEnabled: Bool
     let onClipboardRequest: (TerminalClipboardRequest) -> Void
@@ -21,6 +22,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
             connectionVM: connectionVM,
             showToolbarEditorBinding: $showToolbarEditor,
             showVoiceComposerBinding: $showVoiceComposer,
+            showFileUploaderBinding: $showFileUploader,
             keyboardVisibleBinding: $keyboardVisible,
             managedSession: managedSession,
             onClipboardRequest: onClipboardRequest,
@@ -48,6 +50,9 @@ struct GhosttyTerminalView: UIViewRepresentable {
         }
         view.onVoicePrompt = { [weak coordinator] in
             coordinator?.showVoiceComposerBinding?.wrappedValue = true
+        }
+        view.onFileUpload = { [weak coordinator] in
+            coordinator?.showFileUploaderBinding?.wrappedValue = true
         }
         view.onSwapSession = { [weak coordinator] in
             coordinator?.onSwapSession?()
@@ -85,6 +90,9 @@ struct GhosttyTerminalView: UIViewRepresentable {
         uiView.onVoicePrompt = { [weak coordinator] in
             coordinator?.showVoiceComposerBinding?.wrappedValue = true
         }
+        uiView.onFileUpload = { [weak coordinator] in
+            coordinator?.showFileUploaderBinding?.wrappedValue = true
+        }
         uiView.onSwapSession = { [weak coordinator] in
             coordinator?.onSwapSession?()
         }
@@ -119,6 +127,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
         uiView.onTerminalSizeChanged = nil
         uiView.onEditTap = nil
         uiView.onVoicePrompt = nil
+        uiView.onFileUpload = nil
         uiView.onSwapSession = nil
         uiView.onClipboardRequest = nil
         uiView.onKeyboardVisibilityChanged = nil
@@ -133,6 +142,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
         let connectionVM: ConnectionViewModel
         var showToolbarEditorBinding: Binding<Bool>?
         var showVoiceComposerBinding: Binding<Bool>?
+        var showFileUploaderBinding: Binding<Bool>?
         var keyboardVisibleBinding: Binding<Bool>?
         weak var managedSession: ManagedSession?
         var onClipboardRequest: (TerminalClipboardRequest) -> Void
@@ -143,6 +153,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
             connectionVM: ConnectionViewModel,
             showToolbarEditorBinding: Binding<Bool>?,
             showVoiceComposerBinding: Binding<Bool>?,
+            showFileUploaderBinding: Binding<Bool>?,
             keyboardVisibleBinding: Binding<Bool>?,
             managedSession: ManagedSession?,
             onClipboardRequest: @escaping (TerminalClipboardRequest) -> Void,
@@ -151,6 +162,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
             self.connectionVM = connectionVM
             self.showToolbarEditorBinding = showToolbarEditorBinding
             self.showVoiceComposerBinding = showVoiceComposerBinding
+            self.showFileUploaderBinding = showFileUploaderBinding
             self.keyboardVisibleBinding = keyboardVisibleBinding
             self.managedSession = managedSession
             self.onClipboardRequest = onClipboardRequest
@@ -257,6 +269,11 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
     var onVoicePrompt: (() -> Void)? {
         didSet {
             toolbarAccessory.onVoicePrompt = onVoicePrompt
+        }
+    }
+    var onFileUpload: (() -> Void)? {
+        didSet {
+            toolbarAccessory.onFileUpload = onFileUpload
         }
     }
     var onSwapSession: (() -> Void)?
@@ -392,7 +409,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         case #selector(copy(_:)):
             return hasSelection()
         case #selector(paste(_:)):
-            return UIPasteboard.general.hasStrings
+            return TerminalPasteboard.shared.hasStrings
         case #selector(selectAll(_:)):
             return surface != nil
         default:
@@ -756,7 +773,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
             assessment: TerminalPastePolicy.assess(content, bracketedPasteEnabled: false)
         ) { [weak self] approved in
             guard approved else { return }
-            UIPasteboard.general.string = content
+            TerminalPasteboard.shared.string = content
             self?.toolbarAccessory.setPasteAvailable(true)
         }
         onClipboardRequest(request)
@@ -782,15 +799,15 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
     @discardableResult
     func copyToClipboard() -> Bool {
         guard let selectedText = readSelection() else { return false }
-        UIPasteboard.general.string = selectedText
+        TerminalPasteboard.shared.string = selectedText
         toolbarAccessory.setPasteAvailable(true)
         return true
     }
 
     func pasteFromClipboard() {
         guard let surface,
-              UIPasteboard.general.hasStrings,
-              let content = UIPasteboard.general.string,
+              TerminalPasteboard.shared.hasStrings,
+              let content = TerminalPasteboard.shared.string,
               !content.isEmpty else {
             HapticService.warning()
             return
@@ -852,7 +869,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
             }
         }
 
-        if UIPasteboard.general.hasStrings {
+        if TerminalPasteboard.shared.hasStrings {
             actions.append(UIAction(title: "Paste", image: UIImage(systemName: "doc.on.clipboard")) { [weak self] _ in
                 self?.paste(nil)
             })

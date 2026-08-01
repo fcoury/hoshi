@@ -25,16 +25,20 @@ final class ToolbarConfigurationService {
             return ToolbarButton.defaultButtons
         }
 
-        // Upgrade previous untouched defaults as semantic Paste and Voice actions are introduced,
+        // Upgrade previous untouched defaults as semantic Paste, Voice, and File actions are introduced,
         // while preserving deliberately customized layouts verbatim.
         let currentDefaults = ToolbarButton.defaultButtons
-        let priorDefaultLayouts = [
-            currentDefaults.filter { $0.id != ToolbarButton.voicePrompt.id },
-            currentDefaults.filter { $0.id != ToolbarButton.paste.id },
-            currentDefaults.filter {
-                $0.id != ToolbarButton.paste.id && $0.id != ToolbarButton.voicePrompt.id
-            },
+        let introducedActionIDs = [
+            ToolbarButton.paste.id,
+            ToolbarButton.voicePrompt.id,
+            ToolbarButton.uploadFile.id,
         ]
+        let priorDefaultLayouts = (1..<(1 << introducedActionIDs.count)).map { mask in
+            let omittedIDs = Set(introducedActionIDs.enumerated().compactMap { index, identifier in
+                mask & (1 << index) == 0 ? nil : identifier
+            })
+            return currentDefaults.filter { !omittedIDs.contains($0.id) }
+        }
         if priorDefaultLayouts.contains(where: { $0.map(\.id) == savedIDs }) {
             saveButtons(ToolbarButton.defaultButtons)
             return ToolbarButton.defaultButtons

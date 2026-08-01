@@ -160,7 +160,7 @@ final class GhosttyRuntimeController: ObservableObject {
     ) {
         guard let userdata, let state else { return }
         let view = Unmanaged<GhosttyTerminalSurfaceView>.fromOpaque(userdata).takeUnretainedValue()
-        view.completeClipboardRequest(state: state, content: UIPasteboard.general.string ?? "", confirmed: false)
+        view.completeClipboardRequest(state: state, content: TerminalPasteboard.shared.string ?? "", confirmed: false)
     }
 
     private static func confirmReadClipboard(
@@ -171,7 +171,7 @@ final class GhosttyRuntimeController: ObservableObject {
     ) {
         guard let userdata, let state else { return }
         let view = Unmanaged<GhosttyTerminalSurfaceView>.fromOpaque(userdata).takeUnretainedValue()
-        let content = string.flatMap { String(validatingUTF8: $0) } ?? (UIPasteboard.general.string ?? "")
+        let content = string.flatMap { String(validatingUTF8: $0) } ?? (TerminalPasteboard.shared.string ?? "")
         view.requestClipboardConfirmation(state: state, content: content, request: request)
     }
 
@@ -200,7 +200,7 @@ final class GhosttyRuntimeController: ObservableObject {
                     .takeUnretainedValue()
                 view.requestRemoteClipboardWrite(text)
             } else {
-                UIPasteboard.general.string = text
+                TerminalPasteboard.shared.string = text
             }
             break
         }

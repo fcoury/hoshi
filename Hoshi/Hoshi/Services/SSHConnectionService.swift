@@ -47,7 +47,7 @@ enum SSHConnectionService {
         switch server.authMethod {
         case .password:
             guard let password else {
-                throw SSHConnectionError.authenticationFailed(method: "password")
+                throw SSHConnectionError.passwordNotFound
             }
             return .passwordBased(username: server.username, password: password)
 

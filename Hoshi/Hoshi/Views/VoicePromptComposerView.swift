@@ -35,11 +35,8 @@ struct VoicePromptComposerView: View {
                     recordingSection
                     draftSection
 
-                    if let error = controller.errorMessage {
-                        Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(.red)
-                            .fixedSize(horizontal: false, vertical: true)
+                    if let presentation = controller.presentedError {
+                        ErrorPresentationView(presentation: presentation)
                     }
                 }
                 .padding()
@@ -280,6 +277,7 @@ struct VoicePromptComposerView: View {
                 send(submission)
             }
         } catch {
+            controller.reportSubmissionError(error)
             HapticService.error()
         }
     }
@@ -392,10 +390,8 @@ struct VoicePromptSettingsView: View {
                 }
             }
 
-            if let error = controller.errorMessage {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+            if let presentation = controller.presentedError {
+                ErrorPresentationView(presentation: presentation)
             }
         } header: {
             Text("Permissions")

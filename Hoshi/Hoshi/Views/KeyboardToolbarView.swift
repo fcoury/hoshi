@@ -35,10 +35,13 @@ class KeyboardToolbarAccessoryView: UIView {
     // Callback to open the explicit on-device dictation composer.
     var onVoicePrompt: (() -> Void)?
 
+    // Callback to open the verified SSH/SFTP file transfer sheet.
+    var onFileUpload: (() -> Void)?
+
     // Current button layout
     private(set) var buttons: [ToolbarButton]
     private(set) var selectionAvailable = false
-    private(set) var pasteAvailable = UIPasteboard.general.hasStrings
+    private(set) var pasteAvailable = TerminalPasteboard.shared.hasStrings
     private(set) var voicePromptAvailable = VoicePromptSettings.shared.isEnabled
     private var pasteboardObserver: NSObjectProtocol?
 
@@ -50,7 +53,7 @@ class KeyboardToolbarAccessoryView: UIView {
 
         pasteboardObserver = NotificationCenter.default.addObserver(
             forName: UIPasteboard.changedNotification,
-            object: UIPasteboard.general,
+            object: TerminalPasteboard.shared,
             queue: .main
         ) { [weak self] _ in
             self?.refreshPasteAvailability()
@@ -111,7 +114,7 @@ class KeyboardToolbarAccessoryView: UIView {
     }
 
     private func refreshPasteAvailability() {
-        setPasteAvailable(UIPasteboard.general.hasStrings)
+        setPasteAvailable(TerminalPasteboard.shared.hasStrings)
     }
 
     private func setupHostingController() {
@@ -173,6 +176,12 @@ class KeyboardToolbarAccessoryView: UIView {
             guard voicePromptAvailable else { return }
             HapticService.lightTap()
             onVoicePrompt?()
+            return
+        }
+
+        if button.id == ToolbarButton.uploadFile.id {
+            HapticService.lightTap()
+            onFileUpload?()
             return
         }
 
@@ -345,6 +354,8 @@ struct KeyboardToolbarContent: View {
             Group {
                 if button.id == ToolbarButton.voicePrompt.id {
                     Image(systemName: "mic.fill")
+                } else if button.id == ToolbarButton.uploadFile.id {
+                    Image(systemName: "paperclip")
                 } else {
                     Text(button.label)
                 }

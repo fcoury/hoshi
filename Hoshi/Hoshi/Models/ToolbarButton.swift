@@ -15,6 +15,7 @@ struct ToolbarButton: Codable, Identifiable, Equatable, Hashable {
         case function   // F1-F12
         case symbol     // /, -, |, ~, etc.
         case clipboard  // Copy and paste actions
+        case transfer   // Secure SSH/SFTP file and image upload
         case voice      // On-device voice prompt composition
         case combo      // Ctrl+C, Ctrl+B, Ctrl+D, etc.
     }
@@ -25,14 +26,14 @@ struct ToolbarButton: Codable, Identifiable, Equatable, Hashable {
 extension ToolbarButton {
 
     // All available buttons the user can choose from
-    static let allAvailable: [ToolbarButton] = modifiers + navigation + swipeControls + function + symbols + clipboard + voiceActions + combos
+    static let allAvailable: [ToolbarButton] = modifiers + navigation + swipeControls + function + symbols + clipboard + transferActions + voiceActions + combos
 
     // Default toolbar layout
     static let defaultButtons: [ToolbarButton] = [
         .esc, .ctrl, .opt, .tab,
         .arrowUp, .arrowDown, .arrowLeft, .arrowRight,
         .slash, .dash, .pipe,
-        .ctrlC, .paste, .voicePrompt,
+        .ctrlC, .paste, .uploadFile, .voicePrompt,
     ]
 
     // Modifier IDs that behave as sticky toggles (applied to next key press)
@@ -130,6 +131,12 @@ extension ToolbarButton {
 
     static let clipboard: [ToolbarButton] = [copy, paste]
 
+    // MARK: Secure file and image upload
+
+    static let uploadFile = ToolbarButton(id: "upload-file", label: "File", bytes: [], category: .transfer)
+
+    static let transferActions: [ToolbarButton] = [uploadFile]
+
     // MARK: On-device voice prompt actions
 
     static let voicePrompt = ToolbarButton(id: "voice-prompt", label: "Voice", bytes: [], category: .voice)
@@ -161,6 +168,7 @@ extension ToolbarButton {
         case "ctrl-r": "Control R, reverse search"
         case "ctrl-w": "Control W, delete word"
         case "ctrl-u": "Control U, clear line"
+        case "upload-file": "Upload a file or photo securely"
         case "voice-prompt": "Compose on-device voice prompt"
         default: label
         }

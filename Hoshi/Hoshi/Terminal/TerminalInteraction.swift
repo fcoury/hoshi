@@ -1,5 +1,12 @@
 import Foundation
 import CoreGraphics
+import UIKit
+
+/// Keeps terminal clipboard access injectable so tests never touch the user's system pasteboard.
+@MainActor
+enum TerminalPasteboard {
+    static var shared: UIPasteboard = .general
+}
 
 enum TerminalDoubleTapAction: String, CaseIterable, Identifiable {
     case selectWord

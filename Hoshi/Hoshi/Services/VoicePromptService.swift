@@ -69,6 +69,16 @@ enum VoicePromptError: LocalizedError, Equatable {
 enum VoicePromptRecognitionUpdate: Equatable, Sendable {
     case transcript(String, isFinal: Bool)
     case failed(String)
+    case failedWithDiagnostics(String, ErrorDiagnostics)
+}
+
+/// Keeps the audio framework's original failure while retaining the existing user-facing description.
+struct VoicePromptSystemFailure: LocalizedError {
+    let underlying: any Error
+
+    var errorDescription: String? {
+        VoicePromptError.audioUnavailable.errorDescription
+    }
 }
 
 @MainActor
@@ -208,13 +218,16 @@ final class SystemVoicePromptRecognizer: VoicePromptRecognizing {
                     onUpdate(.transcript(result.bestTranscription.formattedString, isFinal: result.isFinal))
                 }
                 if let error {
-                    onUpdate(.failed(error.localizedDescription))
+                    onUpdate(.failedWithDiagnostics(
+                        error.localizedDescription,
+                        ErrorDiagnostics(error: error)
+                    ))
                 }
             }
         } catch {
             cancelRecognition()
             if let error = error as? VoicePromptError { throw error }
-            throw VoicePromptError.audioUnavailable
+            throw VoicePromptSystemFailure(underlying: error)
         }
     }
 
@@ -422,6 +435,7 @@ final class VoicePromptController {
 
     private(set) var state: VoicePromptRecordingState = .idle
     private(set) var errorMessage: String?
+    private(set) var presentedError: ErrorPresentation?
     private(set) var lastTranscript = ""
     private(set) var authorizationRevision = 0
     var draft = ""
@@ -467,6 +481,7 @@ final class VoicePromptController {
         existingDraft = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         lastTranscript = ""
         errorMessage = nil
+        presentedError = nil
         state = .requestingAuthorization
 
         startTask = Task { [weak self] in
@@ -501,7 +516,12 @@ final class VoicePromptController {
         lastTranscript = ""
         draft = ""
         errorMessage = nil
+        presentedError = nil
         state = .idle
+    }
+
+    func reportSubmissionError(_ error: any Error) {
+        fail(error)
     }
 
     func submission(action: VoicePromptSubmission.Action) throws -> VoicePromptSubmission {
@@ -600,16 +620,29 @@ final class VoicePromptController {
             }
         case .failed(let message):
             fail(message, generation: generation)
+        case .failedWithDiagnostics(let message, let diagnostics):
+            let presentation = ErrorPresentation(
+                title: "Voice Recognition Failed",
+                explanation: message,
+                recoverySuggestion: "Check microphone and speech-recognition availability, then try again.",
+                diagnostics: diagnostics,
+                context: ErrorContext(operation: .voice)
+            )
+            fail(presentation.explanation, generation: generation, presentation: presentation)
         }
     }
 
     private func fail(_ error: any Error, generation: UUID? = nil) {
         if let generation, recordingGeneration != generation { return }
-        let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        fail(message, generation: generation)
+        let presentation = ErrorPresentation.classify(error, context: ErrorContext(operation: .voice))
+        fail(presentation.explanation, generation: generation, presentation: presentation)
     }
 
-    private func fail(_ message: String, generation: UUID? = nil) {
+    private func fail(
+        _ message: String,
+        generation: UUID? = nil,
+        presentation: ErrorPresentation? = nil
+    ) {
         if let generation, recordingGeneration != generation { return }
         recordingGeneration = nil
         startTask?.cancel()
@@ -619,6 +652,10 @@ final class VoicePromptController {
         recognizer.cancelRecognition()
         state = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .idle : .editing
         errorMessage = message
+        presentedError = presentation ?? ErrorPresentation.classify(
+            ErrorMessageFailure(message: message),
+            context: ErrorContext(operation: .voice)
+        )
     }
 
     nonisolated private static func safeTranscript(_ value: String) -> String {

@@ -28,6 +28,15 @@ final class Server {
     var moshServerPath: String?
     var moshUDPPortRange: String?
 
+    // Ports are identifiers, not localized quantities; never insert grouping separators.
+    var endpoint: String {
+        "\(hostname):\(String(port))"
+    }
+
+    var loginEndpoint: String {
+        "\(username)@\(endpoint)"
+    }
+
     var transportPolicy: ConnectionTransportPolicy {
         get {
             guard let transportPolicyRawValue,

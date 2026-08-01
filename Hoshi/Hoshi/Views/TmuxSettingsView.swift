@@ -3,7 +3,7 @@ import SwiftUI
 struct TmuxSettingsView: View {
     @State private var editingCommand: TmuxCommand?
     @State private var customPrefix = ""
-    @State private var errorMessage: String?
+    @State private var presentedError: ErrorPresentation?
 
     private let configuration = TmuxConfigurationService.shared
 
@@ -64,11 +64,9 @@ struct TmuxSettingsView: View {
                 Text("Shortcuts can send arbitrary UTF-8 text, control keys, escape sequences, and hexadecimal bytes.")
             }
 
-            if let errorMessage {
+            if let presentedError {
                 Section {
-                    Text(errorMessage)
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                    ErrorPresentationView(presentation: presentedError)
                 }
             }
         }
@@ -90,7 +88,7 @@ struct TmuxSettingsView: View {
     }
 
     private func updatePrefixSelection(_ selection: String) {
-        errorMessage = nil
+        presentedError = nil
         if selection == "custom" {
             customPrefix = "\\x02"
             saveCustomPrefix()
@@ -101,16 +99,16 @@ struct TmuxSettingsView: View {
             try configuration.setPrefix(selection)
             customPrefix = selection
         } catch {
-            errorMessage = error.localizedDescription
+            presentedError = ErrorPresentation.classify(error, context: ErrorContext(operation: .tmux))
         }
     }
 
     private func saveCustomPrefix() {
         do {
             try configuration.setPrefix(customPrefix)
-            errorMessage = nil
+            presentedError = nil
         } catch {
-            errorMessage = error.localizedDescription
+            presentedError = ErrorPresentation.classify(error, context: ErrorContext(operation: .tmux))
         }
     }
 
@@ -128,7 +126,7 @@ private struct TmuxCommandEditorView: View {
     @State private var detail: String
     @State private var sequence: String
     @State private var sendsPrefix: Bool
-    @State private var errorMessage: String?
+    @State private var presentedError: ErrorPresentation?
 
     private let id: String
     private let configuration = TmuxConfigurationService.shared
@@ -160,10 +158,9 @@ private struct TmuxCommandEditorView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if let errorMessage {
+                if let presentedError {
                     Section {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
+                        ErrorPresentationView(presentation: presentedError)
                     }
                 }
             }
@@ -194,7 +191,7 @@ private struct TmuxCommandEditorView: View {
             try configuration.saveCustomCommand(command)
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            presentedError = ErrorPresentation.classify(error, context: ErrorContext(operation: .tmux))
         }
     }
 }

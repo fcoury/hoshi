@@ -50,6 +50,15 @@ Hoshi (星, "star" in Japanese) is designed around a specific workflow: connect 
 - Configurable language and recording limits
 - Drafts and recording are cleared when Hoshi locks or backgrounds
 
+### Secure File and Image Uploads
+
+- Select documents or photos without granting full photo-library access
+- Encrypted SFTP uploads over pinned, host-key-verified SSH connections
+- Existing SSH sessions are reused; Mosh sessions open a separately verified SSH transfer connection
+- Home-directory-only destinations, unique filenames, private permissions, and atomic completion
+- Progress reporting, cancellation, and automatic partial-file cleanup
+- Optional shell-quoted remote path insertion without executing Return
+
 ### Terminal
 
 - Powered by [Ghostty](https://ghostty.org) with Metal-accelerated rendering
@@ -66,6 +75,7 @@ Hoshi (星, "star" in Japanese) is designed around a specific workflow: connect 
 - Swipe-to-arrow controls — drag gestures emit arrow keys
 - Esc, Tab, function keys, symbols, and common combos (^C, ^D, ^Z)
 - Customizable microphone action for private voice prompt composition
+- Customizable file-upload action for documents and photos
 
 ### Touch & Gestures
 

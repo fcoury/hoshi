@@ -41,6 +41,7 @@ final class AppLockService {
 
     private(set) var isLocked: Bool
     private(set) var errorMessage: String?
+    private(set) var presentedError: ErrorPresentation?
 
     var isAvailable: Bool { authenticator.canAuthenticate() }
 
@@ -66,6 +67,7 @@ final class AppLockService {
 
     func setEnabled(_ enabled: Bool) async {
         errorMessage = nil
+        presentedError = nil
 
         guard enabled else {
             isEnabled = false
@@ -74,7 +76,9 @@ final class AppLockService {
         }
 
         guard authenticator.canAuthenticate() else {
-            errorMessage = "Set up Face ID, Touch ID, or a device passcode to enable app lock."
+            presentAuthenticationError(ErrorMessageFailure(
+                message: "Set up Face ID, Touch ID, or a device passcode to enable app lock."
+            ))
             return
         }
 
@@ -84,7 +88,7 @@ final class AppLockService {
                 isLocked = false
             }
         } catch {
-            errorMessage = error.localizedDescription
+            presentAuthenticationError(error)
         }
     }
 
@@ -102,9 +106,26 @@ final class AppLockService {
             if try await authenticator.authenticate(reason: "Unlock your Hoshi terminal sessions") {
                 isLocked = false
                 errorMessage = nil
+                presentedError = nil
             }
         } catch {
-            errorMessage = error.localizedDescription
+            presentAuthenticationError(error)
         }
+    }
+
+    private func presentAuthenticationError(_ error: any Error) {
+        if let authenticationError = error as? LAError,
+           [.userCancel, .appCancel, .systemCancel].contains(authenticationError.code) {
+            errorMessage = nil
+            presentedError = nil
+            return
+        }
+
+        let presentation = ErrorPresentation.classify(
+            error,
+            context: ErrorContext(operation: .biometrics)
+        )
+        presentedError = presentation
+        errorMessage = presentation.explanation
     }
 }

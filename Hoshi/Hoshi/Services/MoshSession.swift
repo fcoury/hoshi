@@ -21,6 +21,7 @@ final class MoshSession: ObservableObject {
     @Published var moshServerStatus: MoshServerStatus?
     @Published var detectedPackageManager: RemotePackageManager?
     private(set) var untrustedHostIdentity: SSHHostKeyIdentity?
+    private(set) var connectionError: (any Error)?
 
     let server: Server
 
@@ -110,6 +111,7 @@ final class MoshSession: ObservableObject {
     ) async throws -> MoshServerStatus {
         connectionState = .connecting
         untrustedHostIdentity = nil
+        connectionError = nil
 
         do {
             connectionState = .sshBootstrap
@@ -534,7 +536,11 @@ final class MoshSession: ObservableObject {
             consecutiveDatagramFailures += 1
             reportNonFatalError(error, context: "process datagram")
             if consecutiveDatagramFailures >= 5 {
-                connectionState = .error("Mosh protocol error: \(error.localizedDescription)")
+                connectionError = error
+                connectionState = .error(ErrorPresentation.classify(
+                    error,
+                    context: .connection(server: server)
+                ).explanation)
             }
         }
     }
@@ -682,7 +688,7 @@ final class MoshSession: ObservableObject {
     }
 
     private func reportNonFatalError(_ error: Error, context: String) {
-        print("[MoshSession] \(context): \(error.localizedDescription)")
+        print("[MoshSession] \(context): \(ErrorRedactor.redact(error.localizedDescription))")
     }
 
     private func makeBootstrapService(client: SSHClient) throws -> MoshBootstrapService {
@@ -715,7 +721,11 @@ final class MoshSession: ObservableObject {
            case .untrusted(let identity) = hostKeyError {
             untrustedHostIdentity = identity
         }
-        connectionState = .error(error.localizedDescription)
+        connectionError = error
+        connectionState = .error(ErrorPresentation.classify(
+            error,
+            context: .connection(server: server)
+        ).explanation)
     }
 }
 

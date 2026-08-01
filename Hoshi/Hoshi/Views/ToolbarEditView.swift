@@ -36,6 +36,7 @@ struct ToolbarEditView: View {
         case .function:   return "Fn"
         case .symbol:     return "Sym"
         case .clipboard:  return "Clip"
+        case .transfer:   return "Files"
         case .voice:      return "Voice"
         case .combo:      return "Cmb"
         }
