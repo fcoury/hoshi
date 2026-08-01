@@ -138,9 +138,11 @@ struct AddServerView: View {
 
     private var isValid: Bool {
         !name.isEmpty && !hostname.isEmpty && !username.isEmpty && !port.isEmpty
+            && (authMethod != .key || selectedKeyTag != nil)
     }
 
     private func save() {
+        errorMessage = nil
         guard let portNumber = Int(port), portNumber > 0, portNumber <= 65535 else {
             errorMessage = "Port must be a number between 1 and 65535."
             return
@@ -149,20 +151,25 @@ struct AddServerView: View {
         // Store password in Keychain if using password auth
         let trimmedTmux = tmuxSession.trimmingCharacters(in: .whitespaces)
         let tmuxValue: String? = trimmedTmux.isEmpty ? nil : trimmedTmux
+        let selectedKeyID = authMethod == .key ? selectedKeyTag : nil
 
         if let server = existingServer {
+            do {
+                try updateCredentials(forServer: server.id)
+            } catch {
+                errorMessage = error.localizedDescription
+                return
+            }
+
             // Update existing server
             server.name = name
             server.hostname = hostname
             server.port = portNumber
             server.username = username
             server.authMethod = authMethod
+            server.keyID = selectedKeyID
             server.useMosh = useMosh
             server.tmuxSession = tmuxValue
-
-            if authMethod == .password && !password.isEmpty {
-                try? KeychainService.shared.storePassword(password, forServer: server.id)
-            }
         } else {
             // Create new server
             let server = Server(
@@ -171,12 +178,16 @@ struct AddServerView: View {
                 port: portNumber,
                 username: username,
                 authMethod: authMethod,
+                keyID: selectedKeyID,
                 useMosh: useMosh,
                 tmuxSession: tmuxValue
             )
 
-            if authMethod == .password && !password.isEmpty {
-                try? KeychainService.shared.storePassword(password, forServer: server.id)
+            do {
+                try updateCredentials(forServer: server.id)
+            } catch {
+                errorMessage = error.localizedDescription
+                return
             }
 
             modelContext.insert(server)
@@ -191,12 +202,34 @@ struct AddServerView: View {
         port = String(server.port)
         username = server.username
         authMethod = server.authMethod
+        selectedKeyTag = server.keyID
         useMosh = server.useMosh
         tmuxSession = server.tmuxSession ?? ""
 
         // Retrieve stored password if available
-        if let storedPassword = try? KeychainService.shared.retrievePassword(forServer: server.id) {
-            password = storedPassword
+        if server.authMethod == .password {
+            do {
+                password = try KeychainService.shared.retrievePassword(forServer: server.id) ?? ""
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func updateCredentials(forServer serverID: UUID) throws {
+        switch authMethod {
+        case .password:
+            if password.isEmpty {
+                try KeychainService.shared.deletePassword(forServer: serverID)
+            } else {
+                try KeychainService.shared.storePassword(password, forServer: serverID)
+            }
+        case .key:
+            guard let selectedKeyTag,
+                  try KeychainService.shared.retrievePrivateKey(withTag: selectedKeyTag) != nil else {
+                throw SSHConnectionError.keyNotFound
+            }
+            try KeychainService.shared.deletePassword(forServer: serverID)
         }
     }
 }

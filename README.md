@@ -77,25 +77,44 @@ The Mosh protocol is implemented from scratch in Swift, including UDP transport,
 
 ## Building
 
-Hoshi uses [XcodeGen](https://github.com/yonaskolb/XcodeGen) to generate its Xcode project.
+Hoshi requires a full Xcode installation with the iOS SDK, plus
+[XcodeGen](https://github.com/yonaskolb/XcodeGen), Zig 0.15.2, and
+ripgrep. Its generated Ghostty framework is not committed, so initialize the
+submodules and build the framework before opening the project.
 
 ```bash
-# Install XcodeGen if needed
-brew install xcodegen
+# Select and initialize the full Xcode installation once
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+sudo xcodebuild -runFirstLaunch
 
-# Generate the Xcode project
-cd Hoshi
-xcodegen generate
+# Install the build prerequisites
+brew install xcodegen zig@0.15 ripgrep
+
+# Recent Xcode versions also require the separate Metal compiler toolchain
+xcodebuild -downloadComponent MetalToolchain -buildVersion \
+  "$(xcodebuild -showComponent MetalToolchain -json | plutil -extract buildVersion raw -)"
+
+# Install an iOS simulator runtime when running the unit tests locally
+xcodebuild -downloadPlatform iOS -architectureVariant arm64
+
+# From the repository root, initialize submodules, build GhosttyKit,
+# and generate the checked-in Xcode project
+./scripts/bootstrap.sh
 
 # Open in Xcode
-open Hoshi.xcodeproj
+open Hoshi/Hoshi.xcodeproj
 ```
 
-The Ghostty framework is included as a Git submodule under `vendor/ghostty`. Make sure to initialize submodules:
+To prepare the pieces separately:
 
 ```bash
-git submodule update --init --recursive
+git submodule update --init --recursive -- vendor/ghostty vendor/libxev
+./scripts/build-ghosttykit.sh
+xcodegen --spec Hoshi/project.yml --project Hoshi
 ```
+
+Live Mosh integration tests are skipped unless `HOSHI_MOSH_HOST`,
+`HOSHI_MOSH_USER`, and `HOSHI_MOSH_PASSWORD` are all set explicitly.
 
 ## License
 

@@ -1,4 +1,5 @@
 import XCTest
+import SwiftData
 @testable import Hoshi
 
 final class ServerModelTests: XCTestCase {
@@ -15,6 +16,7 @@ final class ServerModelTests: XCTestCase {
         XCTAssertEqual(server.port, 22)
         XCTAssertEqual(server.username, "user")
         XCTAssertEqual(server.authMethod, .password)
+        XCTAssertNil(server.keyID)
         XCTAssertFalse(server.useMosh)
         XCTAssertNil(server.lastConnected)
         XCTAssertNil(server.tmuxSession)
@@ -49,5 +51,37 @@ final class ServerModelTests: XCTestCase {
 
         XCTAssertEqual(decodedPassword, .password)
         XCTAssertEqual(decodedKey, .key)
+    }
+
+    func testServerRetainsSelectedSSHKey() {
+        let server = Server(
+            name: "Key Server",
+            hostname: "example.com",
+            username: "user",
+            authMethod: .key,
+            keyID: "deploy-key"
+        )
+
+        XCTAssertEqual(server.keyID, "deploy-key")
+    }
+
+    @MainActor
+    func testServerPersistsSelectedSSHKey() throws {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: Server.self, configurations: configuration)
+        let context = ModelContext(container)
+        let server = Server(
+            name: "Persisted Key Server",
+            hostname: "example.com",
+            username: "user",
+            authMethod: .key,
+            keyID: "persisted-deploy-key"
+        )
+
+        context.insert(server)
+        try context.save()
+
+        let savedServers = try context.fetch(FetchDescriptor<Server>())
+        XCTAssertEqual(savedServers.first?.keyID, "persisted-deploy-key")
     }
 }

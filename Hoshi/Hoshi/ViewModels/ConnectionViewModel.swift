@@ -31,6 +31,7 @@ final class ConnectionViewModel {
     private var pendingServer: Server?
     private var pendingPassword: String?
     private var pendingKeyTag: String?
+    private var pendingHostKeyIdentity: SSHHostKeyIdentity?
 
     // Bridged state from the active session's @Published connectionState.
     // SSHSession/MoshSession use ObservableObject + @Published (Combine),
@@ -80,6 +81,10 @@ final class ConnectionViewModel {
         sshSession != nil || moshSession != nil
     }
 
+    var selectedSSHKeyID: String? {
+        pendingKeyTag
+    }
+
     // The active session's output buffer (fallback for plain text mode)
     var outputBuffer: String {
         get {
@@ -110,17 +115,58 @@ final class ConnectionViewModel {
     func connect(server: Server, password: String?, keyTag: String?) async {
         isConnecting = true
         errorMessage = nil
+        showError = false
         connectionPhase = ""
+
+        if server.authMethod == .key {
+            guard let keyTag else {
+                errorMessage = SSHConnectionError.keyNotFound.localizedDescription
+                showError = true
+                isConnecting = false
+                return
+            }
+            server.keyID = keyTag
+        }
 
         // Stash credentials for potential fallback
         pendingServer = server
         pendingPassword = password
         pendingKeyTag = keyTag
 
-        if server.useMosh {
-            await connectMosh(server: server, password: password, keyTag: keyTag)
-        } else {
-            await connectSSH(server: server, password: password, keyTag: keyTag)
+        while true {
+            pendingHostKeyIdentity = nil
+
+            if server.useMosh {
+                await connectMosh(server: server, password: password, keyTag: keyTag)
+            } else {
+                await connectSSH(server: server, password: password, keyTag: keyTag)
+            }
+
+            guard let identity = pendingHostKeyIdentity else {
+                break
+            }
+
+            connectionPhase = "Verify the SSH host-key fingerprint..."
+            let trusted = await HostKeyTrustCoordinator.shared.requestTrust(for: identity)
+            guard trusted else {
+                errorMessage = SSHHostKeyTrustError.declined(
+                    hostname: identity.hostname,
+                    port: identity.port
+                ).localizedDescription
+                showError = true
+                break
+            }
+
+            do {
+                try KnownHostsService.shared.trust(identity)
+            } catch {
+                errorMessage = error.localizedDescription
+                showError = true
+                break
+            }
+
+            errorMessage = nil
+            showError = false
         }
 
         isConnecting = false
@@ -196,6 +242,7 @@ final class ConnectionViewModel {
         pendingServer = nil
         pendingPassword = nil
         pendingKeyTag = nil
+        pendingHostKeyIdentity = nil
     }
 
     // Send data to the active session
@@ -263,24 +310,42 @@ final class ConnectionViewModel {
 
     // Quick-launch: retrieve stored credentials and connect immediately
     func quickLaunch(server: Server) async {
-        // Resolve credentials from Keychain
-        let password: String? = server.authMethod == .password
-            ? (try? KeychainService.shared.retrievePassword(forServer: server.id))
-            : nil
-        let keyTag: String? = server.authMethod == .key
-            ? SSHKeyService.shared.listKeys().first
-            : nil
-
-        await connect(server: server, password: password, keyTag: keyTag)
+        do {
+            switch server.authMethod {
+            case .password:
+                guard let password = try KeychainService.shared.retrievePassword(forServer: server.id) else {
+                    throw SSHConnectionError.authenticationFailed(method: "password")
+                }
+                await connect(server: server, password: password, keyTag: nil)
+            case .key:
+                guard let keyID = server.keyID,
+                      try KeychainService.shared.retrievePrivateKey(withTag: keyID) != nil else {
+                    throw SSHConnectionError.keyNotFound
+                }
+                await connect(server: server, password: nil, keyTag: keyID)
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
     }
 
     /// Check if a server has stored credentials available for quick-launch
     static func hasStoredCredentials(for server: Server) -> Bool {
         switch server.authMethod {
         case .password:
-            return (try? KeychainService.shared.retrievePassword(forServer: server.id)) != nil
+            do {
+                return try KeychainService.shared.retrievePassword(forServer: server.id) != nil
+            } catch {
+                return false
+            }
         case .key:
-            return !SSHKeyService.shared.listKeys().isEmpty
+            guard let keyID = server.keyID else { return false }
+            do {
+                return try KeychainService.shared.retrievePrivateKey(withTag: keyID) != nil
+            } catch {
+                return false
+            }
         }
     }
 
@@ -293,6 +358,12 @@ final class ConnectionViewModel {
 
         // Establish SSH connection without opening PTY yet
         await session.connectOnly(password: password, privateKeyTag: keyTag)
+
+        if let identity = session.untrustedHostIdentity {
+            pendingHostKeyIdentity = identity
+            self.sshSession = nil
+            return
+        }
 
         if case .error(let message) = session.connectionState {
             errorMessage = message
@@ -382,6 +453,12 @@ final class ConnectionViewModel {
         self.moshSession = session
 
         await session.connect(password: password, privateKeyTag: keyTag)
+
+        if let identity = session.untrustedHostIdentity {
+            pendingHostKeyIdentity = identity
+            self.moshSession = nil
+            return
+        }
 
         // Check if mosh-server was not found — offer installation
         if let status = session.moshServerStatus {

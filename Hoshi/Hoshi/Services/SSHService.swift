@@ -12,6 +12,7 @@ final class SSHSession: ObservableObject {
     @Published var outputBuffer: String = ""
 
     private(set) var client: SSHClient?
+    private(set) var untrustedHostIdentity: SSHHostKeyIdentity?
     private var stdinWriter: TTYStdinWriter?
     private var sessionTask: Task<Void, Never>?
     private var pendingTerminalSize: (cols: Int, rows: Int)?
@@ -45,6 +46,7 @@ final class SSHSession: ObservableObject {
     // Connect to the server and open an interactive terminal
     func connect(password: String? = nil, privateKeyTag: String? = nil) async {
         connectionState = .connecting
+        untrustedHostIdentity = nil
 
         // Store credentials for reconnection
         storedPassword = password
@@ -63,7 +65,10 @@ final class SSHSession: ObservableObject {
                 host: server.hostname,
                 port: server.port,
                 authenticationMethod: authMethod,
-                hostKeyValidator: .acceptAnything(),
+                hostKeyValidator: KnownHostsService.shared.validator(
+                    hostname: server.hostname,
+                    port: server.port
+                ),
                 reconnect: .never
             )
 
@@ -82,6 +87,7 @@ final class SSHSession: ObservableObject {
             await startTerminalSession()
 
         } catch {
+            captureUntrustedHostIdentity(from: error)
             let errorMessage = mapError(error)
             connectionState = .error(errorMessage.errorDescription ?? "Unknown error")
         }
@@ -90,6 +96,7 @@ final class SSHSession: ObservableObject {
     // Connect SSH only (no PTY). Used when tmux detection needs to run first.
     func connectOnly(password: String? = nil, privateKeyTag: String? = nil) async {
         connectionState = .connecting
+        untrustedHostIdentity = nil
 
         // Store credentials for reconnection
         storedPassword = password
@@ -106,7 +113,10 @@ final class SSHSession: ObservableObject {
                 host: server.hostname,
                 port: server.port,
                 authenticationMethod: authMethod,
-                hostKeyValidator: .acceptAnything(),
+                hostKeyValidator: KnownHostsService.shared.validator(
+                    hostname: server.hostname,
+                    port: server.port
+                ),
                 reconnect: .never
             )
 
@@ -122,6 +132,7 @@ final class SSHSession: ObservableObject {
             connectionState = .connected
 
         } catch {
+            captureUntrustedHostIdentity(from: error)
             let errorMessage = mapError(error)
             connectionState = .error(errorMessage.errorDescription ?? "Unknown error")
         }
@@ -210,7 +221,10 @@ final class SSHSession: ObservableObject {
                     host: server.hostname,
                     port: server.port,
                     authenticationMethod: authMethod,
-                    hostKeyValidator: .acceptAnything(),
+                    hostKeyValidator: KnownHostsService.shared.validator(
+                        hostname: server.hostname,
+                        port: server.port
+                    ),
                     reconnect: .never
                 )
 
@@ -231,6 +245,14 @@ final class SSHSession: ObservableObject {
                 return
 
             } catch {
+                if error is SSHHostKeyTrustError {
+                    captureUntrustedHostIdentity(from: error)
+                    let errorMessage = mapError(error)
+                    isReconnecting = false
+                    connectionState = .error(errorMessage.errorDescription ?? "Unknown error")
+                    return
+                }
+
                 // Keep trying until we exhaust attempts
                 continue
             }
@@ -422,7 +444,22 @@ final class SSHSession: ObservableObject {
     }
 
     // Map raw errors to user-facing SSHConnectionError
+    private func captureUntrustedHostIdentity(from error: Error) {
+        guard let hostKeyError = error as? SSHHostKeyTrustError,
+              case .untrusted(let identity) = hostKeyError else {
+            return
+        }
+        untrustedHostIdentity = identity
+    }
+
     private func mapError(_ error: Error) -> SSHConnectionError {
+        if let hostKeyError = error as? SSHHostKeyTrustError {
+            return .hostKeyVerificationFailed(reason: hostKeyError.localizedDescription)
+        }
+        if let connectionError = error as? SSHConnectionError {
+            return connectionError
+        }
+
         let message = error.localizedDescription.lowercased()
 
         if message.contains("connection refused") {
@@ -434,7 +471,7 @@ final class SSHSession: ObservableObject {
         } else if message.contains("network") || message.contains("unreachable") || message.contains("no route") {
             return .networkUnreachable
         } else if message.contains("host key") {
-            return .hostKeyVerificationFailed
+            return .hostKeyVerificationFailed(reason: error.localizedDescription)
         } else if message.contains("channel") {
             return .channelOpenFailed
         }

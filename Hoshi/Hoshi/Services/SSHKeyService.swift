@@ -55,8 +55,8 @@ final class SSHKeyService {
     }
 
     // Delete a key pair
-    func deleteKey(tag: String) {
-        keychain.deletePrivateKey(withTag: tag)
+    func deleteKey(tag: String) throws {
+        try keychain.deletePrivateKey(withTag: tag)
     }
 
     // MARK: - Ed25519
@@ -199,7 +199,7 @@ final class SSHKeyService {
     }
 
     private func skipDERLength(bytes: [UInt8], index: Int) -> Int {
-        var i = index
+        let i = index
         guard i < bytes.count else { return i }
 
         if bytes[i] & 0x80 == 0 {
@@ -292,7 +292,7 @@ final class SSHKeyService {
 
     // Static versions of the DER parsing helpers for use from SSHService
     private static func skipDERLengthStatic(bytes: [UInt8], index: Int) -> Int {
-        var i = index
+        let i = index
         guard i < bytes.count else { return i }
 
         if bytes[i] & 0x80 == 0 {

@@ -10,15 +10,17 @@ final class MoshIntegrationTests: XCTestCase {
             throw XCTSkip("Set HOSHI_MOSH_HOST, HOSHI_MOSH_USER, and HOSHI_MOSH_PASSWORD to run live Mosh integration tests.")
         }
 
-        let server = Server(
-            name: "Integration",
-            hostname: host,
-            username: user,
-            authMethod: .password,
-            useMosh: true
-        )
-
-        let session = await MainActor.run { MoshSession(server: server) }
+        let session = await MainActor.run {
+            MoshSession(
+                server: Server(
+                    name: "Integration",
+                    hostname: host,
+                    username: user,
+                    authMethod: .password,
+                    useMosh: true
+                )
+            )
+        }
 
         let marker = "__HOSHI_MOSH_OK__"
         actor OutputCollector {

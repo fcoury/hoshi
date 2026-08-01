@@ -4,10 +4,10 @@ import XCTest
 final class SSHKeyServiceTests: XCTestCase {
     let keyService = SSHKeyService.shared
 
-    override func tearDown() {
-        super.tearDown()
-        keyService.deleteKey(tag: "test-ed25519")
-        keyService.deleteKey(tag: "test-rsa")
+    override func tearDownWithError() throws {
+        try keyService.deleteKey(tag: "test-ed25519")
+        try keyService.deleteKey(tag: "test-rsa")
+        try super.tearDownWithError()
     }
 
     func testGenerateEd25519KeyPair() throws {
@@ -39,7 +39,7 @@ final class SSHKeyServiceTests: XCTestCase {
 
     func testDeleteKey() throws {
         _ = try keyService.generateKeyPair(type: .ed25519, tag: "test-ed25519")
-        keyService.deleteKey(tag: "test-ed25519")
+        try keyService.deleteKey(tag: "test-ed25519")
 
         let keys = keyService.listKeys()
         XCTAssertFalse(keys.contains("test-ed25519"))

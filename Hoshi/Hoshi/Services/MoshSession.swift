@@ -22,6 +22,7 @@ final class MoshSession: ObservableObject {
     // Mosh-specific state exposed to ViewModel for UI decisions
     @Published var moshServerStatus: MoshServerStatus?
     @Published var detectedPackageManager: RemotePackageManager?
+    private(set) var untrustedHostIdentity: SSHHostKeyIdentity?
 
     let server: Server
 
@@ -94,6 +95,7 @@ final class MoshSession: ObservableObject {
     // Full connection flow: SSH -> detect mosh-server -> start it -> UDP
     func connect(password: String? = nil, privateKeyTag: String? = nil) async {
         connectionState = .connecting
+        untrustedHostIdentity = nil
 
         do {
             // Step 1: SSH connect
@@ -129,6 +131,10 @@ final class MoshSession: ObservableObject {
             }
 
         } catch {
+            if let hostKeyError = error as? SSHHostKeyTrustError,
+               case .untrusted(let identity) = hostKeyError {
+                untrustedHostIdentity = identity
+            }
             connectionState = .error(error.localizedDescription)
         }
     }
@@ -265,7 +271,10 @@ final class MoshSession: ObservableObject {
             host: server.hostname,
             port: server.port,
             authenticationMethod: authMethod,
-            hostKeyValidator: .acceptAnything(),
+            hostKeyValidator: KnownHostsService.shared.validator(
+                hostname: server.hostname,
+                port: server.port
+            ),
             reconnect: .never
         )
     }

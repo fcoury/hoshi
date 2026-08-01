@@ -137,13 +137,19 @@ struct ConnectView: View {
                 }
             }
             .onAppear {
-                // Pre-fill password from Keychain
-                if let storedPassword = try? KeychainService.shared.retrievePassword(forServer: server.id) {
-                    password = storedPassword
-                }
-                // Pre-select first key if using key auth
-                if server.authMethod == .key {
-                    selectedKeyTag = SSHKeyService.shared.listKeys().first
+                switch server.authMethod {
+                case .password:
+                    do {
+                        password = try KeychainService.shared.retrievePassword(forServer: server.id) ?? ""
+                    } catch {
+                        connectionVM.errorMessage = error.localizedDescription
+                        connectionVM.showError = true
+                    }
+                case .key:
+                    if let selectedKeyID = server.keyID,
+                       SSHKeyService.shared.listKeys().contains(selectedKeyID) {
+                        selectedKeyTag = selectedKeyID
+                    }
                 }
 
                 if shouldAutofocusCredentials {
@@ -164,6 +170,7 @@ struct ConnectView: View {
                     dismiss()
                 }
             }
+            .hostKeyTrustPrompt()
         }
     }
 
@@ -191,6 +198,8 @@ struct ConnectView: View {
             return "Check your credentials and try again."
         } else if errorMessage.contains("timed out") {
             return "Check your network connection and verify the server is reachable."
+        } else if errorMessage.localizedCaseInsensitiveContains("host key") {
+            return "Verify the server's fingerprint independently. A changed key may indicate a security issue."
         } else if errorMessage.contains("unreachable") {
             return "Check your WiFi or cellular connection."
         } else if errorMessage.contains("mosh-server") {
@@ -199,5 +208,45 @@ struct ConnectView: View {
             return "Check that UDP ports 60000-61000 are open on the server firewall."
         }
         return "Try reconnecting. If the problem persists, check server logs."
+    }
+}
+
+private struct HostKeyTrustPromptModifier: ViewModifier {
+    let isEnabled: Bool
+
+    @State private var coordinator = HostKeyTrustCoordinator.shared
+
+    func body(content: Content) -> some View {
+        content.alert(
+            "Trust SSH Host?",
+            isPresented: Binding(
+                get: { isEnabled && coordinator.pendingIdentity != nil },
+                set: { presented in
+                    if !presented, isEnabled, coordinator.pendingIdentity != nil {
+                        coordinator.resolvePendingIdentity(trusted: false)
+                    }
+                }
+            ),
+            presenting: coordinator.pendingIdentity
+        ) { _ in
+            Button("Trust") {
+                coordinator.resolvePendingIdentity(trusted: true)
+            }
+            Button("Cancel", role: .cancel) {
+                coordinator.resolvePendingIdentity(trusted: false)
+            }
+        } message: { identity in
+            Text(
+                "The authenticity of \(identity.endpoint) cannot be verified.\n\n"
+                    + "\(identity.algorithm) fingerprint:\n\(identity.fingerprint)\n\n"
+                    + "Only continue if you recognize this fingerprint."
+            )
+        }
+    }
+}
+
+extension View {
+    func hostKeyTrustPrompt(enabled: Bool = true) -> some View {
+        modifier(HostKeyTrustPromptModifier(isEnabled: enabled))
     }
 }

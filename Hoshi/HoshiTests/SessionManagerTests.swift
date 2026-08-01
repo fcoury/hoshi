@@ -60,6 +60,22 @@ final class SessionManagerTests: XCTestCase {
 
     func testReturnToServerListKeepsConnectedSessionOrder() {
         let manager = SessionManager()
+        let firstServer = makeServer(name: "First")
+        let first = manager.createSession(for: firstServer)!
+        let second = manager.createSession(for: makeServer(name: "Second"))!
+        let connectedSession = SSHSession(server: firstServer)
+        connectedSession.connectionState = .connected
+        first.connectionVM.sshSession = connectedSession
+
+        manager.switchTo(sessionID: first.id)
+        manager.returnToServerList()
+
+        XCTAssertNil(manager.activeSessionID)
+        XCTAssertEqual(manager.sessions.map(\.id), [first.id, second.id])
+    }
+
+    func testReturnToServerListRemovesDisconnectedSession() {
+        let manager = SessionManager()
         let first = manager.createSession(for: makeServer(name: "First"))!
         let second = manager.createSession(for: makeServer(name: "Second"))!
 
@@ -67,7 +83,7 @@ final class SessionManagerTests: XCTestCase {
         manager.returnToServerList()
 
         XCTAssertNil(manager.activeSessionID)
-        XCTAssertEqual(manager.sessions.map(\.id), [first.id, second.id])
+        XCTAssertEqual(manager.sessions.map(\.id), [second.id])
     }
 
     func testSwitchToPreviousTogglesTopTwoSessions() {

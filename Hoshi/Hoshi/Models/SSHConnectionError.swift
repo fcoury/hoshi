@@ -6,7 +6,7 @@ enum SSHConnectionError: LocalizedError {
     case connectionRefused(hostname: String, port: Int)
     case authenticationFailed(method: String)
     case timeout(hostname: String)
-    case hostKeyVerificationFailed
+    case hostKeyVerificationFailed(reason: String)
     case networkUnreachable
     case channelOpenFailed
     case keyNotFound
@@ -31,8 +31,8 @@ enum SSHConnectionError: LocalizedError {
             return "Authentication failed (\(method))"
         case .timeout(let hostname):
             return "Connection to \(hostname) timed out"
-        case .hostKeyVerificationFailed:
-            return "Host key verification failed"
+        case .hostKeyVerificationFailed(let reason):
+            return "Host key verification failed: \(reason)"
         case .networkUnreachable:
             return "Network is unreachable"
         case .channelOpenFailed:
@@ -72,7 +72,7 @@ enum SSHConnectionError: LocalizedError {
         case .timeout:
             return "Check your network connection and verify the server is reachable."
         case .hostKeyVerificationFailed:
-            return "The server's host key has changed. This could indicate a security issue."
+            return "Verify the server's host-key fingerprint before reconnecting. A changed key may indicate a security issue."
         case .networkUnreachable:
             return "Check your WiFi or cellular connection."
         case .channelOpenFailed:

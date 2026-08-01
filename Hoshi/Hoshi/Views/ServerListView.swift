@@ -71,11 +71,13 @@ struct ServerListView: View {
             .sheet(item: $selectedServer, onDismiss: {
                 guard let session = connectingSession else { return }
                 if session.connectionVM.showTmuxPicker {
+                    persistSelectedSSHKey(for: session)
                     // Hand off to tmux picker sheet
                     session.connectionVM.showTmuxPicker = false
                     sessionManager.tmuxPickerSession = session
                     connectingSession = nil
                 } else if session.connectionVM.connectionState == .connected {
+                    persistSelectedSSHKey(for: session)
                     // PTY is open — safe to show terminal
                     sessionManager.switchTo(sessionID: session.id)
                     connectingSession = nil
@@ -171,6 +173,7 @@ struct ServerListView: View {
                 break
             }
         }
+        .hostKeyTrustPrompt(enabled: selectedServer == nil)
     }
 
     private var emptyState: some View {
@@ -338,6 +341,7 @@ struct ServerListView: View {
             port: server.port,
             username: server.username,
             authMethod: server.authMethod,
+            keyID: server.keyID,
             useMosh: server.useMosh,
             tmuxSession: tmuxOverride ?? server.tmuxSession
         )
@@ -347,8 +351,12 @@ struct ServerListView: View {
     }
 
     private func deleteServer(_ server: Server) {
-        KeychainService.shared.deletePassword(forServer: server.id)
-        modelContext.delete(server)
+        do {
+            try KeychainService.shared.deletePassword(forServer: server.id)
+            modelContext.delete(server)
+        } catch {
+            quickLaunchErrorMessage = error.localizedDescription
+        }
     }
 
     private func duplicateServer(_ server: Server) {
@@ -358,18 +366,34 @@ struct ServerListView: View {
             port: server.port,
             username: server.username,
             authMethod: server.authMethod,
+            keyID: server.keyID,
             useMosh: server.useMosh,
             tmuxSession: server.tmuxSession
         )
 
-        if server.authMethod == .password,
-           let password = try? KeychainService.shared.retrievePassword(forServer: server.id) {
-            try? KeychainService.shared.storePassword(password, forServer: duplicatedServer.id)
+        if server.authMethod == .password {
+            do {
+                if let password = try KeychainService.shared.retrievePassword(forServer: server.id) {
+                    try KeychainService.shared.storePassword(password, forServer: duplicatedServer.id)
+                }
+            } catch {
+                quickLaunchErrorMessage = error.localizedDescription
+                return
+            }
         }
 
         modelContext.insert(duplicatedServer)
         HapticService.lightTap()
         editingServer = duplicatedServer
+    }
+
+    private func persistSelectedSSHKey(for session: ManagedSession) {
+        guard let keyID = session.connectionVM.selectedSSHKeyID,
+              let server = servers.first(where: { $0.id == session.serverID }),
+              server.authMethod == .key else {
+            return
+        }
+        server.keyID = keyID
     }
 
     private func duplicatedServerName(from originalName: String) -> String {

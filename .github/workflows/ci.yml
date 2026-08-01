@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+
+    steps:
+      - name: Check out repository and submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Install build and security tools
+        run: brew install xcodegen zig@0.15 ripgrep gitleaks
+
+      - name: Install Metal shader toolchain when required
+        run: |
+          if ! xcrun --sdk iphoneos metal -v >/dev/null 2>&1; then
+            metal_build="$(
+              xcodebuild -showComponent MetalToolchain -json \
+                | plutil -extract buildVersion raw -
+            )"
+            xcodebuild -downloadComponent MetalToolchain -buildVersion "$metal_build"
+          fi
+
+      - name: Scan repository history for committed secrets
+        run: gitleaks git --redact --no-banner --exit-code 1
+
+      - name: Verify generated project is current
+        run: |
+          xcodegen --spec Hoshi/project.yml --project Hoshi
+          git diff --exit-code -- Hoshi/Hoshi.xcodeproj/project.pbxproj
+
+      - name: Prepare GhosttyKit and regenerate the project
+        run: ./scripts/bootstrap.sh
+
+      - name: Build and run unit tests
+        run: |
+          simulator_id="$(
+            xcrun simctl list devices available \
+              | sed -nE 's/^[[:space:]]+iPhone[^()]*\(([A-Fa-f0-9-]+)\).*/\1/p' \
+              | head -n 1
+          )"
+          if [[ -z "$simulator_id" ]]; then
+            echo "error: no available iPhone simulator was found" >&2
+            exit 1
+          fi
+
+          xcodebuild test \
+            -project Hoshi/Hoshi.xcodeproj \
+            -scheme Hoshi \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_REQUIRED=NO

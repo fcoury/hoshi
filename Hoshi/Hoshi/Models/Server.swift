@@ -15,6 +15,8 @@ final class Server {
     var port: Int
     var username: String
     var authMethod: AuthMethod
+    // Keychain tag of the SSH key explicitly selected for this connection.
+    var keyID: String?
     var useMosh: Bool
     var lastConnected: Date?
     // When set, this entry auto-attaches to the named tmux session on connect
@@ -26,6 +28,7 @@ final class Server {
         port: Int = 22,
         username: String,
         authMethod: AuthMethod = .password,
+        keyID: String? = nil,
         useMosh: Bool = false,
         tmuxSession: String? = nil
     ) {
@@ -35,6 +38,7 @@ final class Server {
         self.port = port
         self.username = username
         self.authMethod = authMethod
+        self.keyID = keyID
         self.useMosh = useMosh
         self.tmuxSession = tmuxSession
     }
