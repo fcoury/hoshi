@@ -31,7 +31,7 @@ extension ToolbarButton {
         .esc, .ctrl, .opt, .tab,
         .arrowUp, .arrowDown, .arrowLeft, .arrowRight,
         .slash, .dash, .pipe,
-        .ctrlC,
+        .ctrlC, .paste,
     ]
 
     // Modifier IDs that behave as sticky toggles (applied to next key press)
@@ -128,6 +128,35 @@ extension ToolbarButton {
     static let paste = ToolbarButton(id: "paste", label: "Paste", bytes: [], category: .clipboard)
 
     static let clipboard: [ToolbarButton] = [copy, paste]
+
+    var accessibilityLabel: String {
+        switch id {
+        case "esc": "Escape"
+        case "ctrl": "Control modifier"
+        case "opt": "Option modifier"
+        case "shift": "Shift modifier"
+        case "tab": "Tab"
+        case "arrow-up": "Up arrow"
+        case "arrow-down": "Down arrow"
+        case "arrow-left": "Left arrow"
+        case "arrow-right": "Right arrow"
+        case "pgup": "Page up"
+        case "pgdn": "Page down"
+        case "swipe-all": "Swipe in any direction for arrow keys"
+        case "swipe-horiz": "Swipe horizontally for arrow keys"
+        case "swipe-vert": "Swipe vertically for arrow keys"
+        case "ctrl-c": "Control C, interrupt"
+        case "ctrl-d": "Control D, end of input"
+        case "ctrl-z": "Control Z, suspend"
+        case "ctrl-a": "Control A"
+        case "ctrl-b": "Control B, tmux prefix"
+        case "ctrl-l": "Control L, clear screen"
+        case "ctrl-r": "Control R, reverse search"
+        case "ctrl-w": "Control W, delete word"
+        case "ctrl-u": "Control U, clear line"
+        default: label
+        }
+    }
 
     // MARK: Common key combos (Ctrl+letter = letter & 0x1F)
 

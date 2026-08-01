@@ -60,6 +60,7 @@
 		7BA09D7B29B1E1612C638411 /* FontPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C0FA717B1413451034834BC /* FontPickerView.swift */; };
 		7DAA33FF1C9007496B2F156C /* FiraCodeNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D5EAC9D34A60A274CF4CF826 /* FiraCodeNerdFontMono-Bold.ttf */; };
 		800C2C75D46524DAE1A3D654 /* HackNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 10FDF8B29671EE2FA1E35DCE /* HackNerdFontMono-BoldItalic.ttf */; };
+		81FCCB0B4B47EA08E3C54A7E /* TerminalInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24D965C6D89F8D05A184268F /* TerminalInteractionTests.swift */; };
 		82E093096115FAE2667FBD39 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 33023FFA322E011C5EB6887A /* Assets.xcassets */; };
 		859DA07550EF7D6BA828D635 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 0FDE05A368097247B23D0691 /* PrivacyInfo.xcprivacy */; };
 		8638C1A18C9661397A239797 /* MesloLGSNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 168EE5B0051233375A63B33F /* MesloLGSNerdFontMono-BoldItalic.ttf */; };
@@ -82,6 +83,7 @@
 		B6E12D938C3010070F5453F5 /* CaskaydiaCoveNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B23BAD806015AA69E0909C84 /* CaskaydiaCoveNerdFontMono-Italic.ttf */; };
 		B808A611369E149F6B0B8088 /* ColorSchemePreference.swift in Sources */ = {isa = PBXBuildFile; fileRef = 106EC4392C230C7D203D1769 /* ColorSchemePreference.swift */; };
 		B94D2D832E6A3E9262327483 /* GhosttyThemeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC5A0FB628B34BE815D797C /* GhosttyThemeAdapter.swift */; };
+		BC0B757FC86FAEB2AF4A909F /* TerminalInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B907EEA1B42E560B6C40F98 /* TerminalInteraction.swift */; };
 		BDEC5B34B7CC855EF5A4A194 /* SauceCodeProNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F7B8704BE7DEEC364B8E7530 /* SauceCodeProNerdFontMono-Bold.ttf */; };
 		CB925AEEE0A3FEA3532EE0E8 /* MesloLGSNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A807286CB8D9A08D5F3B2770 /* MesloLGSNerdFontMono-Regular.ttf */; };
 		CC04ED92E0B9D468CD6DEE1F /* SauceCodeProNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 80B2A4F86E488641E7497767 /* SauceCodeProNerdFontMono-BoldItalic.ttf */; };
@@ -133,8 +135,10 @@
 		168EE5B0051233375A63B33F /* MesloLGSNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MesloLGSNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		1913DF729009DA8DC0A599B5 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
 		19D8FFFF3A11114D6122B6B0 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		1B907EEA1B42E560B6C40F98 /* TerminalInteraction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInteraction.swift; sourceTree = "<group>"; };
 		1FF91BC6BC483D5D7AFC61F3 /* FantasqueSansMNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		22E727DDBEDCCBA321258007 /* HackNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HackNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
+		24D965C6D89F8D05A184268F /* TerminalInteractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInteractionTests.swift; sourceTree = "<group>"; };
 		263F27DE87745B6CBB01F9EC /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		2AF503734734CFDC89F78788 /* KnownHostsServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsServiceTests.swift; sourceTree = "<group>"; };
 		2D2E28A5EA11F0126B55C42C /* HoshiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoshiApp.swift; sourceTree = "<group>"; };
@@ -249,6 +253,7 @@
 				B2DF4C2856D88394B594133C /* ServerModelTests.swift */,
 				3175AF54B1CC78B801755FCF /* SessionManagerTests.swift */,
 				5EDBF8AB95AD1BD0632E9DC5 /* SSHKeyServiceTests.swift */,
+				24D965C6D89F8D05A184268F /* TerminalInteractionTests.swift */,
 			);
 			path = HoshiTests;
 			sourceTree = "<group>";
@@ -440,6 +445,7 @@
 				E1A17CA7267266FF635755CD /* GhosttyRuntimeController.swift */,
 				F434FC2C5E00789F32E7BF2D /* GhosttyTerminalView.swift */,
 				9FC5A0FB628B34BE815D797C /* GhosttyThemeAdapter.swift */,
+				1B907EEA1B42E560B6C40F98 /* TerminalInteraction.swift */,
 			);
 			path = Terminal;
 			sourceTree = "<group>";
@@ -626,6 +632,7 @@
 				26B826D28D58615A4D882013 /* SessionProtocol.swift in Sources */,
 				3C42FB85D6E594C7AE94E8D3 /* SettingsView.swift in Sources */,
 				EDBD3D7E5EE610CF4A15365B /* SplashScreenView.swift in Sources */,
+				BC0B757FC86FAEB2AF4A909F /* TerminalInteraction.swift in Sources */,
 				A08BCE350D681A0F24BF8B26 /* TerminalTheme.swift in Sources */,
 				D22DB61E421382204913A526 /* TerminalView.swift in Sources */,
 				FE7F8E8100652F86991C5D88 /* TmuxDetectionService.swift in Sources */,
@@ -646,6 +653,7 @@
 				539569A7ADAF63A743137D9A /* SSHKeyServiceTests.swift in Sources */,
 				0F89014F48A47FBA641177C6 /* ServerModelTests.swift in Sources */,
 				54188D67D5A44F16D28EDCCB /* SessionManagerTests.swift in Sources */,
+				81FCCB0B4B47EA08E3C54A7E /* TerminalInteractionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

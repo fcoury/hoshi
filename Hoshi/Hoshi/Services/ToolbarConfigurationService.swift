@@ -25,6 +25,16 @@ final class ToolbarConfigurationService {
             return ToolbarButton.defaultButtons
         }
 
+        // Bring forward the previous uncustomized default when Paste was added,
+        // while preserving deliberately customized layouts verbatim.
+        let previousDefaultIDs = ToolbarButton.defaultButtons
+            .filter { $0.id != ToolbarButton.paste.id }
+            .map(\.id)
+        if savedIDs == previousDefaultIDs {
+            saveButtons(ToolbarButton.defaultButtons)
+            return ToolbarButton.defaultButtons
+        }
+
         // Resolve IDs to buttons, skipping any that no longer exist
         let buttons = savedIDs.compactMap { buttonsByID[$0] }
         return buttons.isEmpty ? ToolbarButton.defaultButtons : buttons

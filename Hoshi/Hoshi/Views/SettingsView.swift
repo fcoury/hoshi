@@ -10,6 +10,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 terminalSection
+                keyboardSection
                 appearanceSection
             }
             .navigationTitle("Settings")
@@ -113,6 +114,30 @@ struct SettingsView: View {
                     in: 0...1,
                     step: 0.05
                 )
+            }
+        }
+    }
+
+    // MARK: - Keyboard and gestures
+
+    private var keyboardSection: some View {
+        Section("Keyboard & Gestures") {
+            Picker("Double Tap", selection: Binding(
+                get: { settings.doubleTapAction },
+                set: { settings.doubleTapAction = $0 }
+            )) {
+                ForEach(TerminalDoubleTapAction.allCases) { action in
+                    Text(action.displayName).tag(action)
+                }
+            }
+
+            Picker("Two-Finger Tap", selection: Binding(
+                get: { settings.twoFingerTapAction },
+                set: { settings.twoFingerTapAction = $0 }
+            )) {
+                ForEach(TerminalTwoFingerTapAction.allCases) { action in
+                    Text(action.displayName).tag(action)
+                }
             }
         }
     }

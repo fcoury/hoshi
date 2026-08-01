@@ -3,7 +3,7 @@ import UIKit
 
 typealias ToolbarButtonAction = ([UInt8]) -> Void
 
-enum ClipboardAction {
+enum ClipboardAction: Equatable {
     case copy
     case paste
 }
@@ -16,10 +16,12 @@ enum ClipboardAction {
 /// xterm conventions: escape sequences get `;{code}` inserted, single bytes get
 /// Ctrl masking / Shift casing / Opt ESC-prefixing.
 class KeyboardToolbarAccessoryView: UIView {
+    static let preferredHeight: CGFloat = 52
+
     private var hostingController: UIHostingController<KeyboardToolbarContent>?
 
     // Active sticky modifiers (Ctrl, Opt, Shift) — applied to next key press
-    private var activeModifiers: Set<String> = []
+    private(set) var activeModifiers: Set<String> = []
 
     // Callback that sends bytes to the terminal session
     var onButtonTap: ToolbarButtonAction?
@@ -31,13 +33,30 @@ class KeyboardToolbarAccessoryView: UIView {
     var onClipboardAction: ((ClipboardAction) -> Void)?
 
     // Current button layout
-    private var buttons: [ToolbarButton]
+    private(set) var buttons: [ToolbarButton]
+    private(set) var selectionAvailable = false
+    private(set) var pasteAvailable = UIPasteboard.general.hasStrings
+    private var pasteboardObserver: NSObjectProtocol?
 
-    init() {
-        self.buttons = ToolbarConfigurationService.shared.loadButtons()
-        super.init(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 44))
+    init(buttons: [ToolbarButton]? = nil) {
+        self.buttons = buttons ?? ToolbarConfigurationService.shared.loadButtons()
+        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: Self.preferredHeight))
         autoresizingMask = .flexibleWidth
         setupHostingController()
+
+        pasteboardObserver = NotificationCenter.default.addObserver(
+            forName: UIPasteboard.changedNotification,
+            object: UIPasteboard.general,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshPasteAvailability()
+        }
+    }
+
+    deinit {
+        if let pasteboardObserver {
+            NotificationCenter.default.removeObserver(pasteboardObserver)
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -46,9 +65,43 @@ class KeyboardToolbarAccessoryView: UIView {
 
     // Reload buttons from persistence (after edit)
     func reloadButtons() {
-        buttons = ToolbarConfigurationService.shared.loadButtons()
-        activeModifiers.removeAll()
+        let updatedButtons = ToolbarConfigurationService.shared.loadButtons()
+        guard updatedButtons != buttons else {
+            refreshPasteAvailability()
+            return
+        }
+
+        buttons = updatedButtons
+        activeModifiers.formIntersection(Set(updatedButtons.map(\.id)))
         updateContent()
+    }
+
+    func setSelectionAvailable(_ available: Bool) {
+        guard available != selectionAvailable else { return }
+        selectionAvailable = available
+        updateContent()
+    }
+
+    func setPasteAvailable(_ available: Bool) {
+        guard available != pasteAvailable else { return }
+        pasteAvailable = available
+        updateContent()
+    }
+
+    var displayedButtons: [ToolbarButton] {
+        guard selectionAvailable,
+              !buttons.contains(where: { $0.id == ToolbarButton.copy.id }) else {
+            return buttons
+        }
+
+        var result = buttons
+        let insertionIndex = result.firstIndex(where: { $0.id == ToolbarButton.paste.id }) ?? result.endIndex
+        result.insert(.copy, at: insertionIndex)
+        return result
+    }
+
+    private func refreshPasteAvailability() {
+        setPasteAvailable(UIPasteboard.general.hasStrings)
     }
 
     private func setupHostingController() {
@@ -74,8 +127,10 @@ class KeyboardToolbarAccessoryView: UIView {
 
     private func makeContent() -> KeyboardToolbarContent {
         KeyboardToolbarContent(
-            buttons: buttons,
+            buttons: displayedButtons,
             activeModifiers: activeModifiers,
+            selectionAvailable: selectionAvailable,
+            pasteAvailable: pasteAvailable,
             onButtonTap: { [weak self] button in
                 self?.handleButtonTap(button)
             },
@@ -88,14 +143,16 @@ class KeyboardToolbarAccessoryView: UIView {
         )
     }
 
-    private func handleButtonTap(_ button: ToolbarButton) {
+    func handleButtonTap(_ button: ToolbarButton) {
         if button.id == ToolbarButton.copy.id {
+            guard selectionAvailable else { return }
             HapticService.lightTap()
             onClipboardAction?(.copy)
             return
         }
 
         if button.id == ToolbarButton.paste.id {
+            guard pasteAvailable else { return }
             HapticService.lightTap()
             onClipboardAction?(.paste)
             return
@@ -196,7 +253,7 @@ class KeyboardToolbarAccessoryView: UIView {
 
     // Required for inputAccessoryView sizing
     override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: 44)
+        CGSize(width: UIView.noIntrinsicMetric, height: Self.preferredHeight)
     }
 }
 
@@ -205,6 +262,8 @@ class KeyboardToolbarAccessoryView: UIView {
 struct KeyboardToolbarContent: View {
     let buttons: [ToolbarButton]
     let activeModifiers: Set<String>
+    let selectionAvailable: Bool
+    let pasteAvailable: Bool
     let onButtonTap: (ToolbarButton) -> Void
     let onSwipeArrow: ([UInt8]) -> Void
     let onEditTap: () -> Void
@@ -218,7 +277,7 @@ struct KeyboardToolbarContent: View {
     var body: some View {
         HStack(spacing: 0) {
             // Scrollable button row
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal) {
                 HStack(spacing: 6) {
                     ForEach(buttons) { button in
                         if ToolbarButton.swipeButtonIDs.contains(button.id) {
@@ -230,6 +289,7 @@ struct KeyboardToolbarContent: View {
                 }
                 .padding(.horizontal, 8)
             }
+            .scrollIndicators(.hidden)
 
             // Edit button (gear icon) pinned to trailing edge
             Divider()
@@ -240,11 +300,12 @@ struct KeyboardToolbarContent: View {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 14))
                     .foregroundStyle(.secondary)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
             }
-            .padding(.trailing, 8)
+            .accessibilityLabel("Customize keyboard toolbar")
+            .padding(.trailing, 4)
         }
-        .frame(height: 44)
+        .frame(height: KeyboardToolbarAccessoryView.preferredHeight)
         .background(SwiftUI.Color(AppearanceSettings.shared.currentTheme.chromeSurface))
     }
 
@@ -252,6 +313,11 @@ struct KeyboardToolbarContent: View {
     private func toolbarButton(_ button: ToolbarButton) -> some View {
         let isModifier = ToolbarButton.stickyModifierIDs.contains(button.id)
         let isHighlighted = isModifier && activeModifiers.contains(button.id)
+        let isEnabled = switch button.id {
+        case ToolbarButton.copy.id: selectionAvailable
+        case ToolbarButton.paste.id: pasteAvailable
+        default: true
+        }
 
         Button {
             onButtonTap(button)
@@ -259,8 +325,8 @@ struct KeyboardToolbarContent: View {
             Text(button.label)
                 .font(.system(size: 14, weight: .medium, design: .monospaced))
                 .foregroundStyle(isHighlighted ? SwiftUI.Color.black : SwiftUI.Color.primary)
+                .frame(minWidth: 44, minHeight: 44)
                 .padding(.horizontal, 10)
-                .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
                         .fill(isHighlighted ? SwiftUI.Color.white : SwiftUI.Color(AppearanceSettings.shared.currentTheme.cardSurface))
@@ -273,6 +339,10 @@ struct KeyboardToolbarContent: View {
                 .scaleEffect(isHighlighted ? 1.1 : 1.0)
                 .animation(.spring(duration: 0.15, bounce: 0.4), value: isHighlighted)
         }
+        .disabled(!isEnabled)
+        .accessibilityLabel(button.accessibilityLabel)
+        .accessibilityValue(isModifier ? (isHighlighted ? "Active" : "Inactive") : "")
+        .accessibilityHint(isModifier ? "Applies to the next key" : "")
     }
 
     // Swipe button — drag to send arrow keys, with accumulated distance tracking
@@ -313,8 +383,7 @@ private struct SwipeArrowButton: View {
         Text(label)
             .font(.system(size: 14, weight: .medium, design: .monospaced))
             .foregroundStyle(isDragging ? SwiftUI.Color.black : SwiftUI.Color.primary)
-            .frame(width: 50)
-            .padding(.vertical, 6)
+            .frame(width: 50, height: 44)
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(isDragging ? SwiftUI.Color.white : SwiftUI.Color(AppearanceSettings.shared.currentTheme.cardSurface))
@@ -364,5 +433,6 @@ private struct SwipeArrowButton: View {
                         lastStepY = 0
                     }
             )
+            .accessibilityLabel(ToolbarButton.allAvailable.first(where: { $0.id == buttonID })?.accessibilityLabel ?? label)
     }
 }

@@ -61,11 +61,21 @@ final class GhosttyRuntimeController: ObservableObject {
             read_clipboard_cb: { userdata, _, state in
                 GhosttyRuntimeController.readClipboard(userdata: userdata, state: state)
             },
-            confirm_read_clipboard_cb: { userdata, str, state, _ in
-                GhosttyRuntimeController.confirmReadClipboard(userdata: userdata, string: str, state: state)
+            confirm_read_clipboard_cb: { userdata, str, state, request in
+                GhosttyRuntimeController.confirmReadClipboard(
+                    userdata: userdata,
+                    string: str,
+                    state: state,
+                    request: request
+                )
             },
-            write_clipboard_cb: { _, _, content, len, _ in
-                GhosttyRuntimeController.writeClipboard(content: content, len: len)
+            write_clipboard_cb: { userdata, _, content, len, confirm in
+                GhosttyRuntimeController.writeClipboard(
+                    userdata: userdata,
+                    content: content,
+                    len: len,
+                    requiresConfirmation: confirm
+                )
             },
             close_surface_cb: { _, _ in }
         )
@@ -150,23 +160,26 @@ final class GhosttyRuntimeController: ObservableObject {
     ) {
         guard let userdata, let state else { return }
         let view = Unmanaged<GhosttyTerminalSurfaceView>.fromOpaque(userdata).takeUnretainedValue()
-        view.completeClipboardRequest(state: state, content: UIPasteboard.general.string ?? "", confirmed: true)
+        view.completeClipboardRequest(state: state, content: UIPasteboard.general.string ?? "", confirmed: false)
     }
 
     private static func confirmReadClipboard(
         userdata: UnsafeMutableRawPointer?,
         string: UnsafePointer<CChar>?,
-        state: UnsafeMutableRawPointer?
+        state: UnsafeMutableRawPointer?,
+        request: ghostty_clipboard_request_e
     ) {
         guard let userdata, let state else { return }
         let view = Unmanaged<GhosttyTerminalSurfaceView>.fromOpaque(userdata).takeUnretainedValue()
         let content = string.flatMap { String(validatingUTF8: $0) } ?? (UIPasteboard.general.string ?? "")
-        view.completeClipboardRequest(state: state, content: content, confirmed: true)
+        view.requestClipboardConfirmation(state: state, content: content, request: request)
     }
 
     private static func writeClipboard(
+        userdata: UnsafeMutableRawPointer?,
         content: UnsafePointer<ghostty_clipboard_content_s>?,
-        len: Int
+        len: Int,
+        requiresConfirmation: Bool
     ) {
         guard let content, len > 0 else { return }
 
@@ -179,7 +192,16 @@ final class GhosttyRuntimeController: ObservableObject {
                 continue
             }
 
-            UIPasteboard.general.string = String(cString: payload)
+            let text = String(cString: payload)
+            if requiresConfirmation {
+                guard let userdata else { return }
+                let view = Unmanaged<GhosttyTerminalSurfaceView>
+                    .fromOpaque(userdata)
+                    .takeUnretainedValue()
+                view.requestRemoteClipboardWrite(text)
+            } else {
+                UIPasteboard.general.string = text
+            }
             break
         }
     }

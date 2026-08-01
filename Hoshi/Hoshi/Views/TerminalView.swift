@@ -31,6 +31,11 @@ struct TerminalView: View {
 
     // Keyboard visibility for explicit show/hide control
     @State private var isKeyboardVisible = true
+    @State private var keyboardVisibleBeforeToolbarEditor = true
+
+    // Unsafe pastes and remote clipboard requests require explicit approval.
+    @State private var pendingClipboardRequest: TerminalClipboardRequest?
+    @State private var keyboardVisibleBeforeClipboardPrompt = false
 
     // Status dot pulse animation for connecting/reconnecting states
     @State private var statusDotPulsing = false
@@ -72,13 +77,19 @@ struct TerminalView: View {
                 fontSize: $fontSize,
                 showToolbarEditor: $showToolbarEditor,
                 keyboardVisible: $isKeyboardVisible,
+                onClipboardRequest: { request in
+                    keyboardVisibleBeforeClipboardPrompt = isKeyboardVisible
+                    pendingClipboardRequest = request
+                },
                 onSwapSession: canSwapSession ? onSwapSession : nil,
                 onSurfaceReady: { surfaceView in
                     // Capture weak reference to the surface for thumbnail snapshots
                     managedSession?.surfaceView = surfaceView
                 }
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(.spring(duration: 0.35), value: connectionVM.connectionState)
         .onChange(of: fontSize) { _, newSize in
             appearanceSettings.fontSize = newSize
@@ -108,16 +119,50 @@ struct TerminalView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onChange(of: showToolbarEditor) { _, isPresented in
+            if isPresented {
+                keyboardVisibleBeforeToolbarEditor = isKeyboardVisible
+            } else if keyboardVisibleBeforeToolbarEditor {
+                isKeyboardVisible = true
+            }
+        }
         .sheet(isPresented: $showToolbarEditor) {
             ToolbarEditView(onSave: {
                 // GhosttyTerminalView reloads toolbar buttons after dismissal.
             })
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
-            isKeyboardVisible = true
+        .alert(
+            pendingClipboardRequest?.kind.title ?? "Confirm Paste",
+            isPresented: Binding(
+                get: { pendingClipboardRequest != nil },
+                set: { isPresented in
+                    guard !isPresented, let request = pendingClipboardRequest else { return }
+                    resolveClipboardRequest(request, approved: false)
+                }
+            ),
+            presenting: pendingClipboardRequest
+        ) { request in
+            Button("Cancel", role: .cancel) {
+                resolveClipboardRequest(request, approved: false)
+            }
+            Button(request.kind.confirmButtonTitle) {
+                resolveClipboardRequest(request, approved: true)
+            }
+        } message: { request in
+            Text(request.message)
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
-            isKeyboardVisible = false
+    }
+
+    private func resolveClipboardRequest(_ request: TerminalClipboardRequest, approved: Bool) {
+        guard pendingClipboardRequest?.id == request.id else { return }
+        let shouldRestoreKeyboard = keyboardVisibleBeforeClipboardPrompt
+        pendingClipboardRequest = nil
+        request.onDecision(approved)
+
+        guard shouldRestoreKeyboard else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            guard pendingClipboardRequest == nil else { return }
+            isKeyboardVisible = true
         }
     }
 
@@ -184,8 +229,11 @@ struct TerminalView: View {
             } label: {
                 Image(systemName: isKeyboardVisible ? "keyboard.chevron.compact.down" : "keyboard")
                     .foregroundStyle(.secondary)
+                    .frame(minWidth: 44, minHeight: 44)
             }
             .accessibilityLabel(isKeyboardVisible ? "Hide keyboard" : "Show keyboard")
+            .accessibilityHint("Toggles the terminal software keyboard")
+            .accessibilityIdentifier("terminal.keyboard.toggle")
 
             // Swap — toggle to the previous session (only visible with 2+ sessions)
             if canSwapSession {
@@ -195,6 +243,7 @@ struct TerminalView: View {
                 } label: {
                     Image(systemName: "rectangle.2.swap")
                         .foregroundStyle(.secondary)
+                        .frame(minWidth: 44, minHeight: 44)
                 }
                 .accessibilityLabel("Switch to previous session")
             }
@@ -205,7 +254,10 @@ struct TerminalView: View {
             } label: {
                 Image(systemName: "rectangle.compress.vertical")
                     .foregroundStyle(.secondary)
+                    .frame(minWidth: 44, minHeight: 44)
             }
+            .accessibilityLabel("Return to servers")
+            .accessibilityHint("Keeps this terminal session running")
         }
         .padding(.horizontal)
         .padding(.vertical, 8)

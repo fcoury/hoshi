@@ -16,6 +16,8 @@ final class AppearanceSettings {
         static let backgroundOpacity = "com.hoshi.appearance.backgroundOpacity"
         static let colorScheme = "com.hoshi.appearance.colorScheme"
         static let scrollMultiplier = "com.hoshi.appearance.scrollMultiplier"
+        static let doubleTapAction = "com.hoshi.terminal.doubleTapAction"
+        static let twoFingerTapAction = "com.hoshi.terminal.twoFingerTapAction"
     }
 
     var themeID: String {
@@ -44,6 +46,14 @@ final class AppearanceSettings {
 
     var scrollMultiplier: Double {
         didSet { defaults.set(scrollMultiplier, forKey: Key.scrollMultiplier) }
+    }
+
+    var doubleTapAction: TerminalDoubleTapAction {
+        didSet { defaults.set(doubleTapAction.rawValue, forKey: Key.doubleTapAction) }
+    }
+
+    var twoFingerTapAction: TerminalTwoFingerTapAction {
+        didSet { defaults.set(twoFingerTapAction.rawValue, forKey: Key.twoFingerTapAction) }
     }
 
     // Resolved theme object from the current themeID
@@ -90,5 +100,19 @@ final class AppearanceSettings {
 
         let savedMultiplier = defaults.object(forKey: Key.scrollMultiplier) as? Double
         self.scrollMultiplier = savedMultiplier ?? 3.0
+
+        if let raw = defaults.string(forKey: Key.doubleTapAction),
+           let action = TerminalDoubleTapAction(rawValue: raw) {
+            self.doubleTapAction = action
+        } else {
+            self.doubleTapAction = .selectWord
+        }
+
+        if let raw = defaults.string(forKey: Key.twoFingerTapAction),
+           let action = TerminalTwoFingerTapAction(rawValue: raw) {
+            self.twoFingerTapAction = action
+        } else {
+            self.twoFingerTapAction = .paste
+        }
     }
 }
