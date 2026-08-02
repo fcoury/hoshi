@@ -15,6 +15,7 @@ enum ErrorOperation: String, Equatable, Sendable {
     case voice = "voice prompt"
     case companion = "agent companion"
     case notifications = "notifications"
+    case liveActivities = "live activities"
     case biometrics = "device authentication"
     case credentials = "secure credentials"
     case keyValidation = "SSH key validation"
@@ -996,6 +997,7 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
         case .voice: "Voice Prompt Failed"
         case .companion: "Agent Companion Failed"
         case .notifications: "Notifications Failed"
+        case .liveActivities: "Live Activity Failed"
         case .biometrics: "Device Authentication Failed"
         case .credentials: "Secure Credentials Are Unavailable"
         case .keyValidation: "SSH Key Could Not Be Validated"
@@ -1012,6 +1014,7 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
         case .voice: "Check microphone and speech-recognition permissions, then retry."
         case .companion: "Verify the companion URL, authentication token, and service availability."
         case .notifications: "Check Hoshi notification permissions in iOS Settings."
+        case .liveActivities: "Enable Live Activities for Hoshi in iOS Settings, then try again."
         case .biometrics: "Unlock the device and verify Face ID, Touch ID, or your passcode is available."
         case .credentials: "Unlock the device and re-save your connection credentials."
         case .keyValidation: freshHoshiKeyRecovery

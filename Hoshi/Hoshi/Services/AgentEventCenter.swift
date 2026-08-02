@@ -7,6 +7,7 @@ final class AgentEventCenter {
 
     @ObservationIgnored private let persistence: AgentEventPersistenceStore
     @ObservationIgnored private let notifications: any AgentNotificationDelivering
+    @ObservationIgnored private let liveActivities: any AgentLiveActivityManaging
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private weak var sessionManager: SessionManager?
 
@@ -24,10 +25,12 @@ final class AgentEventCenter {
     init(
         persistence: AgentEventPersistenceStore = AgentEventPersistenceStore(),
         notifications: (any AgentNotificationDelivering)? = nil,
+        liveActivities: (any AgentLiveActivityManaging)? = nil,
         defaults: UserDefaults = .standard
     ) {
         self.persistence = persistence
         self.notifications = notifications ?? AgentNotificationService.shared
+        self.liveActivities = liveActivities ?? AgentLiveActivityService.shared
         self.defaults = defaults
         self.events = persistence.load()
         self.notificationsEnabled = defaults.bool(forKey: Self.notificationSettingKey)
@@ -36,6 +39,30 @@ final class AgentEventCenter {
     func attach(sessionManager: SessionManager) {
         self.sessionManager = sessionManager
         synchronizeSessionAttention()
+    }
+
+    func setLiveActivitiesEnabled(_ enabled: Bool) {
+        liveActivities.setEnabled(
+            enabled,
+            sessions: sessionManager?.sessions ?? [],
+            events: events
+        )
+    }
+
+    func setLiveActivityServerNamesVisible(_ enabled: Bool) {
+        liveActivities.setShowsServerNames(
+            enabled,
+            sessions: sessionManager?.sessions ?? [],
+            events: events
+        )
+    }
+
+    func refreshLiveActivities() {
+        liveActivities.synchronize(sessions: sessionManager?.sessions ?? [], events: events)
+    }
+
+    func sessionDidClose(id: UUID) {
+        liveActivities.endSession(id: id)
     }
 
     @discardableResult
@@ -168,6 +195,7 @@ final class AgentEventCenter {
                 $0.kind.attentionPriority < $1.kind.attentionPriority
             }?.kind
         }
+        liveActivities.synchronize(sessions: sessionManager.sessions, events: events)
     }
 
     private func insert(

@@ -37,6 +37,7 @@ targets:
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Hoshi uses your microphone only while you hold the voice prompt button; audio is transcribed on this device."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Hoshi transcribes voice prompts on this device so you can review them before sending them to your terminal."
         INFOPLIST_KEY_CFBundleDisplayName: "Hoshi"
+        INFOPLIST_KEY_NSSupportsLiveActivities: true
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         "INFOPLIST_KEY_UISupportedInterfaceOrientations~ipad": UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         # Preserve the existing release declaration; review export compliance before shipping.
@@ -48,10 +49,36 @@ targets:
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1,2"
     dependencies:
+      - target: HoshiLiveActivity
       - package: Citadel
       - package: CryptoSwift
       - framework: Frameworks/GhosttyKit.xcframework
         embed: false
+
+  HoshiLiveActivity:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: HoshiLiveActivity
+        excludes:
+          - Info.plist
+      - path: Hoshi/Models/AgentLiveActivityAttributes.swift
+    info:
+      path: HoshiLiveActivity/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_FILE: HoshiLiveActivity/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethoshi.ios.liveactivity
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        DEVELOPMENT_TEAM: UXWHD5F6F4
+        CODE_SIGN_STYLE: Automatic
+        APPLICATION_EXTENSION_API_ONLY: "YES"
+        TARGETED_DEVICE_FAMILY: "1,2"
 
   HoshiTests:
     type: bundle.unit-test

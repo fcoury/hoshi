@@ -54,6 +54,10 @@ struct AppRootView: View {
                 uploadPrivacy.protectSensitiveContent()
                 browserPrivacy.protectSensitiveContent()
             }
+            AgentEventCenter.shared.refreshLiveActivities()
+        }
+        .onChange(of: appLock.isEnabled) { _, _ in
+            AgentEventCenter.shared.refreshLiveActivities()
         }
     }
 

@@ -38,6 +38,7 @@ Hoshi (星, "star" in Japanese) is designed around a specific workflow: connect 
 
 - Local-first inbox for completed jobs, attention requests, and approvals
 - Per-session attention badges and optional local notifications
+- Opt-in Lock Screen and Dynamic Island Live Activities with privacy-safe agent status
 - Notification deep links reopen the relevant terminal
 - Versioned terminal hooks for direct SSH connections
 - Optional bearer-token-protected, self-hosted companion for tmux and Mosh

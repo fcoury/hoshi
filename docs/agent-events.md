@@ -109,6 +109,17 @@ notifications omit agent titles, server names, and message contents.
 Approval notifications never contain executable actions. Their only actions
 are opening the relevant terminal and marking the event as read.
 
+Live Activities are independently opt-in under **Settings → Coding Agents →
+Agent Monitoring**. They follow authenticated active sessions and display
+only an agent status, unread attention count, and elapsed time on the Lock
+Screen or Dynamic Island. Server and tmux session names are hidden by default;
+the optional server-name setting is always overridden while Hoshi app lock is
+enabled. Event titles, messages, terminal contents, credentials, and remote
+commands are never included in Live Activity attributes or state. Tapping an
+activity only opens its associated session through an existing `hoshi://`
+deep link. Closing a session or disabling Live Activities removes its activity
+immediately.
+
 Companion polling runs while Hoshi is active. iOS can suspend application
 networking in the background, so this protocol does not provide always-on
-remote push notifications.
+remote push notifications or cloud-backed Live Activity updates.

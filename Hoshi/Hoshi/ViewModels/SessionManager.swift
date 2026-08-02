@@ -52,6 +52,7 @@ final class SessionManager {
         let session = sessions[index]
         await session.connectionVM.disconnect()
         sessions.remove(at: index)
+        agentEventCenter?.sessionDidClose(id: id)
 
         // If the closed session was active, clear the active ID
         if activeSessionID == id {
@@ -98,6 +99,7 @@ final class SessionManager {
         activeSessionID = nil
         if shouldRemove, let id = removingID {
             sessions.removeAll { $0.id == id }
+            agentEventCenter?.sessionDidClose(id: id)
         }
         agentEventCenter?.synchronizeSessionAttention()
         persistSessionDescriptors()

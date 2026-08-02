@@ -8,12 +8,15 @@ struct AgentMonitoringSettingsView: View {
     @State private var showRemoveConfirmation = false
 
     private let events = AgentEventCenter.shared
+    private let liveActivities = AgentLiveActivityService.shared
+    private let appLock = AppLockService.shared
     private let configuration = AgentCompanionConfiguration.shared
     private let monitor = AgentCompanionMonitor.shared
 
     var body: some View {
         Form {
             notificationSection
+            liveActivitySection
             companionSection
             hookSection
 
@@ -33,6 +36,37 @@ struct AgentMonitoringSettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This removes the saved endpoint and deletes its authentication token from Keychain.")
+        }
+    }
+
+    private var liveActivitySection: some View {
+        Section {
+            Toggle("Agent Live Activities", isOn: Binding(
+                get: { liveActivities.isEnabled },
+                set: events.setLiveActivitiesEnabled
+            ))
+
+            if liveActivities.isEnabled {
+                Toggle("Show Server Names", isOn: Binding(
+                    get: { liveActivities.showsServerNames },
+                    set: events.setLiveActivityServerNamesVisible
+                ))
+                .disabled(appLock.isEnabled)
+
+                if appLock.isEnabled {
+                    Label("Server names stay hidden while app lock is enabled.", systemImage: "lock.shield")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let presentation = liveActivities.presentedError {
+                ErrorPresentationView(presentation: presentation)
+            }
+        } header: {
+            Text("Lock Screen & Dynamic Island")
+        } footer: {
+            Text("Follow active agent sessions and attention requests without sending terminal output, event messages, or credentials to your Lock Screen. Server names are hidden by default.")
         }
     }
 
