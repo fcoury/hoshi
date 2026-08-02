@@ -5,6 +5,8 @@ import UniformTypeIdentifiers
 /// Reviews a user-selected document or photo before a private SSH/SFTP upload.
 struct FileUploadView: View {
     let onInsert: (Data) async -> Bool
+    private let onUploadCompleted: ((UploadedRemoteFile) -> Void)?
+    private let savesDefaultDestination: Bool
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -22,13 +24,17 @@ struct FileUploadView: View {
     init(
         connection: ConnectionViewModel,
         controller: FileUploadController? = nil,
+        initialRemoteDirectory: String? = nil,
+        onUploadCompleted: ((UploadedRemoteFile) -> Void)? = nil,
         onInsert: @escaping (Data) async -> Bool
     ) {
         _controller = State(initialValue: controller ?? FileUploadController(
             backend: SFTPFileUploadBackend(connection: connection)
         ))
-        _remoteDirectory = State(initialValue: FileUploadSettings.shared.remoteDirectory)
+        _remoteDirectory = State(initialValue: initialRemoteDirectory ?? FileUploadSettings.shared.remoteDirectory)
         self.onInsert = onInsert
+        self.onUploadCompleted = onUploadCompleted
+        self.savesDefaultDestination = initialRemoteDirectory == nil
     }
 
     var body: some View {
@@ -94,7 +100,9 @@ struct FileUploadView: View {
             importPhoto(item)
         }
         .onChange(of: controller.completedFile) { _, file in
-            guard let file, settings.insertPathAutomatically else { return }
+            guard let file else { return }
+            onUploadCompleted?(file)
+            guard settings.insertPathAutomatically else { return }
             insertPath(file)
         }
         .onChange(of: scenePhase) { _, phase in
@@ -269,7 +277,9 @@ struct FileUploadView: View {
     private func startUpload() {
         do {
             _ = try RemoteUploadDirectory(remoteDirectory)
-            settings.remoteDirectory = remoteDirectory
+            if savesDefaultDestination {
+                settings.remoteDirectory = remoteDirectory
+            }
             controller.startUpload(remoteDirectory: remoteDirectory)
         } catch {
             controller.reportImportFailure(error)

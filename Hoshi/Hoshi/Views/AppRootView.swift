@@ -8,6 +8,7 @@ struct AppRootView: View {
     private let companion = AgentCompanionMonitor.shared
     private let voicePrivacy = VoicePromptPrivacyCoordinator.shared
     private let uploadPrivacy = FileUploadPrivacyCoordinator.shared
+    private let browserPrivacy = RemoteFileBrowserPrivacyCoordinator.shared
 
     var body: some View {
         ZStack {
@@ -26,6 +27,7 @@ struct AppRootView: View {
             case .background:
                 voicePrivacy.protectSensitiveContent()
                 uploadPrivacy.protectSensitiveContent()
+                browserPrivacy.protectSensitiveContent()
                 appLock.lock()
                 companion.stop()
             case .active:
@@ -50,6 +52,7 @@ struct AppRootView: View {
             if locked {
                 voicePrivacy.protectSensitiveContent()
                 uploadPrivacy.protectSensitiveContent()
+                browserPrivacy.protectSensitiveContent()
             }
         }
     }

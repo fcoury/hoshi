@@ -11,6 +11,7 @@ enum ErrorOperation: String, Equatable, Sendable {
     case connection = "SSH connection"
     case tmux = "tmux"
     case upload = "file upload"
+    case fileBrowser = "remote file browser"
     case voice = "voice prompt"
     case companion = "agent companion"
     case notifications = "notifications"
@@ -289,6 +290,8 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
             result = classifySFTP(error)
         } else if let error = error as? FileUploadError {
             result = classifyUpload(error)
+        } else if let error = error as? RemoteFileBrowserError {
+            result = classifyRemoteFileBrowser(error)
         } else if let error = error as? VoicePromptError {
             result = classifyVoice(error)
         } else if let error = error as? VoicePromptSystemFailure {
@@ -674,6 +677,53 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
         }
     }
 
+    private static func classifyRemoteFileBrowser(_ error: RemoteFileBrowserError) -> Classification {
+        switch error {
+        case .disconnected, .missingCredentials:
+            Classification(
+                title: "File Browser Requires an SSH Connection",
+                explanation: error.localizedDescription,
+                recovery: "Reconnect with the same verified server credentials and retry."
+            )
+        case .invalidHomeDirectory, .invalidEntryName, .unsafeRemotePath, .symbolicLink:
+            Classification(
+                title: "Unsafe Remote File Path Blocked",
+                explanation: error.localizedDescription,
+                recovery: "Choose a regular file or folder contained within your remote home directory."
+            )
+        case .unsupportedEntry:
+            Classification(
+                title: "Unsupported Remote File",
+                explanation: error.localizedDescription,
+                recovery: "Choose a regular file or folder instead of a device, socket, or symbolic link."
+            )
+        case .directoryTooLarge:
+            Classification(
+                title: "Remote Folder Is Too Large",
+                explanation: error.localizedDescription,
+                recovery: "Open a smaller subfolder or reorganize this directory on the server."
+            )
+        case .fileTooLarge:
+            Classification(
+                title: "File Exceeds Download Limit",
+                explanation: error.localizedDescription,
+                recovery: "Choose a smaller file or transfer it another way."
+            )
+        case .downloadInProgress:
+            Classification(
+                title: "Download Already in Progress",
+                explanation: error.localizedDescription,
+                recovery: "Wait for the current download to finish, or cancel it first."
+            )
+        case .localFileUnavailable:
+            Classification(
+                title: "Private Download Storage Is Unavailable",
+                explanation: error.localizedDescription,
+                recovery: "Check available device storage and try the download again."
+            )
+        }
+    }
+
     private static func classifyVoice(_ error: VoicePromptError) -> Classification {
         switch error {
         case .microphoneDenied:
@@ -942,6 +992,7 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
         case .connection: "Connection Failed"
         case .tmux: "tmux Action Failed"
         case .upload: "File Upload Failed"
+        case .fileBrowser: "Remote File Browser Failed"
         case .voice: "Voice Prompt Failed"
         case .companion: "Agent Companion Failed"
         case .notifications: "Notifications Failed"
@@ -957,6 +1008,7 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
         case .connection: "Verify the server address and credentials, then reconnect."
         case .tmux: "Refresh your tmux sessions and verify tmux is installed on the server."
         case .upload: "Verify the SSH connection, SFTP support, and upload destination, then retry."
+        case .fileBrowser: "Verify the SSH connection, SFTP support, and remote file permissions, then retry."
         case .voice: "Check microphone and speech-recognition permissions, then retry."
         case .companion: "Verify the companion URL, authentication token, and service availability."
         case .notifications: "Check Hoshi notification permissions in iOS Settings."

@@ -60,6 +60,14 @@ Hoshi (星, "star" in Japanese) is designed around a specific workflow: connect 
 - Progress reporting, cancellation, and automatic partial-file cleanup
 - Optional shell-quoted remote path insertion without executing Return
 
+### Remote File Browser
+
+- Browse and search remote files inside the server's home directory over verified SSH/SFTP
+- Navigate folders with breadcrumbs, natural sorting, metadata, and optional hidden files
+- Preview and share privately staged downloads with bounded size and cancellation support
+- Upload documents or photos directly into the currently selected remote folder
+- Symbolic links and paths outside the remote home are blocked; private downloads are erased on close or app lock
+
 ### Terminal
 
 - Powered by [Ghostty](https://ghostty.org) with Metal-accelerated rendering

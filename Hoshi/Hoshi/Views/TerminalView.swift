@@ -35,6 +35,7 @@ struct TerminalView: View {
     @State private var showTmuxPalette = false
     @State private var showVoiceComposer = false
     @State private var showFileUploader = false
+    @State private var showFileBrowser = false
 
     // Keyboard visibility for explicit show/hide control
     @State private var isKeyboardVisible = true
@@ -42,6 +43,7 @@ struct TerminalView: View {
     @State private var keyboardVisibleBeforeTmuxPalette = true
     @State private var keyboardVisibleBeforeVoiceComposer = true
     @State private var keyboardVisibleBeforeFileUploader = true
+    @State private var keyboardVisibleBeforeFileBrowser = true
 
     // Unsafe pastes and remote clipboard requests require explicit approval.
     @State private var pendingClipboardRequest: TerminalClipboardRequest?
@@ -176,6 +178,14 @@ struct TerminalView: View {
                 isKeyboardVisible = keyboardVisibleBeforeFileUploader
             }
         }
+        .onChange(of: showFileBrowser) { _, isPresented in
+            if isPresented {
+                keyboardVisibleBeforeFileBrowser = isKeyboardVisible
+                isKeyboardVisible = false
+            } else {
+                isKeyboardVisible = keyboardVisibleBeforeFileBrowser
+            }
+        }
         .sheet(isPresented: $showToolbarEditor) {
             ToolbarEditView(onSave: {
                 // GhosttyTerminalView reloads toolbar buttons after dismissal.
@@ -193,6 +203,13 @@ struct TerminalView: View {
         }
         .sheet(isPresented: $showFileUploader) {
             FileUploadView(connection: connectionVM) { data in
+                guard connectionVM.connectionState == .connected else { return false }
+                await connectionVM.send(data)
+                return true
+            }
+        }
+        .sheet(isPresented: $showFileBrowser) {
+            RemoteFileBrowserView(connection: connectionVM, serverName: serverName) { data in
                 guard connectionVM.connectionState == .connected else { return false }
                 await connectionVM.send(data)
                 return true
@@ -338,6 +355,18 @@ struct TerminalView: View {
             .accessibilityHint("Transfers the selected item using verified SSH and SFTP")
             .accessibilityIdentifier("terminal.upload.open")
             .keyboardShortcut("u", modifiers: [.command, .shift])
+
+            Button {
+                showFileBrowser = true
+            } label: {
+                Image(systemName: "folder")
+                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .accessibilityLabel("Browse server files securely")
+            .accessibilityHint("Opens your remote home folder using verified SSH and SFTP")
+            .accessibilityIdentifier("terminal.files.open")
+            .keyboardShortcut("f", modifiers: [.command, .shift])
 
             if voiceSettings.isEnabled {
                 Button {
