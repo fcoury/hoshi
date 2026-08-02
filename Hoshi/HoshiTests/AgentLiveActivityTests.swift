@@ -43,6 +43,7 @@ final class AgentLiveActivityTests: XCTestCase {
         service.setEnabled(true, sessions: [makeSession()], events: [])
 
         XCTAssertFalse(service.isEnabled)
+        XCTAssertFalse(service.areActivitiesAvailable)
         XCTAssertTrue(provider.started.isEmpty)
         XCTAssertEqual(service.presentedError?.title, "Live Activity Failed")
         XCTAssertTrue(service.presentedError?.recoverySuggestion?.contains("iOS Settings") == true)
@@ -225,6 +226,48 @@ final class AgentLiveActivityTests: XCTestCase {
         XCTAssertEqual(provider.ended.first?.attributes.sessionID, session.id)
     }
 
+    func testSystemDismissedActivityRequiresExplicitRestart() throws {
+        let service = makeService()
+        let session = makeSession()
+        service.setEnabled(true, sessions: [session], events: [])
+        let firstActivity = try XCTUnwrap(provider.started.first)
+
+        provider.simulateSystemDismissal(id: firstActivity.id)
+        service.synchronize(sessions: [session], events: [])
+
+        XCTAssertEqual(provider.started.count, 1)
+        XCTAssertTrue(provider.activeActivities.isEmpty)
+        XCTAssertEqual(service.monitoredSessionCount, 1)
+        XCTAssertEqual(service.activeActivityCount, 0)
+        XCTAssertEqual(service.dismissedActivityCount, 1)
+
+        service.restartDismissedActivities(sessions: [session], events: [])
+
+        XCTAssertEqual(provider.started.count, 2)
+        XCTAssertNotEqual(provider.started.last?.id, firstActivity.id)
+        XCTAssertEqual(provider.activeActivities.count, 1)
+        XCTAssertEqual(service.activeActivityCount, 1)
+        XCTAssertEqual(service.dismissedActivityCount, 0)
+    }
+
+    func testLiveActivityStatusCountsTrackWaitingActiveAndDisabledStates() async {
+        let service = makeService()
+
+        service.setEnabled(true, sessions: [], events: [])
+        XCTAssertEqual(service.monitoredSessionCount, 0)
+        XCTAssertEqual(service.activeActivityCount, 0)
+
+        let session = makeSession()
+        service.synchronize(sessions: [session], events: [])
+        XCTAssertEqual(service.monitoredSessionCount, 1)
+        XCTAssertEqual(service.activeActivityCount, 1)
+
+        service.setEnabled(false, sessions: [session], events: [])
+        await waitUntil { !self.provider.ended.isEmpty }
+        XCTAssertEqual(service.activeActivityCount, 0)
+        XCTAssertEqual(service.dismissedActivityCount, 0)
+    }
+
     func testExistingSystemActivitiesAreReusedAfterAppRestart() {
         let firstService = makeService()
         let session = makeSession()
@@ -246,6 +289,7 @@ final class AgentLiveActivityTests: XCTestCase {
         await waitUntil { !self.provider.ended.isEmpty }
 
         XCTAssertFalse(service.isEnabled)
+        XCTAssertFalse(service.areActivitiesAvailable)
         XCTAssertNotNil(service.presentedError)
     }
 
@@ -344,6 +388,40 @@ final class AgentLiveActivityTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: widget.path))
     }
 
+    func testSystemProviderCreatesAndEndsLiveActivityOnPhysicalDevice() async throws {
+        #if targetEnvironment(simulator)
+        // ActivityKit presentation is covered by the physical-device branch.
+        #else
+        let systemProvider = SystemAgentLiveActivityProvider()
+        guard systemProvider.areActivitiesEnabled else {
+            throw XCTSkip("Live Activities are disabled for Hoshi on this device.")
+        }
+
+        let attributes = AgentLiveActivityAttributes(sessionID: UUID(), startedAt: Date())
+        let state = AgentLiveActivityAttributes.ContentState(
+            status: .running,
+            displayName: "Coding Agent",
+            tmuxSession: nil,
+            attentionCount: 0,
+            latestEventID: nil,
+            updatedAt: Date(),
+            detailsAreHidden: true
+        )
+        let activityID = try systemProvider.start(attributes: attributes, state: state)
+
+        XCTAssertTrue(systemProvider.activeActivities.contains { $0.id == activityID })
+
+        await systemProvider.end(id: activityID, state: state, immediately: true)
+        for _ in 0..<100 {
+            if !systemProvider.activeActivities.contains(where: { $0.id == activityID }) {
+                return
+            }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTFail("The test Live Activity did not end within five seconds.")
+        #endif
+    }
+
     private func makeService() -> AgentLiveActivityService {
         AgentLiveActivityService(
             provider: provider,
@@ -427,5 +505,9 @@ private final class MockAgentLiveActivityProvider: AgentLiveActivityProviding {
     func end(id: String, state: AgentLiveActivityAttributes.ContentState, immediately: Bool) async {
         guard let current = records.removeValue(forKey: id) else { return }
         ended.append(EndedActivity(attributes: current.attributes, state: state, immediately: immediately))
+    }
+
+    func simulateSystemDismissal(id: String) {
+        records.removeValue(forKey: id)
     }
 }

@@ -1,5 +1,6 @@
 import ActivityKit
 import Foundation
+import OSLog
 
 @MainActor
 struct AgentLiveActivityRecord {
@@ -77,6 +78,7 @@ protocol AgentLiveActivityManaging: AnyObject {
     func setEnabled(_ enabled: Bool, sessions: [ManagedSession], events: [AgentInboxEvent])
     func setShowsServerNames(_ enabled: Bool, sessions: [ManagedSession], events: [AgentInboxEvent])
     func synchronize(sessions: [ManagedSession], events: [AgentInboxEvent])
+    func restartDismissedActivities(sessions: [ManagedSession], events: [AgentInboxEvent])
     func endSession(id: UUID)
 }
 
@@ -94,27 +96,37 @@ final class AgentLiveActivityService: AgentLiveActivityManaging {
     @ObservationIgnored private var activityStates: [UUID: AgentLiveActivityAttributes.ContentState] = [:]
     @ObservationIgnored private var endingActivityIDs: Set<String> = []
     @ObservationIgnored private var updateTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var dismissedSessionIDs: Set<UUID> = []
+    @ObservationIgnored private let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "app.gethoshi.ios",
+        category: "AgentLiveActivity"
+    )
 
     private(set) var isEnabled: Bool
     private(set) var showsServerNames: Bool
     private(set) var presentedError: ErrorPresentation?
-
-    var areActivitiesAvailable: Bool { provider.areActivitiesEnabled }
+    private(set) var monitoredSessionCount = 0
+    private(set) var activeActivityCount = 0
+    private(set) var dismissedActivityCount = 0
+    private(set) var areActivitiesAvailable: Bool
 
     init(
         provider: (any AgentLiveActivityProviding)? = nil,
         defaults: UserDefaults = .standard,
         isAppLockEnabled: (@MainActor () -> Bool)? = nil
     ) {
-        self.provider = provider ?? SystemAgentLiveActivityProvider()
+        let resolvedProvider = provider ?? SystemAgentLiveActivityProvider()
+        self.provider = resolvedProvider
         self.defaults = defaults
         self.isAppLockEnabled = isAppLockEnabled ?? { AppLockService.shared.isEnabled }
         self.isEnabled = defaults.bool(forKey: Self.enabledKey)
         self.showsServerNames = defaults.bool(forKey: Self.showsServerNamesKey)
+        self.areActivitiesAvailable = resolvedProvider.areActivitiesEnabled
     }
 
     func setEnabled(_ enabled: Bool, sessions: [ManagedSession], events: [AgentInboxEvent]) {
         presentedError = nil
+        areActivitiesAvailable = provider.areActivitiesEnabled
 
         guard enabled else {
             isEnabled = false
@@ -123,7 +135,7 @@ final class AgentLiveActivityService: AgentLiveActivityManaging {
             return
         }
 
-        guard provider.areActivitiesEnabled else {
+        guard areActivitiesAvailable else {
             isEnabled = false
             defaults.set(false, forKey: Self.enabledKey)
             presentError(ErrorMessageFailure(
@@ -132,6 +144,10 @@ final class AgentLiveActivityService: AgentLiveActivityManaging {
             return
         }
 
+        if !isEnabled {
+            dismissedSessionIDs.removeAll()
+            dismissedActivityCount = 0
+        }
         isEnabled = true
         defaults.set(true, forKey: Self.enabledKey)
         synchronize(sessions: sessions, events: events)
@@ -144,12 +160,15 @@ final class AgentLiveActivityService: AgentLiveActivityManaging {
     }
 
     func synchronize(sessions: [ManagedSession], events: [AgentInboxEvent]) {
+        monitoredSessionCount = sessions.count
+        areActivitiesAvailable = provider.areActivitiesEnabled
+
         guard isEnabled else {
             endAllActivities()
             return
         }
 
-        guard provider.areActivitiesEnabled else {
+        guard areActivitiesAvailable else {
             isEnabled = false
             defaults.set(false, forKey: Self.enabledKey)
             endAllActivities()
@@ -159,7 +178,7 @@ final class AgentLiveActivityService: AgentLiveActivityManaging {
             return
         }
 
-        restoreSystemActivities()
+        reconcileSystemActivities()
         let sessionIDs = Set(sessions.map(\.id))
         for sessionID in Array(activityIDs.keys) where !sessionIDs.contains(sessionID) {
             endSession(id: sessionID)
@@ -168,22 +187,46 @@ final class AgentLiveActivityService: AgentLiveActivityManaging {
         for session in sessions {
             synchronize(session: session, events: events)
         }
+        activeActivityCount = activityIDs.count
+    }
+
+    func restartDismissedActivities(sessions: [ManagedSession], events: [AgentInboxEvent]) {
+        areActivitiesAvailable = provider.areActivitiesEnabled
+        guard isEnabled, areActivitiesAvailable else {
+            synchronize(sessions: sessions, events: events)
+            return
+        }
+        dismissedSessionIDs.removeAll()
+        dismissedActivityCount = 0
+        presentedError = nil
+        synchronize(sessions: sessions, events: events)
     }
 
     func endSession(id: UUID) {
         updateTasks[id]?.cancel()
         updateTasks[id] = nil
-        guard let activityID = activityIDs.removeValue(forKey: id),
-              let state = activityStates.removeValue(forKey: id) else { return }
+        dismissedSessionIDs.remove(id)
+        dismissedActivityCount = dismissedSessionIDs.count
+        guard let activityID = activityIDs.removeValue(forKey: id) else { return }
+        let state = activityStates.removeValue(forKey: id)
+            ?? provider.activeActivities.first(where: { $0.id == activityID })?.state
+        activeActivityCount = activityIDs.count
+        guard let state else {
+            logger.warning("Unable to end Live Activity because its content state is unavailable")
+            return
+        }
 
         endingActivityIDs.insert(activityID)
         Task { [weak self, provider] in
             await provider.end(id: activityID, state: state, immediately: true)
             self?.endingActivityIDs.remove(activityID)
+            self?.logger.info("Ended Live Activity")
         }
     }
 
     private func synchronize(session: ManagedSession, events: [AgentInboxEvent]) {
+        guard !dismissedSessionIDs.contains(session.id) else { return }
+
         let unread = events.filter { $0.sessionID == session.id && $0.isUnread }
         let event = unread.max {
             if $0.kind.attentionPriority == $1.kind.attentionPriority {
@@ -211,6 +254,7 @@ final class AgentLiveActivityService: AgentLiveActivityManaging {
                 guard !Task.isCancelled else { return }
                 await provider.update(id: activityID, state: state)
             }
+            logger.debug("Scheduled Live Activity update")
             return
         }
 
@@ -219,26 +263,58 @@ final class AgentLiveActivityService: AgentLiveActivityManaging {
             let activityID = try provider.start(attributes: attributes, state: state)
             activityIDs[session.id] = activityID
             activityStates[session.id] = state
+            activeActivityCount = activityIDs.count
+            logger.info("Started Live Activity")
         } catch {
+            let nsError = error as NSError
+            logger.error(
+                "Failed to start Live Activity (domain: \(nsError.domain, privacy: .public), code: \(nsError.code))"
+            )
             presentError(error)
         }
     }
 
-    private func restoreSystemActivities() {
-        for activity in provider.activeActivities {
+    /// Treat ActivityKit as the source of truth. An activity can disappear while
+    /// Hoshi is suspended (for example, after a user dismissal or a system
+    /// invalidation), leaving an otherwise-valid in-memory identifier behind.
+    /// Removing stale identifiers here prevents updates from being sent to a
+    /// nonexistent activity. The session remains suppressed until the person
+    /// explicitly restarts Live Activities, respecting an intentional dismissal.
+    private func reconcileSystemActivities() {
+        let systemActivities = provider.activeActivities
+        let activeIDs = Set(systemActivities.map(\.id))
+
+        let staleSessionIDs = activityIDs.compactMap { sessionID, activityID in
+            !activeIDs.contains(activityID) && !endingActivityIDs.contains(activityID) ? sessionID : nil
+        }
+        for sessionID in staleSessionIDs {
+            updateTasks[sessionID]?.cancel()
+            updateTasks[sessionID] = nil
+            activityIDs.removeValue(forKey: sessionID)
+            activityStates.removeValue(forKey: sessionID)
+            dismissedSessionIDs.insert(sessionID)
+            logger.notice("Observed dismissed or invalidated Live Activity")
+        }
+
+        for activity in systemActivities {
             let sessionID = activity.attributes.sessionID
             guard !endingActivityIDs.contains(activity.id),
                   activityIDs[sessionID] == nil else { continue }
+            dismissedSessionIDs.remove(sessionID)
             activityIDs[sessionID] = activity.id
             activityStates[sessionID] = activity.state
         }
+        activeActivityCount = activityIDs.count
+        dismissedActivityCount = dismissedSessionIDs.count
     }
 
     private func endAllActivities() {
-        restoreSystemActivities()
+        reconcileSystemActivities()
         for sessionID in Array(activityIDs.keys) {
             endSession(id: sessionID)
         }
+        dismissedSessionIDs.removeAll()
+        dismissedActivityCount = 0
     }
 
     private func status(for event: AgentInboxEvent?) -> AgentLiveActivityAttributes.Status {

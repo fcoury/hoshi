@@ -61,6 +61,13 @@ final class AgentEventCenter {
         liveActivities.synchronize(sessions: sessionManager?.sessions ?? [], events: events)
     }
 
+    func restartDismissedLiveActivities() {
+        liveActivities.restartDismissedActivities(
+            sessions: sessionManager?.sessions ?? [],
+            events: events
+        )
+    }
+
     func sessionDidClose(id: UUID) {
         liveActivities.endSession(id: id)
     }

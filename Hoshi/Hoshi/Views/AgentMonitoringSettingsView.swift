@@ -30,6 +30,7 @@ struct AgentMonitoringSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             endpoint = configuration.endpoint?.absoluteString ?? ""
+            events.refreshLiveActivities()
         }
         .confirmationDialog("Remove Companion?", isPresented: $showRemoveConfirmation) {
             Button("Remove Companion", role: .destructive, action: removeCompanion)
@@ -45,6 +46,17 @@ struct AgentMonitoringSettingsView: View {
                 get: { liveActivities.isEnabled },
                 set: events.setLiveActivitiesEnabled
             ))
+
+            LabeledContent("Status") {
+                Label(liveActivityStatus.title, systemImage: liveActivityStatus.systemImage)
+                    .foregroundStyle(liveActivityStatus.style)
+            }
+
+            if !liveActivities.areActivitiesAvailable {
+                Link("Open iOS Settings", destination: URL(string: UIApplication.openSettingsURLString)!)
+            } else if liveActivities.isEnabled && liveActivities.dismissedActivityCount > 0 {
+                Button("Restart Live Activities", action: events.restartDismissedLiveActivities)
+            }
 
             if liveActivities.isEnabled {
                 Toggle("Show Server Names", isOn: Binding(
@@ -66,8 +78,46 @@ struct AgentMonitoringSettingsView: View {
         } header: {
             Text("Lock Screen & Dynamic Island")
         } footer: {
-            Text("Follow active agent sessions and attention requests without sending terminal output, event messages, or credentials to your Lock Screen. Server names are hidden by default.")
+            Text(liveActivityFooter)
         }
+    }
+
+    private var liveActivityFooter: String {
+        let privacy = "Follow active agent sessions and attention requests without sending terminal output, event messages, or credentials to your Lock Screen. Server names are hidden by default."
+        guard liveActivities.areActivitiesAvailable,
+              liveActivities.isEnabled,
+              liveActivities.monitoredSessionCount == 0 else {
+            return privacy
+        }
+        return "Open an authenticated terminal session to start its Live Activity.\n\n\(privacy)"
+    }
+
+    private var liveActivityStatus: (title: String, systemImage: String, style: Color) {
+        guard liveActivities.areActivitiesAvailable else {
+            return ("Disabled in iOS", "exclamationmark.triangle.fill", .orange)
+        }
+        guard liveActivities.isEnabled else {
+            return ("Off", "circle", .secondary)
+        }
+        if liveActivities.dismissedActivityCount > 0 && liveActivities.activeActivityCount == 0 {
+            return ("Dismissed", "xmark.circle", .secondary)
+        }
+        guard liveActivities.activeActivityCount > 0 else {
+            if liveActivities.monitoredSessionCount > 0 {
+                return ("Unable to Start", "exclamationmark.circle.fill", .red)
+            }
+            return ("Waiting for Session", "clock", .secondary)
+        }
+
+        let count = liveActivities.activeActivityCount
+        if count < liveActivities.monitoredSessionCount {
+            return (
+                "\(count) of \(liveActivities.monitoredSessionCount) Active",
+                "exclamationmark.circle.fill",
+                .orange
+            )
+        }
+        return (count == 1 ? "1 Active" : "\(count) Active", "waveform.path.ecg", .green)
     }
 
     private var notificationSection: some View {

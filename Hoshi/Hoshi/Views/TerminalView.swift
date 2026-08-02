@@ -441,6 +441,8 @@ struct TerminalView: View {
                                     ? appearanceSettings.currentTheme.accentGreen
                                     : appearanceSettings.currentTheme.accentBlue
                             ))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 2)
                             .background(
@@ -465,57 +467,7 @@ struct TerminalView: View {
 
             Spacer(minLength: 0)
 
-            Button {
-                showFileUploader = true
-            } label: {
-                Image(systemName: "paperclip")
-                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
-                    .frame(minWidth: 44, minHeight: 44)
-            }
-            .disabled(!connectionVM.canAcceptTerminalInput)
-            .accessibilityLabel("Upload a file or photo securely")
-            .accessibilityHint("Transfers the selected item using verified SSH and SFTP")
-            .accessibilityIdentifier("terminal.upload.open")
-            .keyboardShortcut("u", modifiers: [.command, .shift])
-
-            Button {
-                showFileBrowser = true
-            } label: {
-                Image(systemName: "folder")
-                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
-                    .frame(minWidth: 44, minHeight: 44)
-            }
-            .disabled(!connectionVM.canAcceptTerminalInput)
-            .accessibilityLabel("Browse server files securely")
-            .accessibilityHint("Opens your remote home folder using verified SSH and SFTP")
-            .accessibilityIdentifier("terminal.files.open")
-            .keyboardShortcut("f", modifiers: [.command, .shift])
-
-            if voiceSettings.isEnabled {
-                Button {
-                    showVoiceComposer = true
-                } label: {
-                    Image(systemName: "mic")
-                        .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
-                        .frame(minWidth: 44, minHeight: 44)
-                }
-                .disabled(!connectionVM.canAcceptTerminalInput)
-                .accessibilityLabel("Compose on-device voice prompt")
-                .accessibilityHint("Opens a private push-to-talk draft")
-                .accessibilityIdentifier("terminal.voice.open")
-                .keyboardShortcut("m", modifiers: [.command, .shift])
-            }
-
-            Button {
-                showTmuxPalette = true
-            } label: {
-                Image(systemName: "rectangle.split.3x1")
-                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
-                    .frame(minWidth: 44, minHeight: 44)
-            }
-            .disabled(!connectionVM.canAcceptTerminalInput)
-            .accessibilityLabel("Open tmux command palette")
-            .keyboardShortcut("p", modifiers: [.command, .shift])
+            supplementalStatusActions
 
             Button {
                 isKeyboardVisible.toggle()
@@ -558,6 +510,105 @@ struct TerminalView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(SwiftUI.Color(appearanceSettings.currentTheme.chromeSurface))
+    }
+
+    /// Keeps every tool one tap away on wide layouts while reserving enough room
+    /// for the session identity on narrower phones and split-screen windows.
+    private var supplementalStatusActions: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                Button {
+                    showFileUploader = true
+                } label: {
+                    Image(systemName: "paperclip")
+                        .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("Upload a file or photo securely")
+                .accessibilityHint("Transfers the selected item using verified SSH and SFTP")
+                .accessibilityIdentifier("terminal.upload.open")
+                .keyboardShortcut("u", modifiers: [.command, .shift])
+
+                Button {
+                    showFileBrowser = true
+                } label: {
+                    Image(systemName: "folder")
+                        .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("Browse server files securely")
+                .accessibilityHint("Opens your remote home folder using verified SSH and SFTP")
+                .accessibilityIdentifier("terminal.files.open")
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+
+                if voiceSettings.isEnabled {
+                    Button {
+                        showVoiceComposer = true
+                    } label: {
+                        Image(systemName: "mic")
+                            .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .accessibilityLabel("Compose on-device voice prompt")
+                    .accessibilityHint("Opens a private push-to-talk draft")
+                    .accessibilityIdentifier("terminal.voice.open")
+                    .keyboardShortcut("m", modifiers: [.command, .shift])
+                }
+
+                Button {
+                    showTmuxPalette = true
+                } label: {
+                    Image(systemName: "rectangle.split.3x1")
+                        .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("Open tmux command palette")
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .disabled(!connectionVM.canAcceptTerminalInput)
+
+            Menu {
+                Button {
+                    showFileUploader = true
+                } label: {
+                    Label("Upload File or Photo", systemImage: "paperclip")
+                }
+                .keyboardShortcut("u", modifiers: [.command, .shift])
+
+                Button {
+                    showFileBrowser = true
+                } label: {
+                    Label("Browse Server Files", systemImage: "folder")
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+
+                if voiceSettings.isEnabled {
+                    Button {
+                        showVoiceComposer = true
+                    } label: {
+                        Label("Compose Voice Prompt", systemImage: "mic")
+                    }
+                    .keyboardShortcut("m", modifiers: [.command, .shift])
+                }
+
+                Button {
+                    showTmuxPalette = true
+                } label: {
+                    Label("Tmux Commands", systemImage: "rectangle.split.3x1")
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .disabled(!connectionVM.canAcceptTerminalInput)
+            .accessibilityLabel("Terminal tools")
+            .accessibilityHint("Opens file transfer, voice, and tmux actions")
+            .accessibilityIdentifier("terminal.tools.open")
+        }
     }
 
     private var statusColor: SwiftUI.Color {

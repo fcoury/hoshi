@@ -35,6 +35,7 @@ struct AppRootView: View {
                     Task { await appLock.unlock() }
                 }
                 companion.start()
+                AgentEventCenter.shared.refreshLiveActivities()
             default:
                 break
             }
