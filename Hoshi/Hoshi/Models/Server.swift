@@ -7,6 +7,22 @@ enum AuthMethod: String, Codable, CaseIterable {
     case key
 }
 
+enum RemoteClipboardAccessPolicy: String, Codable, CaseIterable, Identifiable, Sendable {
+    case ask
+    case allow
+    case deny
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .ask: "Ask Every Time"
+        case .allow: "Always Allow"
+        case .deny: "Never Allow"
+        }
+    }
+}
+
 @Model
 final class Server {
     var id: UUID
@@ -27,6 +43,9 @@ final class Server {
     var tmuxPolicyRawValue: String?
     var moshServerPath: String?
     var moshUDPPortRange: String?
+    // Optional storage keeps existing SwiftData profiles readable and defaults them to asking.
+    var remoteClipboardReadPolicyRawValue: String?
+    var remoteClipboardWritePolicyRawValue: String?
 
     // Ports are identifiers, not localized quantities; never insert grouping separators.
     var endpoint: String {
@@ -62,6 +81,20 @@ final class Server {
         set { tmuxPolicyRawValue = newValue.rawValue }
     }
 
+    var remoteClipboardReadPolicy: RemoteClipboardAccessPolicy {
+        get {
+            remoteClipboardReadPolicyRawValue.flatMap(RemoteClipboardAccessPolicy.init(rawValue:)) ?? .ask
+        }
+        set { remoteClipboardReadPolicyRawValue = newValue.rawValue }
+    }
+
+    var remoteClipboardWritePolicy: RemoteClipboardAccessPolicy {
+        get {
+            remoteClipboardWritePolicyRawValue.flatMap(RemoteClipboardAccessPolicy.init(rawValue:)) ?? .ask
+        }
+        set { remoteClipboardWritePolicyRawValue = newValue.rawValue }
+    }
+
     init(
         name: String,
         hostname: String,
@@ -75,7 +108,9 @@ final class Server {
         transportPolicy: ConnectionTransportPolicy? = nil,
         tmuxPolicy: TmuxConnectionPolicy? = nil,
         moshServerPath: String? = nil,
-        moshUDPPortRange: String? = nil
+        moshUDPPortRange: String? = nil,
+        remoteClipboardReadPolicy: RemoteClipboardAccessPolicy? = nil,
+        remoteClipboardWritePolicy: RemoteClipboardAccessPolicy? = nil
     ) {
         self.id = UUID()
         self.name = name
@@ -91,5 +126,7 @@ final class Server {
         self.tmuxPolicyRawValue = tmuxPolicy?.rawValue
         self.moshServerPath = moshServerPath
         self.moshUDPPortRange = moshUDPPortRange
+        self.remoteClipboardReadPolicyRawValue = remoteClipboardReadPolicy?.rawValue
+        self.remoteClipboardWritePolicyRawValue = remoteClipboardWritePolicy?.rawValue
     }
 }

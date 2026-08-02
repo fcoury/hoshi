@@ -21,6 +21,10 @@ final class ServerModelTests: XCTestCase {
         XCTAssertNil(server.lastConnected)
         XCTAssertNil(server.tmuxSession)
         XCTAssertNotNil(server.id)
+        XCTAssertEqual(server.remoteClipboardReadPolicy, .ask)
+        XCTAssertEqual(server.remoteClipboardWritePolicy, .ask)
+        XCTAssertNil(server.remoteClipboardReadPolicyRawValue)
+        XCTAssertNil(server.remoteClipboardWritePolicyRawValue)
     }
 
     func testServerCustomPort() {
@@ -88,6 +92,51 @@ final class ServerModelTests: XCTestCase {
         )
 
         XCTAssertEqual(server.keyID, "deploy-key")
+    }
+
+    func testUnknownClipboardPoliciesFallBackToAsking() {
+        let server = Server(name: "Legacy", hostname: "example.com", username: "user")
+        server.remoteClipboardReadPolicyRawValue = "unknown-policy"
+        server.remoteClipboardWritePolicyRawValue = "unknown-policy"
+
+        XCTAssertEqual(server.remoteClipboardReadPolicy, .ask)
+        XCTAssertEqual(server.remoteClipboardWritePolicy, .ask)
+    }
+
+    func testClipboardPoliciesPreserveIndependentPermissions() {
+        let server = Server(
+            name: "Trusted Copy",
+            hostname: "example.com",
+            username: "user",
+            remoteClipboardReadPolicy: .deny,
+            remoteClipboardWritePolicy: .allow
+        )
+
+        XCTAssertEqual(server.remoteClipboardReadPolicy, .deny)
+        XCTAssertEqual(server.remoteClipboardWritePolicy, .allow)
+        XCTAssertEqual(server.remoteClipboardReadPolicyRawValue, "deny")
+        XCTAssertEqual(server.remoteClipboardWritePolicyRawValue, "allow")
+    }
+
+    @MainActor
+    func testClipboardPoliciesPersistWithServerProfile() throws {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: Server.self, configurations: configuration)
+        let context = ModelContext(container)
+        let server = Server(
+            name: "Persisted Clipboard",
+            hostname: "example.com",
+            username: "user",
+            remoteClipboardReadPolicy: .allow,
+            remoteClipboardWritePolicy: .deny
+        )
+
+        context.insert(server)
+        try context.save()
+
+        let savedServer = try XCTUnwrap(context.fetch(FetchDescriptor<Server>()).first)
+        XCTAssertEqual(savedServer.remoteClipboardReadPolicy, .allow)
+        XCTAssertEqual(savedServer.remoteClipboardWritePolicy, .deny)
     }
 
     @MainActor

@@ -611,7 +611,9 @@ struct ServerListView: View {
             transportPolicy: server.transportPolicy,
             tmuxPolicy: server.tmuxPolicy,
             moshServerPath: server.moshServerPath,
-            moshUDPPortRange: server.moshUDPPortRange
+            moshUDPPortRange: server.moshUDPPortRange,
+            remoteClipboardReadPolicy: server.remoteClipboardReadPolicy,
+            remoteClipboardWritePolicy: server.remoteClipboardWritePolicy
         )
         copy.id = server.id
         copy.lastConnected = server.lastConnected

@@ -14,6 +14,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
     @Binding var keyboardVisible: Bool
     let voicePromptsEnabled: Bool
     let onClipboardRequest: (TerminalClipboardRequest) -> Void
+    let onClipboardNotice: (TerminalClipboardNotice) -> Void
     var onSwapSession: (() -> Void)?
     var onSurfaceReady: ((GhosttyTerminalSurfaceView) -> Void)?
 
@@ -26,6 +27,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
             keyboardVisibleBinding: $keyboardVisible,
             managedSession: managedSession,
             onClipboardRequest: onClipboardRequest,
+            onClipboardNotice: onClipboardNotice,
             onSwapSession: onSwapSession
         )
     }
@@ -60,6 +62,10 @@ struct GhosttyTerminalView: UIViewRepresentable {
         view.onClipboardRequest = { [weak coordinator] request in
             coordinator?.onClipboardRequest(request)
         }
+        view.onClipboardNotice = { [weak coordinator] notice in
+            coordinator?.onClipboardNotice(notice)
+        }
+        view.clipboardPolicy = clipboardPolicy
         view.onKeyboardVisibilityChanged = { [weak coordinator] visible in
             coordinator?.updateKeyboardVisibility(visible)
         }
@@ -99,10 +105,15 @@ struct GhosttyTerminalView: UIViewRepresentable {
         uiView.onClipboardRequest = { [weak coordinator] request in
             coordinator?.onClipboardRequest(request)
         }
+        uiView.onClipboardNotice = { [weak coordinator] notice in
+            coordinator?.onClipboardNotice(notice)
+        }
+        uiView.clipboardPolicy = clipboardPolicy
         uiView.onKeyboardVisibilityChanged = { [weak coordinator] visible in
             coordinator?.updateKeyboardVisibility(visible)
         }
         coordinator.onClipboardRequest = onClipboardRequest
+        coordinator.onClipboardNotice = onClipboardNotice
         coordinator.onSwapSession = onSwapSession
         uiView.toolbarAccessory.setVoicePromptAvailable(voicePromptsEnabled)
 
@@ -123,6 +134,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ uiView: GhosttyTerminalSurfaceView, coordinator: Coordinator) {
+        uiView.cancelPendingClipboardRequests()
         uiView.onInputData = nil
         uiView.onTerminalSizeChanged = nil
         uiView.onEditTap = nil
@@ -130,12 +142,21 @@ struct GhosttyTerminalView: UIViewRepresentable {
         uiView.onFileUpload = nil
         uiView.onSwapSession = nil
         uiView.onClipboardRequest = nil
+        uiView.onClipboardNotice = nil
         uiView.onKeyboardVisibilityChanged = nil
         // A retained surface keeps receiving bytes while hidden, preserving its
         // real scrollback, cursor, selections, and alternate-screen state.
         if coordinator.managedSession?.surfaceView !== uiView {
             coordinator.connectionVM.setDataCallback(nil)
         }
+    }
+
+    private var clipboardPolicy: TerminalRemoteClipboardPolicy {
+        TerminalRemoteClipboardPolicy.forServer(
+            managedSession?.server
+                ?? connectionVM.moshSession?.server
+                ?? connectionVM.sshSession?.server
+        )
     }
 
     final class Coordinator {
@@ -146,6 +167,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
         var keyboardVisibleBinding: Binding<Bool>?
         weak var managedSession: ManagedSession?
         var onClipboardRequest: (TerminalClipboardRequest) -> Void
+        var onClipboardNotice: (TerminalClipboardNotice) -> Void
         var onSwapSession: (() -> Void)?
         var wasEditingToolbar = false
 
@@ -157,6 +179,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
             keyboardVisibleBinding: Binding<Bool>?,
             managedSession: ManagedSession?,
             onClipboardRequest: @escaping (TerminalClipboardRequest) -> Void,
+            onClipboardNotice: @escaping (TerminalClipboardNotice) -> Void,
             onSwapSession: (() -> Void)?
         ) {
             self.connectionVM = connectionVM
@@ -166,6 +189,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
             self.keyboardVisibleBinding = keyboardVisibleBinding
             self.managedSession = managedSession
             self.onClipboardRequest = onClipboardRequest
+            self.onClipboardNotice = onClipboardNotice
             self.onSwapSession = onSwapSession
         }
 
@@ -278,7 +302,10 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
     }
     var onSwapSession: (() -> Void)?
     var onClipboardRequest: ((TerminalClipboardRequest) -> Void)?
+    var onClipboardNotice: ((TerminalClipboardNotice) -> Void)?
+    var clipboardPolicy = TerminalRemoteClipboardPolicy()
     var onKeyboardVisibilityChanged: ((Bool) -> Void)?
+    private var pendingClipboardDecisions: [UUID: @MainActor (Bool) -> Void] = [:]
 
     var keyboardType: UIKeyboardType = .asciiCapable
     var autocorrectionType: UITextAutocorrectionType = .no
@@ -743,40 +770,148 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         case GHOSTTY_CLIPBOARD_REQUEST_OSC_52_WRITE: .remoteWrite
         default: .paste
         }
+
+        if kind == .remoteRead {
+            switch TerminalClipboardPayload.validate(content) {
+            case .failure(let error):
+                rejectRemoteClipboardPayload(error, state: state)
+                return
+            case .success:
+                switch clipboardPolicy.read {
+                case .deny:
+                    completeClipboardRequest(state: state, content: "", confirmed: true)
+                    emitClipboardNotice(.readDenied, byteCount: content.utf8.count)
+                    return
+                case .allow:
+                    completeClipboardRequest(state: state, content: content, confirmed: true)
+                    emitClipboardNotice(.readAllowed, byteCount: content.utf8.count)
+                    return
+                case .ask:
+                    break
+                }
+            }
+        }
+
         let bracketed = surface.map(ghostty_surface_bracketed_paste_enabled) ?? false
         let assessment = TerminalPastePolicy.assess(content, bracketedPasteEnabled: bracketed)
+        let requestID = UUID()
         let prompt = TerminalClipboardRequest(
+            id: requestID,
             content: content,
             kind: kind,
-            assessment: assessment
+            assessment: assessment,
+            serverName: kind == .paste ? nil : clipboardPolicy.serverName,
+            endpoint: kind == .paste ? nil : clipboardPolicy.endpoint
         ) { [weak self] approved in
-            self?.completeClipboardRequest(
+            guard let self,
+                  self.pendingClipboardDecisions.removeValue(forKey: requestID) != nil else { return }
+            self.completeClipboardRequest(
                 state: state,
                 content: approved ? content : "",
                 confirmed: true
             )
+            if kind == .remoteRead {
+                self.emitClipboardNotice(
+                    approved ? .readAllowed : .readDenied,
+                    byteCount: content.utf8.count
+                )
+            }
         }
 
         guard let onClipboardRequest else {
             completeClipboardRequest(state: state, content: "", confirmed: true)
+            if kind == .remoteRead {
+                emitClipboardNotice(.readDenied, byteCount: content.utf8.count)
+            }
             return
         }
+        pendingClipboardDecisions[requestID] = prompt.onDecision
         onClipboardRequest(prompt)
     }
 
-    func requestRemoteClipboardWrite(_ content: String) {
-        guard let onClipboardRequest else { return }
+    func requestRemoteClipboardWrite(_ content: String, requiresConfirmation: Bool = false) {
+        switch TerminalClipboardPayload.validate(content) {
+        case .failure(let error):
+            rejectRemoteClipboardPayload(error)
+            return
+        case .success:
+            break
+        }
 
+        switch clipboardPolicy.write {
+        case .deny:
+            emitClipboardNotice(.writeDenied, byteCount: content.utf8.count)
+            return
+        case .allow where !requiresConfirmation:
+            applyRemoteClipboardWrite(content)
+            return
+        case .allow, .ask:
+            break
+        }
+
+        guard let onClipboardRequest else {
+            emitClipboardNotice(.writeDenied, byteCount: content.utf8.count)
+            return
+        }
+
+        let requestID = UUID()
         let request = TerminalClipboardRequest(
+            id: requestID,
             content: content,
             kind: .remoteWrite,
-            assessment: TerminalPastePolicy.assess(content, bracketedPasteEnabled: false)
+            assessment: TerminalPastePolicy.assess(content, bracketedPasteEnabled: false),
+            serverName: clipboardPolicy.serverName,
+            endpoint: clipboardPolicy.endpoint
         ) { [weak self] approved in
-            guard approved else { return }
-            TerminalPasteboard.shared.string = content
-            self?.toolbarAccessory.setPasteAvailable(true)
+            guard let self,
+                  self.pendingClipboardDecisions.removeValue(forKey: requestID) != nil else { return }
+            guard approved else {
+                self.emitClipboardNotice(.writeDenied, byteCount: content.utf8.count)
+                return
+            }
+            self.applyRemoteClipboardWrite(content)
         }
+        pendingClipboardDecisions[requestID] = request.onDecision
         onClipboardRequest(request)
+    }
+
+    func rejectRemoteClipboardPayload(
+        _ error: TerminalClipboardPayloadError,
+        state: UnsafeMutableRawPointer? = nil
+    ) {
+        if let state {
+            completeClipboardRequest(state: state, content: "", confirmed: true)
+        }
+
+        switch error {
+        case .tooLarge(let byteCount):
+            emitClipboardNotice(.payloadTooLarge, byteCount: byteCount)
+        case .invalidUTF8:
+            emitClipboardNotice(.invalidPayload, byteCount: nil)
+        }
+    }
+
+    func cancelPendingClipboardRequests() {
+        let decisions = Array(pendingClipboardDecisions.values)
+        for decision in decisions {
+            decision(false)
+        }
+    }
+
+    private func applyRemoteClipboardWrite(_ content: String) {
+        TerminalPasteboard.shared.string = content
+        toolbarAccessory.setPasteAvailable(true)
+        emitClipboardNotice(.writeAllowed, byteCount: content.utf8.count)
+    }
+
+    private func emitClipboardNotice(_ kind: TerminalClipboardNoticeKind, byteCount: Int?) {
+        onClipboardNotice?(
+            TerminalClipboardNotice(
+                kind: kind,
+                serverName: clipboardPolicy.serverName,
+                byteCount: byteCount
+            )
+        )
     }
 
     func hasSelection() -> Bool {

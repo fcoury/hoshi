@@ -93,6 +93,104 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertFalse(assessment.requiresConfirmation)
     }
 
+    func testRemoteClipboardDefaultsRequireApprovalForReadsAndWrites() {
+        let policy = TerminalRemoteClipboardPolicy()
+
+        XCTAssertEqual(policy.read, .ask)
+        XCTAssertEqual(policy.write, .ask)
+    }
+
+    func testRemoteClipboardPolicyUsesTheActiveServerProfile() {
+        let server = Server(
+            name: "Production",
+            hostname: "example.com",
+            port: 2222,
+            username: "deploy",
+            remoteClipboardReadPolicy: .deny,
+            remoteClipboardWritePolicy: .allow
+        )
+
+        let policy = TerminalRemoteClipboardPolicy.forServer(server)
+
+        XCTAssertEqual(policy.read, .deny)
+        XCTAssertEqual(policy.write, .allow)
+        XCTAssertEqual(policy.serverName, "Production")
+        XCTAssertEqual(policy.endpoint, "example.com:2222")
+    }
+
+    func testClipboardCStringDecoderAcceptsPayloadAtSizeLimit() {
+        let content = String(repeating: "a", count: TerminalClipboardPayload.maximumBytes)
+
+        let result = content.withCString { TerminalClipboardPayload.decodeCString($0) }
+
+        XCTAssertEqual(try? result.get(), content)
+    }
+
+    func testClipboardCStringDecoderBoundsOversizedRemotePayload() {
+        let content = String(repeating: "a", count: TerminalClipboardPayload.maximumBytes + 256)
+
+        let result = content.withCString { TerminalClipboardPayload.decodeCString($0) }
+
+        guard case .failure(.tooLarge(let byteCount)) = result else {
+            return XCTFail("Expected oversized clipboard payload to be rejected")
+        }
+        XCTAssertEqual(byteCount, TerminalClipboardPayload.maximumBytes + 1)
+    }
+
+    func testClipboardCStringDecoderRejectsInvalidUTF8() {
+        let bytes: [UInt8] = [0xC3, 0x28, 0]
+
+        let result = bytes.withUnsafeBufferPointer { buffer in
+            TerminalClipboardPayload.decodeCString(
+                UnsafeRawPointer(buffer.baseAddress!).assumingMemoryBound(to: CChar.self)
+            )
+        }
+
+        XCTAssertEqual(result, .failure(.invalidUTF8))
+    }
+
+    func testRemoteClipboardSizeLimitCountsUTF8BytesRatherThanCharacters() {
+        let oversized = String(repeating: "🛡️", count: TerminalClipboardPayload.maximumBytes / 4)
+
+        XCTAssertLessThan(oversized.count, TerminalClipboardPayload.maximumBytes)
+        guard case .failure(.tooLarge(let byteCount)) = TerminalClipboardPayload.validate(oversized) else {
+            return XCTFail("Expected UTF-8 clipboard byte limit to be enforced")
+        }
+        XCTAssertGreaterThan(byteCount, TerminalClipboardPayload.maximumBytes)
+    }
+
+    func testRemoteClipboardApprovalMessagesHidePrivateContents() {
+        let secret = "private-token-never-display"
+        let assessment = TerminalPastePolicy.assess(secret, bracketedPasteEnabled: false)
+        let read = TerminalClipboardRequest(
+            content: secret,
+            kind: .remoteRead,
+            assessment: assessment,
+            serverName: "Production",
+            endpoint: "example.com:2222"
+        ) { _ in }
+        let write = TerminalClipboardRequest(
+            content: secret,
+            kind: .remoteWrite,
+            assessment: assessment,
+            serverName: "Production",
+            endpoint: "example.com:2222"
+        ) { _ in }
+
+        XCTAssertTrue(read.message.contains("example.com:2222"))
+        XCTAssertTrue(write.message.contains("example.com:2222"))
+        XCTAssertTrue(read.message.contains("\(secret.utf8.count) bytes"))
+        XCTAssertTrue(write.message.contains("\(secret.utf8.count) bytes"))
+        XCTAssertFalse(read.message.contains(secret))
+        XCTAssertFalse(write.message.contains(secret))
+    }
+
+    func testGhosttyConfigurationAlwaysRequiresRemoteReadAuthorization() {
+        let configuration = GhosttyThemeAdapter.buildConfigString(from: AppearanceSettings.shared)
+
+        XCTAssertTrue(configuration.contains("clipboard-read = ask"))
+    }
+
     func testViewportSnapsToCompleteTerminalCells() throws {
         let geometry = try XCTUnwrap(TerminalViewportGeometry(
             bounds: CGSize(width: 390, height: 701),
@@ -441,6 +539,117 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertEqual(pasteboard.string, "approved replacement")
     }
 
+    func testRemoteClipboardWriteFailsClosedWhenApprovalCannotBePresented() {
+        let surface = GhosttyTerminalSurfaceView(app: nil, fontSize: 14, keyboardVisible: false)
+        pasteboard.string = "existing clipboard"
+        var notices: [TerminalClipboardNotice] = []
+        surface.onClipboardNotice = { notices.append($0) }
+
+        surface.requestRemoteClipboardWrite("unapproved replacement")
+
+        XCTAssertEqual(pasteboard.string, "existing clipboard")
+        XCTAssertEqual(notices.map(\.kind), [.writeDenied])
+    }
+
+    func testDeniedRemoteClipboardWriteNeverChangesPasteboard() {
+        let surface = GhosttyTerminalSurfaceView(app: nil, fontSize: 14, keyboardVisible: false)
+        surface.clipboardPolicy = TerminalRemoteClipboardPolicy(write: .deny, serverName: "Production")
+        pasteboard.string = "existing private clipboard"
+        var requests: [TerminalClipboardRequest] = []
+        var notices: [TerminalClipboardNotice] = []
+        surface.onClipboardRequest = { requests.append($0) }
+        surface.onClipboardNotice = { notices.append($0) }
+
+        surface.requestRemoteClipboardWrite("remote secret")
+
+        XCTAssertTrue(requests.isEmpty)
+        XCTAssertEqual(pasteboard.string, "existing private clipboard")
+        XCTAssertEqual(notices.map(\.kind), [.writeDenied])
+        XCTAssertFalse(notices[0].message.contains("remote secret"))
+    }
+
+    func testAllowedRemoteClipboardWriteUpdatesPasteboardWithoutPrompt() {
+        let surface = GhosttyTerminalSurfaceView(app: nil, fontSize: 14, keyboardVisible: false)
+        surface.clipboardPolicy = TerminalRemoteClipboardPolicy(write: .allow, serverName: "Production")
+        var request: TerminalClipboardRequest?
+        var notice: TerminalClipboardNotice?
+        surface.onClipboardRequest = { request = $0 }
+        surface.onClipboardNotice = { notice = $0 }
+
+        surface.requestRemoteClipboardWrite("remote secret")
+
+        XCTAssertNil(request)
+        XCTAssertEqual(pasteboard.string, "remote secret")
+        XCTAssertEqual(notice?.kind, .writeAllowed)
+        XCTAssertTrue(notice?.message.contains("Production") == true)
+        XCTAssertFalse(notice?.message.contains("remote secret") == true)
+    }
+
+    func testGhosttyConfirmationStillRequiresApprovalOnTrustedProfile() {
+        let surface = GhosttyTerminalSurfaceView(app: nil, fontSize: 14, keyboardVisible: false)
+        surface.clipboardPolicy = TerminalRemoteClipboardPolicy(write: .allow)
+        pasteboard.string = "original"
+        var request: TerminalClipboardRequest?
+        surface.onClipboardRequest = { request = $0 }
+
+        surface.requestRemoteClipboardWrite("replacement", requiresConfirmation: true)
+
+        XCTAssertEqual(request?.kind, .remoteWrite)
+        XCTAssertEqual(pasteboard.string, "original")
+    }
+
+    func testOversizedRemoteClipboardWriteIsRejectedBeforeChangingPasteboard() {
+        let surface = GhosttyTerminalSurfaceView(app: nil, fontSize: 14, keyboardVisible: false)
+        surface.clipboardPolicy = TerminalRemoteClipboardPolicy(write: .allow)
+        pasteboard.string = "existing clipboard"
+        let oversized = String(repeating: "a", count: TerminalClipboardPayload.maximumBytes + 1)
+        var request: TerminalClipboardRequest?
+        var notice: TerminalClipboardNotice?
+        surface.onClipboardRequest = { request = $0 }
+        surface.onClipboardNotice = { notice = $0 }
+
+        surface.requestRemoteClipboardWrite(oversized)
+
+        XCTAssertNil(request)
+        XCTAssertEqual(pasteboard.string, "existing clipboard")
+        XCTAssertEqual(notice?.kind, .payloadTooLarge)
+        XCTAssertEqual(notice?.byteCount, oversized.utf8.count)
+    }
+
+    func testClipboardApprovalDecisionCannotBeAppliedTwice() {
+        let surface = GhosttyTerminalSurfaceView(app: nil, fontSize: 14, keyboardVisible: false)
+        var request: TerminalClipboardRequest?
+        var notices: [TerminalClipboardNotice] = []
+        surface.onClipboardRequest = { request = $0 }
+        surface.onClipboardNotice = { notices.append($0) }
+
+        surface.requestRemoteClipboardWrite("approved once")
+        request?.onDecision(true)
+        request?.onDecision(false)
+
+        XCTAssertEqual(pasteboard.string, "approved once")
+        XCTAssertEqual(notices.map(\.kind), [.writeAllowed])
+    }
+
+    func testCancellingPendingClipboardRequestsFailsClosed() {
+        let surface = GhosttyTerminalSurfaceView(app: nil, fontSize: 14, keyboardVisible: false)
+        pasteboard.string = "original"
+        var requests: [TerminalClipboardRequest] = []
+        var notices: [TerminalClipboardNotice] = []
+        surface.onClipboardRequest = { requests.append($0) }
+        surface.onClipboardNotice = { notices.append($0) }
+
+        surface.requestRemoteClipboardWrite("first secret")
+        surface.requestRemoteClipboardWrite("second secret")
+        surface.cancelPendingClipboardRequests()
+        requests.forEach { $0.onDecision(true) }
+
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(pasteboard.string, "original")
+        XCTAssertEqual(notices.map(\.kind), [.writeDenied, .writeDenied])
+        XCTAssertTrue(notices.allSatisfy { !$0.message.contains("secret") })
+    }
+
     func testLiveGhosttySurfaceResizesWhenKeyboardAppearsAndDisappears() throws {
         let surface = try makeLiveSurface(size: CGSize(width: 390, height: 760))
         let expanded = ghostty_surface_size(try XCTUnwrap(surface.surface))
@@ -472,6 +681,17 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertTrue(pasteboard.string?.contains("hello from the remote terminal") == true)
         XCTAssertTrue(surface.toolbarAccessory.selectionAvailable)
         XCTAssertTrue(surface.toolbarAccessory.displayedButtons.contains(.copy))
+    }
+
+    func testDeniedRemoteClipboardPoliciesDoNotBlockIntentionalLocalCopy() throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.clipboardPolicy = TerminalRemoteClipboardPolicy(read: .deny, write: .deny)
+        surface.writeRemoteOutput(Array("local selection stays available".utf8))
+
+        surface.selectAll(nil)
+
+        XCTAssertTrue(surface.copyToClipboard())
+        XCTAssertTrue(pasteboard.string?.contains("local selection stays available") == true)
     }
 
     func testLiveWordSelectionBypassesApplicationMouseCapture() throws {
@@ -540,14 +760,107 @@ final class TerminalInteractionTests: XCTestCase {
         )
     }
 
+    func testDeniedRemoteClipboardPoliciesDoNotBlockIntentionalLocalPaste() async throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.clipboardPolicy = TerminalRemoteClipboardPolicy(read: .deny, write: .deny)
+        pasteboard.string = "echo intentional local paste"
+        var sent: [Data] = []
+        surface.onInputData = { sent.append($0) }
+
+        surface.pasteFromClipboard()
+        await waitUntil { !sent.isEmpty }
+
+        XCTAssertEqual(
+            String(data: sent.reduce(Data(), +), encoding: .utf8),
+            "echo intentional local paste"
+        )
+    }
+
     func testLiveOSC52CopiesRemoteTextIntoDeviceClipboard() async throws {
         let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.clipboardPolicy = TerminalRemoteClipboardPolicy(write: .allow)
         let payload = Data("copied through OSC52".utf8).base64EncodedString()
 
         surface.writeRemoteOutput(Array("\u{1B}]52;c;\(payload)\u{07}".utf8))
         await waitUntil { self.pasteboard.string == "copied through OSC52" }
 
         XCTAssertEqual(pasteboard.string, "copied through OSC52")
+    }
+
+    func testLiveOSC52WriteRequiresApprovalByDefault() async throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        pasteboard.string = "private existing clipboard"
+        let payload = Data("remote replacement".utf8).base64EncodedString()
+        var request: TerminalClipboardRequest?
+        surface.onClipboardRequest = { request = $0 }
+
+        surface.writeRemoteOutput(Array("\u{1B}]52;c;\(payload)\u{07}".utf8))
+        await waitUntil { request != nil }
+
+        XCTAssertEqual(request?.kind, .remoteWrite)
+        XCTAssertEqual(pasteboard.string, "private existing clipboard")
+
+        request?.onDecision(true)
+
+        XCTAssertEqual(pasteboard.string, "remote replacement")
+    }
+
+    func testLiveFragmentedOSC52WritePreservesApprovalBoundary() async throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        pasteboard.string = "existing clipboard"
+        let payload = Data("fragmented remote content".utf8).base64EncodedString()
+        var request: TerminalClipboardRequest?
+        surface.onClipboardRequest = { request = $0 }
+
+        surface.writeRemoteOutput(Array("\u{1B}]52;c;".utf8))
+        GhosttyRuntimeController.shared.tick()
+        XCTAssertNil(request)
+        surface.writeRemoteOutput(Array("\(payload)\u{1B}\\".utf8))
+        await waitUntil { request != nil }
+
+        XCTAssertEqual(request?.kind, .remoteWrite)
+        XCTAssertEqual(pasteboard.string, "existing clipboard")
+
+        request?.onDecision(true)
+
+        XCTAssertEqual(pasteboard.string, "fragmented remote content")
+    }
+
+    func testLiveOSC52WriteHonorsDeniedServerPolicy() async throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.clipboardPolicy = TerminalRemoteClipboardPolicy(write: .deny, serverName: "Production")
+        pasteboard.string = "private existing clipboard"
+        let payload = Data("remote replacement".utf8).base64EncodedString()
+        var request: TerminalClipboardRequest?
+        var notices: [TerminalClipboardNotice] = []
+        surface.onClipboardRequest = { request = $0 }
+        surface.onClipboardNotice = { notices.append($0) }
+
+        surface.writeRemoteOutput(Array("\u{1B}]52;c;\(payload)\u{07}".utf8))
+        await waitUntil { !notices.isEmpty }
+
+        XCTAssertNil(request)
+        XCTAssertEqual(pasteboard.string, "private existing clipboard")
+        XCTAssertEqual(notices.map(\.kind), [.writeDenied])
+    }
+
+    func testLiveOversizedOSC52WriteNeverChangesPasteboard() async throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.clipboardPolicy = TerminalRemoteClipboardPolicy(write: .allow)
+        pasteboard.string = "private existing clipboard"
+        let oversized = String(repeating: "a", count: TerminalClipboardPayload.maximumBytes + 1)
+        let payload = Data(oversized.utf8).base64EncodedString()
+        var request: TerminalClipboardRequest?
+        var notice: TerminalClipboardNotice?
+        surface.onClipboardRequest = { request = $0 }
+        surface.onClipboardNotice = { notice = $0 }
+
+        surface.writeRemoteOutput(Array("\u{1B}]52;c;\(payload)\u{07}".utf8))
+        await waitUntil(timeout: 2) { notice != nil }
+
+        XCTAssertNil(request)
+        XCTAssertEqual(pasteboard.string, "private existing clipboard")
+        XCTAssertEqual(notice?.kind, .payloadTooLarge)
     }
 
     func testLiveOSC52WriteHonorsGhosttyConfirmationPolicy() async throws {
@@ -597,6 +910,68 @@ final class TerminalInteractionTests: XCTestCase {
 
         let response = String(data: sent.reduce(Data(), +), encoding: .utf8)
         XCTAssertTrue(response?.contains(Data("private clipboard".utf8).base64EncodedString()) == true)
+    }
+
+    func testLiveOSC52ClipboardReadHonorsTrustedServerPolicy() async throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.clipboardPolicy = TerminalRemoteClipboardPolicy(read: .allow, serverName: "Production")
+        pasteboard.string = "private clipboard"
+        var request: TerminalClipboardRequest?
+        var sent: [Data] = []
+        var notices: [TerminalClipboardNotice] = []
+        surface.onClipboardRequest = { request = $0 }
+        surface.onInputData = { sent.append($0) }
+        surface.onClipboardNotice = { notices.append($0) }
+
+        surface.writeRemoteOutput(Array("\u{1B}]52;c;?\u{07}".utf8))
+        await waitUntil { !sent.isEmpty }
+
+        XCTAssertNil(request)
+        let response = String(data: sent.reduce(Data(), +), encoding: .utf8)
+        XCTAssertTrue(response?.contains(Data("private clipboard".utf8).base64EncodedString()) == true)
+        XCTAssertEqual(notices.map(\.kind), [.readAllowed])
+    }
+
+    func testLiveOSC52ClipboardReadDenialNeverExposesPrivateContents() async throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.clipboardPolicy = TerminalRemoteClipboardPolicy(read: .deny, serverName: "Production")
+        let secret = "private-token-never-send"
+        pasteboard.string = secret
+        var request: TerminalClipboardRequest?
+        var sent: [Data] = []
+        var notices: [TerminalClipboardNotice] = []
+        surface.onClipboardRequest = { request = $0 }
+        surface.onInputData = { sent.append($0) }
+        surface.onClipboardNotice = { notices.append($0) }
+
+        surface.writeRemoteOutput(Array("\u{1B}]52;c;?\u{07}".utf8))
+        await waitUntil { !notices.isEmpty }
+
+        XCTAssertNil(request)
+        XCTAssertEqual(notices.map(\.kind), [.readDenied])
+        let response = String(data: sent.reduce(Data(), +), encoding: .utf8) ?? ""
+        XCTAssertFalse(response.contains(Data(secret.utf8).base64EncodedString()))
+        XCTAssertFalse(notices[0].message.contains(secret))
+    }
+
+    func testLiveOSC52ClipboardReadRejectsOversizedPasteboard() async throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.clipboardPolicy = TerminalRemoteClipboardPolicy(read: .allow)
+        pasteboard.string = String(repeating: "a", count: TerminalClipboardPayload.maximumBytes + 1)
+        var request: TerminalClipboardRequest?
+        var sent: [Data] = []
+        var notice: TerminalClipboardNotice?
+        surface.onClipboardRequest = { request = $0 }
+        surface.onInputData = { sent.append($0) }
+        surface.onClipboardNotice = { notice = $0 }
+
+        surface.writeRemoteOutput(Array("\u{1B}]52;c;?\u{07}".utf8))
+        await waitUntil { notice != nil }
+
+        XCTAssertNil(request)
+        XCTAssertEqual(notice?.kind, .payloadTooLarge)
+        let response = String(data: sent.reduce(Data(), +), encoding: .utf8) ?? ""
+        XCTAssertLessThan(response.utf8.count, 64)
     }
 
     private func makeLiveSurface(size: CGSize) throws -> GhosttyTerminalSurfaceView {

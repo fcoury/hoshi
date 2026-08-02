@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Full-screen terminal emulator view wrapping a Ghostty Metal surface.
 ///
@@ -47,7 +48,10 @@ struct TerminalView: View {
 
     // Unsafe pastes and remote clipboard requests require explicit approval.
     @State private var pendingClipboardRequest: TerminalClipboardRequest?
+    @State private var queuedClipboardRequests: [TerminalClipboardRequest] = []
     @State private var keyboardVisibleBeforeClipboardPrompt = false
+    @State private var clipboardNotice: TerminalClipboardNotice?
+    @State private var clipboardNoticeDismissal: Task<Void, Never>?
 
     // Status dot pulse animation for connecting/reconnecting states
     @State private var statusDotPulsing = false
@@ -103,9 +107,9 @@ struct TerminalView: View {
                 keyboardVisible: $isKeyboardVisible,
                 voicePromptsEnabled: voiceSettings.isEnabled,
                 onClipboardRequest: { request in
-                    keyboardVisibleBeforeClipboardPrompt = isKeyboardVisible
-                    pendingClipboardRequest = request
+                    enqueueClipboardRequest(request)
                 },
+                onClipboardNotice: presentClipboardNotice,
                 onSwapSession: canSwapSession ? onSwapSession : nil,
                 onSurfaceReady: { surfaceView in
                     // Capture weak reference to the surface for thumbnail snapshots
@@ -122,6 +126,13 @@ struct TerminalView: View {
         .onChange(of: connectionVM.transportFallbackNotice?.id) { _, noticeID in
             if noticeID != nil {
                 HapticService.warning()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active {
+                cancelClipboardRequests()
+                clipboardNotice = nil
+                clipboardNoticeDismissal?.cancel()
             }
         }
         .onChange(of: connectionVM.connectionState) { oldState, newState in
@@ -235,11 +246,31 @@ struct TerminalView: View {
         } message: { request in
             Text(request.message)
         }
+        .overlay(alignment: .top) {
+            if let clipboardNotice, scenePhase == .active {
+                clipboardNoticeBanner(clipboardNotice)
+                    .padding(.top, 56)
+                    .padding(.horizontal, 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
         .overlay {
             if scenePhase != .active {
                 privacyCover
             }
         }
+    }
+
+    private func clipboardNoticeBanner(_ notice: TerminalClipboardNotice) -> some View {
+        Label(notice.message, systemImage: notice.kind.symbolName)
+            .font(.subheadline)
+            .foregroundStyle(Color(appearanceSettings.currentTheme.foreground))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(.ultraThinMaterial, in: .capsule)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(notice.message)
+            .accessibilityIdentifier("terminal.clipboard.notice")
     }
 
     private var privacyCover: some View {
@@ -253,16 +284,72 @@ struct TerminalView: View {
         .accessibilityLabel("Terminal contents hidden")
     }
 
+    private func enqueueClipboardRequest(_ request: TerminalClipboardRequest) {
+        guard scenePhase == .active else {
+            request.onDecision(false)
+            return
+        }
+
+        guard pendingClipboardRequest == nil else {
+            queuedClipboardRequests.append(request)
+            return
+        }
+
+        keyboardVisibleBeforeClipboardPrompt = isKeyboardVisible
+        pendingClipboardRequest = request
+    }
+
     private func resolveClipboardRequest(_ request: TerminalClipboardRequest, approved: Bool) {
         guard pendingClipboardRequest?.id == request.id else { return }
         let shouldRestoreKeyboard = keyboardVisibleBeforeClipboardPrompt
         pendingClipboardRequest = nil
         request.onDecision(approved)
 
+        if !queuedClipboardRequests.isEmpty {
+            let nextRequest = queuedClipboardRequests.removeFirst()
+            DispatchQueue.main.async {
+                enqueueClipboardRequest(nextRequest)
+            }
+            return
+        }
+
         guard shouldRestoreKeyboard else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             guard pendingClipboardRequest == nil else { return }
             isKeyboardVisible = true
+        }
+    }
+
+    private func cancelClipboardRequests() {
+        let activeRequest = pendingClipboardRequest
+        let waitingRequests = queuedClipboardRequests
+        pendingClipboardRequest = nil
+        queuedClipboardRequests.removeAll()
+        activeRequest?.onDecision(false)
+        for request in waitingRequests {
+            request.onDecision(false)
+        }
+    }
+
+    private func presentClipboardNotice(_ notice: TerminalClipboardNotice) {
+        clipboardNoticeDismissal?.cancel()
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+            clipboardNotice = notice
+        }
+
+        if notice.kind.isWarning {
+            HapticService.warning()
+        } else {
+            HapticService.lightTap()
+        }
+        UIAccessibility.post(notification: .announcement, argument: notice.message)
+
+        clipboardNoticeDismissal = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled, clipboardNotice?.id == notice.id else { return }
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                clipboardNotice = nil
+            }
         }
     }
 

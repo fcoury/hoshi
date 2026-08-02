@@ -19,6 +19,8 @@ struct AddServerView: View {
     @State private var tmuxSession = ""
     @State private var moshServerPath = ""
     @State private var moshUDPPortRange = ""
+    @State private var remoteClipboardReadPolicy: RemoteClipboardAccessPolicy = .ask
+    @State private var remoteClipboardWritePolicy: RemoteClipboardAccessPolicy = .ask
     @State private var presentedError: ErrorPresentation?
     @FocusState private var isNameFocused: Bool
 
@@ -103,6 +105,24 @@ struct AddServerView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                }
+
+                Section {
+                    Picker("Read Device Clipboard", selection: $remoteClipboardReadPolicy) {
+                        ForEach(RemoteClipboardAccessPolicy.allCases) { policy in
+                            Text(policy.displayName).tag(policy)
+                        }
+                    }
+
+                    Picker("Replace Device Clipboard", selection: $remoteClipboardWritePolicy) {
+                        ForEach(RemoteClipboardAccessPolicy.allCases) { policy in
+                            Text(policy.displayName).tag(policy)
+                        }
+                    }
+                } header: {
+                    Text("Remote Clipboard")
+                } footer: {
+                    Text("Controls OSC 52 clipboard access from this server, including applications running inside tmux. For tmux forwarding, enable set-clipboard and, when needed, allow-passthrough. Clipboard contents are never included in approval prompts.")
                 }
 
                 if let presentedError {
@@ -217,6 +237,8 @@ struct AddServerView: View {
             server.tmuxSession = tmuxValue
             server.moshServerPath = configuredMoshServerPath
             server.moshUDPPortRange = configuredMoshPortRange
+            server.remoteClipboardReadPolicy = remoteClipboardReadPolicy
+            server.remoteClipboardWritePolicy = remoteClipboardWritePolicy
         } else {
             // Create new server
             let server = Server(
@@ -232,7 +254,9 @@ struct AddServerView: View {
                 transportPolicy: transportPolicy,
                 tmuxPolicy: tmuxPolicy,
                 moshServerPath: configuredMoshServerPath,
-                moshUDPPortRange: configuredMoshPortRange
+                moshUDPPortRange: configuredMoshPortRange,
+                remoteClipboardReadPolicy: remoteClipboardReadPolicy,
+                remoteClipboardWritePolicy: remoteClipboardWritePolicy
             )
 
             do {
@@ -261,6 +285,8 @@ struct AddServerView: View {
         tmuxSession = server.tmuxSession ?? ""
         moshServerPath = server.moshServerPath ?? ""
         moshUDPPortRange = server.moshUDPPortRange ?? ""
+        remoteClipboardReadPolicy = server.remoteClipboardReadPolicy
+        remoteClipboardWritePolicy = server.remoteClipboardWritePolicy
 
         // Retrieve stored password if available
         if server.authMethod == .password {

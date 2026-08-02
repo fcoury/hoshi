@@ -8,6 +8,106 @@ enum TerminalPasteboard {
     static var shared: UIPasteboard = .general
 }
 
+struct TerminalRemoteClipboardPolicy: Equatable, Sendable {
+    var read: RemoteClipboardAccessPolicy = .ask
+    var write: RemoteClipboardAccessPolicy = .ask
+    var serverName: String = "Remote server"
+    var endpoint: String?
+
+    @MainActor
+    static func forServer(_ server: Server?) -> Self {
+        guard let server else { return Self() }
+        return Self(
+            read: server.remoteClipboardReadPolicy,
+            write: server.remoteClipboardWritePolicy,
+            serverName: server.name,
+            endpoint: server.endpoint
+        )
+    }
+}
+
+enum TerminalClipboardPayloadError: Error, Equatable {
+    case tooLarge(byteCount: Int)
+    case invalidUTF8
+}
+
+enum TerminalClipboardPayload {
+    static let maximumBytes = 64 * 1_024
+
+    static func decodeCString(
+        _ pointer: UnsafePointer<CChar>,
+        maximumBytes: Int = maximumBytes
+    ) -> Result<String, TerminalClipboardPayloadError> {
+        let byteCount = strnlen(pointer, maximumBytes + 1)
+        guard byteCount <= maximumBytes else {
+            return .failure(.tooLarge(byteCount: byteCount))
+        }
+
+        let bytes = Data(bytes: pointer, count: byteCount)
+        guard let text = String(data: bytes, encoding: .utf8) else {
+            return .failure(.invalidUTF8)
+        }
+        return .success(text)
+    }
+
+    static func validate(_ content: String) -> Result<String, TerminalClipboardPayloadError> {
+        let byteCount = content.utf8.count
+        guard byteCount <= maximumBytes else {
+            return .failure(.tooLarge(byteCount: byteCount))
+        }
+        return .success(content)
+    }
+}
+
+enum TerminalClipboardNoticeKind: Equatable {
+    case readAllowed
+    case readDenied
+    case writeAllowed
+    case writeDenied
+    case payloadTooLarge
+    case invalidPayload
+
+    var isWarning: Bool {
+        switch self {
+        case .readAllowed, .writeAllowed: false
+        case .readDenied, .writeDenied, .payloadTooLarge, .invalidPayload: true
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .readAllowed: "doc.on.clipboard"
+        case .writeAllowed: "clipboard"
+        case .readDenied, .writeDenied: "hand.raised"
+        case .payloadTooLarge, .invalidPayload: "exclamationmark.shield"
+        }
+    }
+}
+
+struct TerminalClipboardNotice: Identifiable, Equatable {
+    let id = UUID()
+    let kind: TerminalClipboardNoticeKind
+    let serverName: String
+    let byteCount: Int?
+
+    var message: String {
+        switch kind {
+        case .readAllowed:
+            return "Shared device clipboard with \(serverName)"
+        case .readDenied:
+            return "Blocked clipboard read from \(serverName)"
+        case .writeAllowed:
+            return "Copied from \(serverName) to device clipboard"
+        case .writeDenied:
+            return "Blocked clipboard change from \(serverName)"
+        case .payloadTooLarge:
+            return "Blocked clipboard data larger than \(TerminalClipboardPayload.maximumBytes.formatted()) bytes"
+        case .invalidPayload:
+            return "Blocked invalid clipboard data from \(serverName)"
+        }
+    }
+}
+
 enum TerminalDoubleTapAction: String, CaseIterable, Identifiable {
     case selectWord
     case paste
@@ -134,20 +234,42 @@ enum TerminalClipboardRequestKind: Equatable {
 }
 
 struct TerminalClipboardRequest: Identifiable {
-    let id = UUID()
+    let id: UUID
     let content: String
     let kind: TerminalClipboardRequestKind
     let assessment: TerminalPasteAssessment
+    let serverName: String?
+    let endpoint: String?
     let onDecision: @MainActor (Bool) -> Void
+
+    init(
+        id: UUID = UUID(),
+        content: String,
+        kind: TerminalClipboardRequestKind,
+        assessment: TerminalPasteAssessment,
+        serverName: String? = nil,
+        endpoint: String? = nil,
+        onDecision: @escaping @MainActor (Bool) -> Void
+    ) {
+        self.id = id
+        self.content = content
+        self.kind = kind
+        self.assessment = assessment
+        self.serverName = serverName
+        self.endpoint = endpoint
+        self.onDecision = onDecision
+    }
 
     var message: String {
         switch kind {
         case .paste:
             return assessment.confirmationMessage
         case .remoteRead:
-            return "The remote application wants to read your device clipboard."
+            let destination = endpoint ?? serverName ?? "the remote server"
+            return "Allow \(destination) to read your device clipboard? \(assessment.byteCount.formatted()) bytes will be sent. Clipboard contents are not shown."
         case .remoteWrite:
-            return "The remote application wants to replace your device clipboard."
+            let source = endpoint ?? serverName ?? "the remote server"
+            return "Allow \(source) to replace your device clipboard? The remote application is sending \(assessment.byteCount.formatted()) bytes. Clipboard contents are not shown."
         }
     }
 }

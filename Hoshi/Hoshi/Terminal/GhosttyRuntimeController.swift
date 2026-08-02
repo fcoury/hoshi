@@ -171,7 +171,19 @@ final class GhosttyRuntimeController: ObservableObject {
     ) {
         guard let userdata, let state else { return }
         let view = Unmanaged<GhosttyTerminalSurfaceView>.fromOpaque(userdata).takeUnretainedValue()
-        let content = string.flatMap { String(validatingUTF8: $0) } ?? (TerminalPasteboard.shared.string ?? "")
+        let content: String
+        if let string, request != GHOSTTY_CLIPBOARD_REQUEST_PASTE {
+            switch TerminalClipboardPayload.decodeCString(string) {
+            case .success(let decoded):
+                content = decoded
+            case .failure(let error):
+                view.rejectRemoteClipboardPayload(error, state: state)
+                return
+            }
+        } else {
+            content = string.flatMap { String(validatingUTF8: $0) }
+                ?? (TerminalPasteboard.shared.string ?? "")
+        }
         view.requestClipboardConfirmation(state: state, content: content, request: request)
     }
 
@@ -181,26 +193,25 @@ final class GhosttyRuntimeController: ObservableObject {
         len: Int,
         requiresConfirmation: Bool
     ) {
-        guard let content, len > 0 else { return }
+        guard let userdata, let content, len > 0 else { return }
+        let view = Unmanaged<GhosttyTerminalSurfaceView>
+            .fromOpaque(userdata)
+            .takeUnretainedValue()
 
         for index in 0..<len {
             let item = content[index]
             guard let mime = item.mime,
-                  String(cString: mime) == "text/plain",
+                  case .success("text/plain") = TerminalClipboardPayload.decodeCString(mime, maximumBytes: 128),
                   let payload = item.data
             else {
                 continue
             }
 
-            let text = String(cString: payload)
-            if requiresConfirmation {
-                guard let userdata else { return }
-                let view = Unmanaged<GhosttyTerminalSurfaceView>
-                    .fromOpaque(userdata)
-                    .takeUnretainedValue()
-                view.requestRemoteClipboardWrite(text)
-            } else {
-                TerminalPasteboard.shared.string = text
+            switch TerminalClipboardPayload.decodeCString(payload) {
+            case .success(let text):
+                view.requestRemoteClipboardWrite(text, requiresConfirmation: requiresConfirmation)
+            case .failure(let error):
+                view.rejectRemoteClipboardPayload(error)
             }
             break
         }

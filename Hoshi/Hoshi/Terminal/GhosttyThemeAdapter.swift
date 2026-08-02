@@ -42,6 +42,9 @@ enum GhosttyThemeAdapter {
         // Background opacity
         lines.append("background-opacity = \(settings.backgroundOpacity)")
 
+        // Always route OSC 52 reads through Hoshi's per-server authorization boundary.
+        lines.append("clipboard-read = ask")
+
         return lines.joined(separator: "\n")
     }
 
