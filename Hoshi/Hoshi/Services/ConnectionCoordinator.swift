@@ -29,7 +29,7 @@ struct ConnectionTimeouts: Equatable, Sendable {
     static let `default` = ConnectionTimeouts(
         sshBootstrap: 20,
         remoteCommand: 15,
-        udpConnection: 12
+        udpConnection: 8
     )
 }
 
@@ -101,12 +101,14 @@ final class ConnectionCoordinator {
     private(set) var moshSession: MoshSession?
     private(set) var activeTransport: ConnectionTransport?
     private(set) var detectedTmuxSessions: [TmuxSessionInfo] = []
+    private(set) var fallbackError: (any Error)?
     private var server: Server?
     private var password: String?
     private var keyTag: String?
     private var wasCancelled = false
 
     var onPhaseChanged: ((ConnectionPhase) -> Void)?
+    var onTransportFallback: ((any Error) -> Void)?
 
     init(timeouts: ConnectionTimeouts = .default) {
         self.timeouts = timeouts
@@ -121,6 +123,7 @@ final class ConnectionCoordinator {
         self.password = password
         self.keyTag = keyTag
         wasCancelled = false
+        fallbackError = nil
 
         if server.transportPolicy != .ssh,
            let range = server.moshUDPPortRange,
@@ -146,6 +149,7 @@ final class ConnectionCoordinator {
                 if case .moshInstallationRequired = outcome,
                    server.transportPolicy == .auto,
                    index + 1 < candidates.count {
+                    recordTransportFallback(ConnectionCoordinatorError.moshUnavailable)
                     if let outcome = try await transitionToSSHFallback() {
                         return outcome
                     }
@@ -168,6 +172,7 @@ final class ConnectionCoordinator {
                 }
 
                 moshFailure = error
+                recordTransportFallback(error)
                 if moshSession?.bootstrapClient != nil {
                     do {
                         if let outcome = try await transitionToSSHFallback() {
@@ -219,6 +224,7 @@ final class ConnectionCoordinator {
                 throw error
             }
 
+            recordTransportFallback(moshError)
             do {
                 if let outcome = try await transitionToSSHFallback() {
                     if case .connected = outcome {
@@ -268,6 +274,7 @@ final class ConnectionCoordinator {
     }
 
     func fallBackToSSH() async throws -> ConnectionCoordinatorOutcome {
+        recordTransportFallback(ConnectionCoordinatorError.moshUnavailable)
         if let outcome = try await transitionToSSHFallback() {
             return outcome
         }
@@ -282,6 +289,12 @@ final class ConnectionCoordinator {
         moshSession = nil
         activeTransport = nil
         detectedTmuxSessions = []
+    }
+
+    private func recordTransportFallback(_ error: any Error) {
+        guard fallbackError == nil else { return }
+        fallbackError = error
+        onTransportFallback?(error)
     }
 
     private func prepareSSH() async throws -> ConnectionCoordinatorOutcome {

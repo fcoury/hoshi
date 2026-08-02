@@ -1,9 +1,20 @@
 import Foundation
 import Network
 
+@MainActor
+protocol MoshUDPTransport: AnyObject {
+    var isReady: Bool { get }
+
+    func connect(stateHandler: @escaping (NWConnection.State) -> Void)
+    func send(_ data: Data) async throws
+    func receiveStream() -> AsyncStream<Data>
+    func disconnect()
+    func reconnect()
+}
+
 // Manages the NWConnection-based UDP link to the remote mosh-server
 @MainActor
-final class MoshUDPConnection {
+final class MoshUDPConnection: MoshUDPTransport {
     private var connection: NWConnection?
     private let host: NWEndpoint.Host
     private let port: NWEndpoint.Port
@@ -137,6 +148,7 @@ enum MoshUDPError: LocalizedError {
     case notConnected
     case emptyDatagram
     case connectionFailed(String)
+    case noServerResponse(host: String, port: UInt16, seconds: TimeInterval)
 
     var errorDescription: String? {
         switch self {
@@ -146,6 +158,8 @@ enum MoshUDPError: LocalizedError {
             return "Received empty UDP datagram"
         case .connectionFailed(let reason):
             return "UDP connection failed: \(reason)"
+        case .noServerResponse(let host, let port, let seconds):
+            return "mosh-server did not respond on UDP \(host):\(String(port)) within \(Int(seconds.rounded())) seconds"
         }
     }
 }

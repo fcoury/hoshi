@@ -8,7 +8,6 @@ final class ManagedSession: Identifiable {
     let id: UUID
     let serverID: UUID
     let serverName: String
-    let transportPolicy: ConnectionTransportPolicy
     let createdAt: Date
     let connectionVM: ConnectionViewModel
     let server: Server
@@ -24,6 +23,7 @@ final class ManagedSession: Identifiable {
 
     var connectionState: ConnectionState { connectionVM.connectionState }
     var hasActiveSession: Bool { connectionVM.hasActiveSession }
+    var transportPolicy: ConnectionTransportPolicy { server.transportPolicy }
     var isMosh: Bool {
         if connectionVM.sshSession != nil { return false }
         if connectionVM.moshSession != nil { return true }
@@ -40,7 +40,6 @@ final class ManagedSession: Identifiable {
         self.id = id
         self.serverID = server.id
         self.serverName = server.name
-        self.transportPolicy = server.transportPolicy
         self.createdAt = createdAt
         self.lastAccessedAt = lastAccessedAt ?? createdAt
         self.tmuxSession = tmuxSession ?? server.tmuxSession

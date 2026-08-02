@@ -308,11 +308,7 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
                 recovery: "Reconnect and verify that your server's Mosh installation is compatible."
             )
         } else if let error = error as? MoshUDPError {
-            result = Classification(
-                title: "Mosh UDP Connection Failed",
-                explanation: error.localizedDescription,
-                recovery: "Check the server's UDP firewall and Mosh port range, or connect using SSH."
-            )
+            result = classifyMoshUDP(error)
         } else if let error = error as? TmuxConfigurationError {
             result = Classification(
                 title: "Invalid tmux Shortcut",
@@ -354,6 +350,26 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
             title: result.title,
             explanation: result.explanation,
             recoverySuggestion: result.recovery,
+            error: error,
+            context: context
+        )
+    }
+
+    static func sshTransportPreferenceSaveFailure(
+        _ error: any Error,
+        context: ErrorContext
+    ) -> ErrorPresentation {
+        var context = context
+        context.operation = .general
+        context.transport = ConnectionTransportPolicy.ssh.rawValue
+        context.phase = "Saving SSH transport preference"
+
+        let recovery = (error as? LocalizedError)?.recoverySuggestion
+            ?? "Your SSH session is still connected. Try saving the preference again."
+        return ErrorPresentation(
+            title: "Could Not Save SSH Preference",
+            explanation: error.localizedDescription,
+            recoverySuggestion: recovery,
             error: error,
             context: context
         )
@@ -709,6 +725,22 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
         case .sshCommandFailed:
             return Classification(title: "Mosh SSH Bootstrap Failed", explanation: error.localizedDescription, recovery: "Check the SSH account, server command restrictions, and Mosh installation.")
         }
+    }
+
+    private static func classifyMoshUDP(_ error: MoshUDPError) -> Classification {
+        if case .noServerResponse(let host, let port, let seconds) = error {
+            return Classification(
+                title: "Mosh Server Is Not Responding",
+                explanation: "SSH started mosh-server, but \(host):\(String(port)) did not return an authenticated UDP response within \(Int(seconds.rounded())) seconds.",
+                recovery: "Allow UDP port \(String(port)) through the server and network firewalls, or connect using Auto or SSH."
+            )
+        }
+
+        return Classification(
+            title: "Mosh UDP Connection Failed",
+            explanation: error.localizedDescription,
+            recovery: "Check the server's UDP firewall and Mosh port range, or connect using SSH."
+        )
     }
 
     private static func classifyCitadel(_ error: CitadelError, context: ErrorContext) -> Classification {

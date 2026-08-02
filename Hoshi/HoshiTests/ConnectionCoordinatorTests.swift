@@ -1,4 +1,5 @@
 import GhosttyKit
+import Network
 import SwiftData
 import UIKit
 import XCTest
@@ -316,6 +317,263 @@ final class ConnectionCoordinatorTests: XCTestCase {
         }
     }
 
+    func testDefaultMoshUDPHandshakeTimeoutIsBounded() {
+        XCTAssertEqual(ConnectionTimeouts.default.udpConnection, 8)
+    }
+
+    func testReadyUDPSocketWithoutAuthenticatedServerResponseTimesOut() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+
+        do {
+            try await session.establishUDP(info: info, timeout: 0.06)
+            XCTFail("Expected a silent UDP endpoint to time out")
+        } catch let error as MoshUDPError {
+            guard case .noServerResponse(let host, let port, let seconds) = error else {
+                return XCTFail("Expected a silent-server error, got \(error)")
+            }
+            XCTAssertEqual(host, "127.0.0.1")
+            XCTAssertEqual(port, 60001)
+            XCTAssertEqual(seconds, 0.06, accuracy: 0.001)
+        }
+
+        XCTAssertFalse(transport.isReady)
+        XCTAssertEqual(transport.sentDatagrams.count, 1)
+        XCTAssertNotEqual(session.connectionState, .connected)
+    }
+
+    func testAuthenticatedServerResponseConnectsWithoutTerminalOutput() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        let response = try await makeServerDatagrams(key: info.sessionKey).first!
+        transport.onSend = { transport.yield(response) }
+
+        try await session.establishUDP(info: info, timeout: 1)
+
+        XCTAssertEqual(session.connectionState, .connected)
+        XCTAssertEqual(session.debugStats.decryptSuccesses, 1)
+        XCTAssertEqual(session.debugStats.decodedHostBytes, 0)
+        XCTAssertEqual(transport.sentDatagrams.count, 1)
+        await session.disconnect()
+    }
+
+    func testUnauthenticatedResponseCannotMarkMoshConnected() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        var invalidResponse = try await makeServerDatagrams(key: info.sessionKey).first!
+        invalidResponse[invalidResponse.index(before: invalidResponse.endIndex)] ^= 0xFF
+        transport.onSend = { transport.yield(invalidResponse) }
+
+        do {
+            try await session.establishUDP(info: info, timeout: 0.06)
+            XCTFail("Expected an unauthenticated server response to be rejected")
+        } catch let error as MoshUDPError {
+            guard case .noServerResponse = error else {
+                return XCTFail("Expected a silent-server error, got \(error)")
+            }
+        }
+
+        XCTAssertNotEqual(session.connectionState, .connected)
+        XCTAssertEqual(session.debugStats.decryptSuccesses, 0)
+        XCTAssertFalse(transport.isReady)
+    }
+
+    func testMoshRetriesInitialProbeBeforeServerResponds() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        let response = try await makeServerDatagrams(key: info.sessionKey).first!
+        transport.onSend = {
+            if transport.sentDatagrams.count == 2 {
+                transport.yield(response)
+            }
+        }
+
+        try await session.establishUDP(info: info, timeout: 1)
+
+        XCTAssertEqual(session.connectionState, .connected)
+        XCTAssertEqual(transport.sentDatagrams.count, 2)
+        await session.disconnect()
+    }
+
+    func testFragmentedServerResponseWaitsForCompleteAuthenticatedInstruction() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        var instruction = MoshTransportInstruction()
+        instruction.chaff = noisyData(count: 12_000)
+        let datagrams = try await makeServerDatagrams(key: info.sessionKey, instruction: instruction)
+        XCTAssertGreaterThan(datagrams.count, 1)
+
+        transport.onSend = {
+            transport.yield(datagrams[0])
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(25))
+                for datagram in datagrams.dropFirst() {
+                    transport.yield(datagram)
+                }
+            }
+        }
+
+        let connection = Task {
+            try await session.establishUDP(info: info, timeout: 1)
+        }
+
+        try await Task.sleep(for: .milliseconds(10))
+        XCTAssertNotEqual(session.connectionState, .connected)
+
+        try await connection.value
+        XCTAssertEqual(session.connectionState, .connected)
+        await session.disconnect()
+    }
+
+    func testCancellingMoshHandshakeCleansUpWithoutConnectedState() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        let connection = Task {
+            try await session.establishUDP(info: info, timeout: 5)
+        }
+
+        let probeDeadline = Date().addingTimeInterval(1)
+        while transport.sentDatagrams.isEmpty, Date() < probeDeadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertFalse(transport.sentDatagrams.isEmpty)
+
+        connection.cancel()
+
+        do {
+            try await connection.value
+            XCTFail("Expected Mosh startup cancellation")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+
+        XCTAssertFalse(transport.isReady)
+        XCTAssertNotEqual(session.connectionState, .connected)
+    }
+
+    func testAutoTransportMayFallBackWhenMoshServerNeverResponds() {
+        let error = MoshUDPError.noServerResponse(host: "127.0.0.1", port: 60001, seconds: 8)
+
+        XCTAssertTrue(ConnectionCoordinator.shouldFallback(after: error))
+        XCTAssertEqual(ConnectionTransportPolicy.auto.candidateTransports, [.mosh, .ssh])
+        XCTAssertEqual(ConnectionTransportPolicy.mosh.candidateTransports, [.mosh])
+    }
+
+    func testAutomaticFallbackRemainsVisibleWithItsExactUnderlyingReason() {
+        let server = Server(
+            name: "Agents",
+            hostname: "agents.example.com",
+            username: "user",
+            transportPolicy: .auto
+        )
+        let error = MoshUDPError.noServerResponse(
+            host: "agents.example.com",
+            port: 60217,
+            seconds: 8
+        )
+        let viewModel = ConnectionViewModel()
+
+        viewModel.presentTransportFallback(error, server: server)
+
+        let notice = viewModel.transportFallbackNotice
+        XCTAssertEqual(notice?.title, "Mosh Server Is Not Responding")
+        XCTAssertTrue(notice?.explanation.contains("agents.example.com:60217") == true)
+        XCTAssertTrue(notice?.technicalDetails.contains("noServerResponse") == true)
+        XCTAssertEqual(notice?.context.phase, ConnectionPhase.sshFallback.statusText)
+    }
+
+    func testMoshUnavailableFallbackHasSpecificVisibleReason() {
+        let server = Server(name: "Agents", hostname: "example.com", username: "user", transportPolicy: .auto)
+        let viewModel = ConnectionViewModel()
+
+        viewModel.presentTransportFallback(ConnectionCoordinatorError.moshUnavailable, server: server)
+
+        XCTAssertEqual(viewModel.transportFallbackNotice?.title, "Mosh Is Not Installed")
+    }
+
+    func testFallbackNoticeCanBeDismissedAndDoesNotTreatCancellationAsFailure() {
+        let server = Server(name: "Agents", hostname: "example.com", username: "user", transportPolicy: .auto)
+        let viewModel = ConnectionViewModel()
+
+        viewModel.presentTransportFallback(ConnectionCoordinatorError.moshUnavailable, server: server)
+        XCTAssertNotNil(viewModel.transportFallbackNotice)
+
+        viewModel.dismissTransportFallbackNotice()
+        XCTAssertNil(viewModel.transportFallbackNotice)
+
+        viewModel.presentTransportFallback(CancellationError(), server: server)
+        XCTAssertNil(viewModel.transportFallbackNotice)
+    }
+
+    func testDismissingFallbackKeepsAutomaticTransportForFutureConnections() {
+        let server = Server(name: "Agents", hostname: "example.com", username: "user", transportPolicy: .auto)
+        let viewModel = ConnectionViewModel()
+        viewModel.presentTransportFallback(ConnectionCoordinatorError.moshUnavailable, server: server)
+
+        viewModel.dismissTransportFallbackNotice()
+
+        XCTAssertNil(viewModel.transportFallbackNotice)
+        XCTAssertEqual(server.transportPolicy, .auto)
+        XCTAssertEqual(server.transportPolicy.candidateTransports, [.mosh, .ssh])
+    }
+
+    func testOnlyConnectedAutomaticSSHFallbackCanBecomePermanent() {
+        let automatic = Server(name: "Agents", hostname: "example.com", username: "user", transportPolicy: .auto)
+        let viewModel = ConnectionViewModel()
+        viewModel.presentTransportFallback(ConnectionCoordinatorError.moshUnavailable, server: automatic)
+
+        XCTAssertFalse(viewModel.canRememberSSHFallback)
+
+        let sshSession = SSHSession(server: automatic)
+        sshSession.connectionState = .connected
+        viewModel.sshSession = sshSession
+        XCTAssertTrue(viewModel.canRememberSSHFallback)
+
+        sshSession.connectionState = .disconnected
+        XCTAssertFalse(viewModel.canRememberSSHFallback)
+
+        sshSession.connectionState = .connected
+        let moshOnly = Server(name: "Strict", hostname: "example.com", username: "user", transportPolicy: .mosh)
+        viewModel.presentTransportFallback(ConnectionCoordinatorError.moshUnavailable, server: moshOnly)
+        XCTAssertFalse(viewModel.canRememberSSHFallback)
+
+        viewModel.presentTransportFallback(ConnectionCoordinatorError.moshUnavailable, server: automatic)
+        XCTAssertTrue(viewModel.canRememberSSHFallback)
+        viewModel.dismissTransportFallbackNotice()
+        XCTAssertFalse(viewModel.canRememberSSHFallback)
+    }
+
+    func testFallbackNoticeClearsWhenStartingAnotherConnection() async {
+        let original = Server(name: "Agents", hostname: "example.com", username: "user", transportPolicy: .auto)
+        let viewModel = ConnectionViewModel()
+        viewModel.presentTransportFallback(ConnectionCoordinatorError.moshUnavailable, server: original)
+
+        let next = Server(
+            name: "Next",
+            hostname: "example.com",
+            username: "user",
+            authMethod: .key,
+            transportPolicy: .ssh
+        )
+        await viewModel.connect(server: next, password: nil, keyTag: nil)
+
+        XCTAssertNil(viewModel.transportFallbackNotice)
+    }
+
+    func testAutoSessionReportsActualSSHTransportAfterFallback() {
+        let server = Server(name: "Agents", hostname: "example.com", username: "user", transportPolicy: .auto)
+        let session = ManagedSession(server: server)
+        session.connectionVM.sshSession = SSHSession(server: server)
+
+        XCTAssertFalse(session.isMosh)
+    }
+
     func testMoshNonceSeparatesClientAndServerDirections() {
         let outbound = MoshNonce(direction: .toServer, sequenceNumber: 17)
         let inbound = MoshNonce(direction: .toClient, sequenceNumber: 17)
@@ -488,6 +746,147 @@ final class ConnectionCoordinatorTests: XCTestCase {
         XCTAssertEqual(store.load().first?.tmuxSession, "updated-agent")
     }
 
+    func testAlwaysUsingSSHPersistsCanonicalProfileAndUpdatesDetachedSessions() throws {
+        let container = try ModelContainer(
+            for: Server.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let context = ModelContext(container)
+        let server = Server(
+            name: "Agents",
+            hostname: "agents.example.com",
+            username: "user",
+            authMethod: .key,
+            keyID: "agent-key",
+            tmuxSession: "coding",
+            transportPolicy: .auto,
+            tmuxPolicy: .autoAttachLast,
+            moshServerPath: "/opt/homebrew/bin/mosh-server",
+            moshUDPPortRange: "60001:60010"
+        )
+        let other = Server(name: "Other", hostname: "other.example.com", username: "user", transportPolicy: .auto)
+        context.insert(server)
+        context.insert(other)
+        try context.save()
+
+        let store = SessionPersistenceStore(defaults: defaults)
+        let manager = SessionManager(persistenceStore: store)
+        let first = try XCTUnwrap(manager.createSession(for: detachedCopy(of: server)))
+        let second = try XCTUnwrap(manager.createSession(for: detachedCopy(of: server)))
+        let unaffected = try XCTUnwrap(manager.createSession(for: detachedCopy(of: other)))
+        let activeSSH = SSHSession(server: first.server)
+        activeSSH.connectionState = .connected
+        first.connectionVM.sshSession = activeSSH
+        let activeMosh = MoshSession(server: second.server)
+        activeMosh.connectionState = .connected
+        second.connectionVM.moshSession = activeMosh
+
+        try manager.preferSSH(for: first, persistedServer: server) {
+            try context.save()
+        }
+
+        let reloadedContext = ModelContext(container)
+        let profiles = try reloadedContext.fetch(FetchDescriptor<Server>())
+        let saved = try XCTUnwrap(profiles.first { $0.id == server.id })
+        XCTAssertEqual(saved.transportPolicy, .ssh)
+        XCTAssertEqual(saved.transportPolicyRawValue, ConnectionTransportPolicy.ssh.rawValue)
+        XCTAssertFalse(saved.useMosh)
+        XCTAssertEqual(saved.transportPolicy.candidateTransports, [.ssh])
+        XCTAssertEqual(saved.keyID, "agent-key")
+        XCTAssertEqual(saved.tmuxPolicy, .autoAttachLast)
+        XCTAssertEqual(saved.tmuxSession, "coding")
+        XCTAssertEqual(saved.moshServerPath, "/opt/homebrew/bin/mosh-server")
+        XCTAssertEqual(saved.moshUDPPortRange, "60001:60010")
+
+        XCTAssertEqual(first.transportPolicy, .ssh)
+        XCTAssertEqual(second.transportPolicy, .ssh)
+        XCTAssertEqual(unaffected.transportPolicy, .auto)
+        XCTAssertEqual(other.transportPolicy, .auto)
+        XCTAssertTrue(first.connectionVM.sshSession === activeSSH)
+        XCTAssertEqual(activeSSH.connectionState, .connected)
+        XCTAssertTrue(second.connectionVM.moshSession === activeMosh)
+        XCTAssertTrue(second.isMosh)
+
+        let descriptors = store.load()
+        XCTAssertEqual(descriptors.first { $0.id == first.id }?.transportPolicy, .ssh)
+        XCTAssertEqual(descriptors.first { $0.id == second.id }?.transportPolicy, .ssh)
+        XCTAssertEqual(descriptors.first { $0.id == unaffected.id }?.transportPolicy, .auto)
+
+        let restoredManager = SessionManager(persistenceStore: store)
+        let restored = restoredManager.restoreSessions(using: profiles)
+        XCTAssertEqual(restored.first { $0.id == first.id }?.transportPolicy, .ssh)
+        XCTAssertEqual(restored.first { $0.id == second.id }?.transportPolicy, .ssh)
+        XCTAssertEqual(restored.first { $0.id == unaffected.id }?.transportPolicy, .auto)
+    }
+
+    func testAlwaysUsingSSHRollsBackProfileWhenSavingFails() throws {
+        let server = Server(name: "Agents", hostname: "example.com", username: "user", transportPolicy: .auto)
+        let store = SessionPersistenceStore(defaults: defaults)
+        let manager = SessionManager(persistenceStore: store)
+        let session = try XCTUnwrap(manager.createSession(for: detachedCopy(of: server)))
+        let originalPolicy = server.transportPolicyRawValue
+        let originalMoshPreference = server.useMosh
+        let underlying = NSError(
+            domain: "HoshiTests.ServerPreferenceStore",
+            code: 42,
+            userInfo: [NSLocalizedDescriptionKey: "The server profile store is unavailable."]
+        )
+
+        XCTAssertThrowsError(try manager.preferSSH(for: session, persistedServer: server) {
+            throw underlying
+        }) { error in
+            XCTAssertEqual((error as NSError).domain, underlying.domain)
+            XCTAssertEqual((error as NSError).code, underlying.code)
+        }
+
+        XCTAssertEqual(server.transportPolicyRawValue, originalPolicy)
+        XCTAssertEqual(server.useMosh, originalMoshPreference)
+        XCTAssertEqual(server.transportPolicy, .auto)
+        XCTAssertEqual(session.transportPolicy, .auto)
+        XCTAssertEqual(store.load().first?.transportPolicy, .auto)
+    }
+
+    func testAlwaysUsingSSHRollsBackLegacyPolicyWithoutInventingRawValue() throws {
+        let server = Server(name: "Legacy", hostname: "example.com", username: "user", useMosh: true)
+        XCTAssertNil(server.transportPolicyRawValue)
+        let manager = SessionManager(persistenceStore: SessionPersistenceStore(defaults: defaults))
+        let session = try XCTUnwrap(manager.createSession(for: detachedCopy(of: server)))
+
+        XCTAssertThrowsError(try manager.preferSSH(for: session, persistedServer: server) {
+            throw NSError(domain: "HoshiTests.ServerPreferenceStore", code: 7)
+        })
+
+        XCTAssertNil(server.transportPolicyRawValue)
+        XCTAssertTrue(server.useMosh)
+        XCTAssertEqual(server.transportPolicy, .mosh)
+        XCTAssertEqual(session.transportPolicy, .mosh)
+    }
+
+    func testAlwaysUsingSSHRejectsMissingProfileOrInactiveSession() throws {
+        let server = Server(name: "Agents", hostname: "example.com", username: "user", transportPolicy: .auto)
+        let other = Server(name: "Other", hostname: "other.example.com", username: "user", transportPolicy: .auto)
+        let manager = SessionManager(persistenceStore: SessionPersistenceStore(defaults: defaults))
+        let active = try XCTUnwrap(manager.createSession(for: detachedCopy(of: server)))
+        let inactive = ManagedSession(server: detachedCopy(of: server))
+        var saveCount = 0
+
+        XCTAssertThrowsError(try manager.preferSSH(for: active, persistedServer: other) {
+            saveCount += 1
+        }) { error in
+            XCTAssertEqual(error as? SessionTransportPreferenceError, .serverProfileUnavailable("Agents"))
+        }
+
+        XCTAssertThrowsError(try manager.preferSSH(for: inactive, persistedServer: server) {
+            saveCount += 1
+        }) { error in
+            XCTAssertEqual(error as? SessionTransportPreferenceError, .sessionUnavailable("Agents"))
+        }
+
+        XCTAssertEqual(saveCount, 0)
+        XCTAssertEqual(server.transportPolicy, .auto)
+        XCTAssertEqual(other.transportPolicy, .auto)
+    }
+
     func testBackgroundingReplacesTerminalThumbnailWithPrivacyCover() throws {
         let store = SessionPersistenceStore(defaults: defaults)
         let manager = SessionManager(persistenceStore: store)
@@ -521,6 +920,60 @@ final class ConnectionCoordinatorTests: XCTestCase {
         Server(name: name, hostname: "example.com", username: "user")
     }
 
+    private func detachedCopy(of server: Server) -> Server {
+        let copy = Server(
+            name: server.name,
+            hostname: server.hostname,
+            port: server.port,
+            username: server.username,
+            authMethod: server.authMethod,
+            keyID: server.keyID,
+            useMosh: server.useMosh,
+            isFavorite: server.isFavorite,
+            tmuxSession: server.tmuxSession,
+            transportPolicy: server.transportPolicyRawValue == nil ? nil : server.transportPolicy,
+            tmuxPolicy: server.tmuxPolicyRawValue == nil ? nil : server.tmuxPolicy,
+            moshServerPath: server.moshServerPath,
+            moshUDPPortRange: server.moshUDPPortRange
+        )
+        copy.id = server.id
+        return copy
+    }
+
+    private func makeMoshSession(transport: FakeMoshUDPTransport) -> MoshSession {
+        MoshSession(
+            server: Server(name: "Mosh", hostname: "127.0.0.1", username: "user", transportPolicy: .auto),
+            makeUDPConnection: { _, _ in transport }
+        )
+    }
+
+    private func makeMoshConnectionInfo() -> MoshConnectionInfo {
+        let key = Data(repeating: 0x42, count: 16)
+        return MoshConnectionInfo(
+            udpPort: 60001,
+            sessionKey: key,
+            sessionKeyBase64: key.base64EncodedString(),
+            serverIP: "127.0.0.1"
+        )
+    }
+
+    private func makeServerDatagrams(
+        key: Data,
+        instruction: MoshTransportInstruction = MoshTransportInstruction()
+    ) async throws -> [Data] {
+        let engine = try MoshProtocolEngine(key: key)
+        let clientDatagrams = try await engine.encode(instruction)
+        let crypto = try MoshCryptoSession(key: key)
+
+        return try clientDatagrams.enumerated().map { index, datagram in
+            let plaintext = try crypto.decrypt(datagram: datagram, direction: .toServer).plaintext
+            return try crypto.encrypt(
+                plaintext: plaintext,
+                nonce: MoshNonce(direction: .toClient, sequenceNumber: UInt64(index + 1))
+            )
+        }
+    }
+
     private func makeDescriptor(serverID: UUID, tmuxSession: String? = nil) -> PersistedSessionDescriptor {
         PersistedSessionDescriptor(
             id: UUID(),
@@ -539,6 +992,56 @@ final class ConnectionCoordinatorTests: XCTestCase {
             state = state &* 6_364_136_223_846_793_005 &+ 1
             return UInt8(truncatingIfNeeded: state >> 32)
         })
+    }
+}
+
+@MainActor
+private final class FakeMoshUDPTransport: MoshUDPTransport {
+    private(set) var isReady = false
+    private(set) var sentDatagrams: [Data] = []
+    var onSend: (() -> Void)?
+
+    private let stream: AsyncStream<Data>
+    private let continuation: AsyncStream<Data>.Continuation
+    private var stateHandler: ((NWConnection.State) -> Void)?
+
+    init() {
+        let (stream, continuation) = AsyncStream<Data>.makeStream()
+        self.stream = stream
+        self.continuation = continuation
+    }
+
+    func connect(stateHandler: @escaping (NWConnection.State) -> Void) {
+        self.stateHandler = stateHandler
+        isReady = true
+        stateHandler(.ready)
+    }
+
+    func send(_ data: Data) async throws {
+        guard isReady else { throw MoshUDPError.notConnected }
+        sentDatagrams.append(data)
+        onSend?()
+    }
+
+    func receiveStream() -> AsyncStream<Data> {
+        stream
+    }
+
+    func yield(_ data: Data) {
+        continuation.yield(data)
+    }
+
+    func disconnect() {
+        guard isReady else { return }
+        isReady = false
+        continuation.finish()
+        stateHandler?(.cancelled)
+    }
+
+    func reconnect() {
+        guard let stateHandler else { return }
+        isReady = true
+        stateHandler(.ready)
     }
 }
 

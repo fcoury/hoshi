@@ -18,6 +18,7 @@ struct TerminalView: View {
     var managedSession: ManagedSession?
     var canSwapSession: Bool = false
     var onSwapSession: (() -> Void)?
+    var onAlwaysUseSSH: (() throws -> Void)?
     var onDismiss: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -78,6 +79,15 @@ struct TerminalView: View {
             } else if connectionVM.connectionState == .disconnected && connectionVM.hasActiveSession {
                 disconnectedBanner
                     .transition(.move(edge: .top).combined(with: .opacity))
+            } else if connectionVM.connectionState == .connected,
+                      let fallback = connectionVM.transportFallbackNotice {
+                TransportFallbackBanner(
+                    presentation: fallback,
+                    serverName: serverName,
+                    onAlwaysUseSSH: connectionVM.canRememberSSHFallback ? onAlwaysUseSSH : nil,
+                    onDismiss: connectionVM.dismissTransportFallbackNotice
+                )
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
 
             GhosttyTerminalView(
@@ -106,6 +116,11 @@ struct TerminalView: View {
         .animation(reduceMotion ? nil : .spring(duration: 0.35), value: connectionVM.connectionState)
         .onChange(of: fontSize) { _, newSize in
             appearanceSettings.fontSize = newSize
+        }
+        .onChange(of: connectionVM.transportFallbackNotice?.id) { _, noticeID in
+            if noticeID != nil {
+                HapticService.warning()
+            }
         }
         .onChange(of: connectionVM.connectionState) { oldState, newState in
             // Haptic feedback for connection state transitions
@@ -280,13 +295,25 @@ struct TerminalView: View {
                         .foregroundStyle(Color(appearanceSettings.currentTheme.foreground))
                         .lineLimit(1)
 
-                    if isMosh {
-                        Text("MOSH")
+                    if connectionVM.hasActiveSession {
+                        Text(isMosh ? "MOSH" : "SSH")
                             .font(.caption2.weight(.bold).monospaced())
-                            .foregroundStyle(Color(appearanceSettings.currentTheme.accentGreen))
+                            .foregroundStyle(Color(
+                                isMosh
+                                    ? appearanceSettings.currentTheme.accentGreen
+                                    : appearanceSettings.currentTheme.accentBlue
+                            ))
                             .padding(.horizontal, 4)
                             .padding(.vertical, 2)
-                            .background(Color(appearanceSettings.currentTheme.accentGreen).opacity(0.15), in: .rect(cornerRadius: 4))
+                            .background(
+                                Color(
+                                    isMosh
+                                        ? appearanceSettings.currentTheme.accentGreen
+                                        : appearanceSettings.currentTheme.accentBlue
+                                ).opacity(0.15),
+                                in: .rect(cornerRadius: 4)
+                            )
+                            .accessibilityLabel(isMosh ? "Mosh transport" : "SSH transport")
                     }
                 }
 
@@ -462,6 +489,152 @@ struct TerminalView: View {
         case .reconnecting: "Reconnecting"
         case .disconnected: "Disconnected"
         case .error: "Connection error"
+        }
+    }
+}
+
+private struct TransportFallbackBanner: View {
+    let presentation: ErrorPresentation
+    let serverName: String
+    let onAlwaysUseSSH: (() throws -> Void)?
+    let onDismiss: () -> Void
+
+    @State private var preferenceSaved = false
+    @State private var saveError: ErrorPresentation?
+
+    private let appearanceSettings = AppearanceSettings.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "arrow.triangle.branch")
+                    .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.accentYellow))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Mosh unavailable — connected using SSH")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.foreground))
+
+                    Text(presentation.explanation)
+                        .font(.caption)
+                        .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.secondaryForeground))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.secondaryForeground))
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("Dismiss SSH fallback notice")
+            }
+
+            if preferenceSaved {
+                Label(
+                    "Future connections to \(serverName) will use SSH.",
+                    systemImage: "checkmark.circle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.accentGreen))
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("terminal.transport.fallback.preferenceSaved")
+            } else if onAlwaysUseSSH != nil {
+                HStack(spacing: 8) {
+                    Button(action: saveSSHPreference) {
+                        Text("Always Use SSH")
+                            .font(.caption.weight(.semibold))
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(SwiftUI.Color(appearanceSettings.currentTheme.accentBlue))
+                    .accessibilityLabel("Always use SSH for \(serverName)")
+                    .accessibilityHint("Saves SSH for future connections to this server")
+                    .accessibilityIdentifier("terminal.transport.fallback.alwaysSSH")
+
+                    Button(action: onDismiss) {
+                        Text("Not Now")
+                            .font(.caption)
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityHint("Keeps automatic transport selection")
+                    .accessibilityIdentifier("terminal.transport.fallback.notNow")
+                }
+            }
+
+            if let saveError {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(saveError.title, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.accentRed))
+
+                    Text(saveError.explanation)
+                        .font(.caption)
+                        .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.secondaryForeground))
+
+                    if let recovery = saveError.recoverySuggestion {
+                        Text(recovery)
+                            .font(.caption)
+                            .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.accentBlue))
+                    }
+
+                    DisclosureGroup("Save error details") {
+                        Text(saveError.technicalDetails)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.secondaryForeground))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .font(.caption)
+                    .tint(SwiftUI.Color(appearanceSettings.currentTheme.accentRed))
+                }
+                .accessibilityIdentifier("terminal.transport.fallback.saveError")
+            }
+
+            DisclosureGroup("Technical details") {
+                Text(presentation.technicalDetails)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.secondaryForeground))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .font(.caption)
+            .tint(SwiftUI.Color(appearanceSettings.currentTheme.accentYellow))
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(SwiftUI.Color(appearanceSettings.currentTheme.accentYellow).opacity(0.12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(
+                            SwiftUI.Color(appearanceSettings.currentTheme.accentYellow).opacity(0.3),
+                            lineWidth: 0.5
+                        )
+                )
+        )
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .accessibilityIdentifier("terminal.transport.fallback")
+    }
+
+    private func saveSSHPreference() {
+        guard let onAlwaysUseSSH else { return }
+
+        do {
+            try onAlwaysUseSSH()
+            saveError = nil
+            preferenceSaved = true
+            HapticService.success()
+        } catch {
+            saveError = ErrorPresentation.sshTransportPreferenceSaveFailure(
+                error,
+                context: presentation.context
+            )
+            HapticService.error()
         }
     }
 }

@@ -150,6 +150,37 @@ final class SessionManager {
         persistSessionDescriptors()
     }
 
+    func preferSSH(
+        for session: ManagedSession,
+        persistedServer: Server,
+        save: () throws -> Void
+    ) throws {
+        guard persistedServer.id == session.serverID else {
+            throw SessionTransportPreferenceError.serverProfileUnavailable(session.serverName)
+        }
+        guard sessions.contains(where: { $0.id == session.id }) else {
+            throw SessionTransportPreferenceError.sessionUnavailable(session.serverName)
+        }
+
+        let previousPolicy = persistedServer.transportPolicyRawValue
+        let previousMoshPreference = persistedServer.useMosh
+        persistedServer.transportPolicy = .ssh
+
+        do {
+            try save()
+        } catch {
+            persistedServer.transportPolicyRawValue = previousPolicy
+            persistedServer.useMosh = previousMoshPreference
+            throw error
+        }
+
+        for activeSession in sessions where activeSession.serverID == persistedServer.id {
+            guard activeSession.server !== persistedServer else { continue }
+            activeSession.server.transportPolicy = .ssh
+        }
+        persistSessionDescriptors()
+    }
+
     private func promoteSessionToFront(_ session: ManagedSession) {
         session.lastAccessedAt = Date()
 
@@ -171,6 +202,29 @@ final class SessionManager {
         session.connectionVM.onAgentEvent = { [weak self, weak session] event in
             guard let self, let session else { return }
             self.agentEventCenter?.ingest(event, from: session)
+        }
+    }
+}
+
+enum SessionTransportPreferenceError: LocalizedError, Equatable {
+    case serverProfileUnavailable(String)
+    case sessionUnavailable(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .serverProfileUnavailable(let serverName):
+            "The saved server profile for \(serverName) is no longer available."
+        case .sessionUnavailable(let serverName):
+            "The terminal session for \(serverName) is no longer active."
+        }
+    }
+
+    var recoverySuggestion: String? {
+        switch self {
+        case .serverProfileUnavailable:
+            "Recreate the server profile, then choose SSH in its connection settings."
+        case .sessionUnavailable:
+            "Reconnect to the server and try again."
         }
     }
 }

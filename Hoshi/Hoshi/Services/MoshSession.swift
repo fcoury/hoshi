@@ -30,14 +30,17 @@ final class MoshSession: ObservableObject {
     var onAgentEvent: (@MainActor (AgentEventEnvelope) -> Void)?
 
     private var sshClient: SSHClient?
-    private var udpConnection: MoshUDPConnection?
+    private var udpConnection: (any MoshUDPTransport)?
     private var protocolEngine: MoshProtocolEngine?
     private var networkMonitor = NetworkMonitorService()
     private let reconnectionPolicy: ReconnectionPolicy
+    private let makeUDPConnection: @MainActor (String, UInt16) -> any MoshUDPTransport
 
     private var receiveTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var networkWatchTask: Task<Void, Never>?
+    private var startupProbeTask: Task<Void, Never>?
+    private var startupReadinessContinuation: AsyncStream<Void>.Continuation?
     private var isReconnecting = false
 
     // SSP state tracking
@@ -85,9 +88,16 @@ final class MoshSession: ObservableObject {
         )
     }
 
-    init(server: Server, reconnectionPolicy: ReconnectionPolicy = .mosh) {
+    init(
+        server: Server,
+        reconnectionPolicy: ReconnectionPolicy = .mosh,
+        makeUDPConnection: @escaping @MainActor (String, UInt16) -> any MoshUDPTransport = {
+            MoshUDPConnection(host: $0, port: $1)
+        }
+    ) {
         self.server = server
         self.reconnectionPolicy = reconnectionPolicy
+        self.makeUDPConnection = makeUDPConnection
     }
 
     // Full connection flow: SSH -> detect mosh-server -> start it -> UDP
@@ -158,9 +168,10 @@ final class MoshSession: ObservableObject {
             let bootstrap = try makeBootstrapService(client: client)
             let info = try await bootstrap.startMoshServer(initialCommand: initialCommand)
             try Task.checkCancellation()
+            try await establishUDP(info: info, timeout: udpTimeout)
+            try Task.checkCancellation()
             try? await client.close()
             sshClient = nil
-            try await establishUDP(info: info, timeout: udpTimeout)
         } catch {
             handleConnectionFailure(error)
             throw error
@@ -303,9 +314,13 @@ final class MoshSession: ObservableObject {
         receiveTask?.cancel()
         heartbeatTask?.cancel()
         networkWatchTask?.cancel()
+        startupProbeTask?.cancel()
+        startupReadinessContinuation?.finish()
         receiveTask = nil
         heartbeatTask = nil
         networkWatchTask = nil
+        startupProbeTask = nil
+        startupReadinessContinuation = nil
 
         udpConnection?.disconnect()
         udpConnection = nil
@@ -329,13 +344,15 @@ final class MoshSession: ObservableObject {
 
     // MARK: - Private
 
-    // Establish UDP connection and start receive loop
-    private func establishUDP(info: MoshConnectionInfo, timeout: TimeInterval) async throws {
+    // A UDP socket being locally ready does not prove that a remote mosh-server can respond.
+    func establishUDP(info: MoshConnectionInfo, timeout: TimeInterval) async throws {
+        connectionState = .moshStarting
+
         // Set up crypto
         protocolEngine = try MoshProtocolEngine(key: info.sessionKey)
 
         // Create UDP connection
-        let udp = MoshUDPConnection(host: info.serverIP, port: info.udpPort)
+        let udp = makeUDPConnection(info.serverIP, info.udpPort)
         self.udpConnection = udp
         localStateNum = 0
         remoteStateNum = 0
@@ -350,48 +367,136 @@ final class MoshSession: ObservableObject {
         debugHostOutputCount = 0
         debugHostByteCount = 0
 
-        try await ConnectionDeadline.run(
-            timeout: timeout,
-            phase: .udpConnection,
-            onTimeout: { udp.disconnect() }
-        ) {
-            try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    var resumed = false
-                    udp.connect { state in
-                        guard !resumed else { return }
-                        switch state {
-                        case .ready:
-                            resumed = true
-                            continuation.resume()
-                        case .failed(let error):
-                            resumed = true
-                            continuation.resume(throwing: error)
-                        case .cancelled:
-                            resumed = true
-                            continuation.resume(throwing: CancellationError())
-                        default:
-                            break
-                        }
-                    }
-                }
-            } onCancel: {
-                Task { @MainActor in
-                    udp.disconnect()
-                }
+        do {
+            try await ConnectionDeadline.run(timeout: timeout, phase: .udpConnection) {
+                try await self.waitForUDPSocketReady(udp)
+                try Task.checkCancellation()
+                try await self.awaitAuthenticatedServerResponse()
             }
+        } catch {
+            let wasAwaitingServerResponse = udp.isReady
+            discardPendingUDPStartup()
+
+            if let timeoutError = error as? ConnectionCoordinatorError,
+               case .timedOut(phase: .udpConnection, seconds: let seconds) = timeoutError,
+               wasAwaitingServerResponse {
+                throw MoshUDPError.noServerResponse(
+                    host: info.serverIP,
+                    port: info.udpPort,
+                    seconds: seconds
+                )
+            }
+            throw error
         }
 
         connectionState = .connected
-
-        // Start receiving datagrams
-        startReceiveLoop()
 
         // Start heartbeat to maintain NAT mapping
         startHeartbeat()
 
         // Start network monitoring for auto-reconnect
         startNetworkWatch()
+    }
+
+    private func waitForUDPSocketReady(_ udp: any MoshUDPTransport) async throws {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                var resumed = false
+                udp.connect { state in
+                    guard !resumed else { return }
+                    switch state {
+                    case .ready:
+                        resumed = true
+                        continuation.resume()
+                    case .failed(let error):
+                        resumed = true
+                        continuation.resume(throwing: error)
+                    case .cancelled:
+                        resumed = true
+                        continuation.resume(throwing: CancellationError())
+                    default:
+                        break
+                    }
+                }
+            }
+        } onCancel: {
+            Task { @MainActor in
+                udp.disconnect()
+            }
+        }
+    }
+
+    private func awaitAuthenticatedServerResponse() async throws {
+        let (responses, continuation) = AsyncStream<Void>.makeStream()
+        startupReadinessContinuation = continuation
+
+        defer {
+            startupProbeTask?.cancel()
+            startupProbeTask = nil
+            startupReadinessContinuation?.finish()
+            startupReadinessContinuation = nil
+        }
+
+        startReceiveLoop()
+        try await sendStartupProbe()
+        startStartupProbeRetries()
+
+        for await _ in responses {
+            try Task.checkCancellation()
+            return
+        }
+
+        try Task.checkCancellation()
+        throw MoshUDPError.connectionFailed("Mosh startup ended before the server responded")
+    }
+
+    private func sendStartupProbe() async throws {
+        var instruction = MoshTransportInstruction()
+        instruction.oldNum = localStateNum
+        instruction.newNum = localStateNum
+        instruction.ackNum = remoteStateNum
+        try await sendTransportInstruction(instruction)
+    }
+
+    private func startStartupProbeRetries() {
+        startupProbeTask?.cancel()
+        startupProbeTask = Task { [weak self] in
+            let retryDelays: [Duration] = [
+                .milliseconds(250),
+                .milliseconds(500),
+                .seconds(1),
+                .seconds(2),
+            ]
+            var retry = 0
+
+            while !Task.isCancelled {
+                do {
+                    let delay = retryDelays[min(retry, retryDelays.count - 1)]
+                    try await Task.sleep(for: delay)
+                    try Task.checkCancellation()
+                    guard let self, self.startupReadinessContinuation != nil else { return }
+                    try await self.sendStartupProbe()
+                    retry += 1
+                } catch is CancellationError {
+                    return
+                } catch {
+                    self?.reportNonFatalError(error, context: "startup probe")
+                    retry += 1
+                }
+            }
+        }
+    }
+
+    private func discardPendingUDPStartup() {
+        startupProbeTask?.cancel()
+        startupProbeTask = nil
+        startupReadinessContinuation?.finish()
+        startupReadinessContinuation = nil
+        receiveTask?.cancel()
+        receiveTask = nil
+        udpConnection?.disconnect()
+        udpConnection = nil
+        protocolEngine = nil
     }
 
     // Continuously receive and process incoming datagrams from mosh-server
@@ -419,6 +524,10 @@ final class MoshSession: ObservableObject {
             debugDecryptSuccessCount += 1
             let instruction = decoded.instruction
             debugInstructionDecodeCount += 1
+
+            startupReadinessContinuation?.yield(())
+            startupReadinessContinuation?.finish()
+            startupReadinessContinuation = nil
 
             // SSP overlap guard with exact-base matching.
             //

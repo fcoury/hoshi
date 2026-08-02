@@ -485,6 +485,7 @@ struct ServerListView: View {
             managedSession: session,
             canSwapSession: sessionManager.sessions.count >= 2,
             onSwapSession: { sessionManager.switchToPrevious() },
+            onAlwaysUseSSH: { try preferSSH(for: session) },
             onDismiss: { sessionManager.returnToServerList() }
         )
     }
@@ -665,6 +666,16 @@ struct ServerListView: View {
         }
         server.keyID = keyID
         saveServerChanges()
+    }
+
+    private func preferSSH(for session: ManagedSession) throws {
+        guard let server = servers.first(where: { $0.id == session.serverID }) else {
+            throw SessionTransportPreferenceError.serverProfileUnavailable(session.serverName)
+        }
+
+        try sessionManager.preferSSH(for: session, persistedServer: server) {
+            try modelContext.save()
+        }
     }
 
     private func restorePersistedSessions() async {

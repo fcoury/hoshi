@@ -563,6 +563,58 @@ final class ErrorPresentationTests: XCTestCase {
         XCTAssertTrue(presentation.diagnostics.exactError.contains("udpConnection"))
     }
 
+    func testUnresponsiveMoshServerDisclosesExactUDPHostAndPort() {
+        let original = MoshUDPError.noServerResponse(
+            host: "agents.example.com",
+            port: 60217,
+            seconds: 8
+        )
+        let presentation = ErrorPresentation.classify(original, context: context())
+
+        XCTAssertEqual(presentation.title, "Mosh Server Is Not Responding")
+        XCTAssertTrue(presentation.explanation.contains("agents.example.com:60217"))
+        XCTAssertTrue(presentation.explanation.contains("authenticated UDP response"))
+        XCTAssertTrue(presentation.explanation.contains("8 seconds"))
+        XCTAssertTrue(presentation.recoverySuggestion?.contains("UDP port 60217") == true)
+        XCTAssertTrue(presentation.recoverySuggestion?.contains("Auto or SSH") == true)
+        XCTAssertTrue(presentation.diagnostics.exactError.contains("noServerResponse"))
+    }
+
+    func testSSHPreferenceSaveFailurePreservesOriginalErrorAndConnectionContext() {
+        let original = NSError(
+            domain: "HoshiTests.ServerPreferenceStore",
+            code: 42,
+            userInfo: [NSLocalizedDescriptionKey: "The server profile store is unavailable."]
+        )
+        let presentation = ErrorPresentation.sshTransportPreferenceSaveFailure(
+            original,
+            context: context()
+        )
+
+        XCTAssertEqual(presentation.title, "Could Not Save SSH Preference")
+        XCTAssertEqual(presentation.explanation, "The server profile store is unavailable.")
+        XCTAssertEqual(presentation.context.operation, .general)
+        XCTAssertEqual(presentation.context.transport, "ssh")
+        XCTAssertEqual(presentation.context.phase, "Saving SSH transport preference")
+        XCTAssertEqual(presentation.diagnostics.domain, original.domain)
+        XCTAssertEqual(presentation.diagnostics.code, original.code)
+        XCTAssertTrue(presentation.recoverySuggestion?.contains("still connected") == true)
+        XCTAssertTrue(presentation.technicalDetails.contains("HoshiTests.ServerPreferenceStore"))
+        XCTAssertTrue(presentation.technicalDetails.contains("Code: 42"))
+    }
+
+    func testMissingServerProfileWhileSavingSSHPreferenceHasSpecificRecovery() {
+        let original = SessionTransportPreferenceError.serverProfileUnavailable("Agents")
+        let presentation = ErrorPresentation.sshTransportPreferenceSaveFailure(
+            original,
+            context: context()
+        )
+
+        XCTAssertTrue(presentation.explanation.contains("Agents"))
+        XCTAssertTrue(presentation.recoverySuggestion?.contains("Recreate the server profile") == true)
+        XCTAssertTrue(presentation.diagnostics.exactError.contains("serverProfileUnavailable"))
+    }
+
     func testSSHBootstrapTimeoutDoesNotClaimMoshUDPFailure() {
         let presentation = ErrorPresentation.classify(
             ConnectionCoordinatorError.timedOut(phase: .sshBootstrap, seconds: 20),

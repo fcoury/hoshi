@@ -16,6 +16,7 @@ final class ConnectionViewModel {
     var isConnecting = false
     var errorMessage: String?
     var presentedError: ErrorPresentation?
+    var transportFallbackNotice: ErrorPresentation?
     var showError = false
     var onAgentEvent: (@MainActor (AgentEventEnvelope) -> Void)? {
         didSet { bindAgentEvents() }
@@ -99,6 +100,12 @@ final class ConnectionViewModel {
     // Whether a session object exists (even if currently disconnected/reconnecting)
     var hasActiveSession: Bool {
         sshSession != nil || moshSession != nil
+    }
+
+    var canRememberSSHFallback: Bool {
+        connectionState == .connected
+            && sshSession != nil
+            && transportFallbackNotice?.context.transport == ConnectionTransportPolicy.auto.rawValue
     }
 
     var selectedSSHKeyID: String? {
@@ -212,6 +219,7 @@ final class ConnectionViewModel {
         isConnecting = true
         errorMessage = nil
         presentedError = nil
+        transportFallbackNotice = nil
         showError = false
         connectionPhase = ""
         showMoshInstallOffer = false
@@ -479,6 +487,9 @@ final class ConnectionViewModel {
             coordinator.onPhaseChanged = { [weak self] phase in
                 self?.connectionPhase = phase.statusText
             }
+            coordinator.onTransportFallback = { [weak self] error in
+                self?.presentTransportFallback(error, server: server)
+            }
 
             do {
                 let outcome = try await coordinator.prepare(
@@ -564,6 +575,18 @@ final class ConnectionViewModel {
         case .cancelled:
             showTmuxPicker = false
         }
+    }
+
+    func presentTransportFallback(_ error: any Error, server: Server) {
+        guard ErrorPresentation.shouldPresent(error) else { return }
+        transportFallbackNotice = ErrorPresentation.classify(
+            error,
+            context: .connection(server: server, phase: ConnectionPhase.sshFallback.statusText)
+        )
+    }
+
+    func dismissTransportFallbackNotice() {
+        transportFallbackNotice = nil
     }
 
     func presentConnectionError(
