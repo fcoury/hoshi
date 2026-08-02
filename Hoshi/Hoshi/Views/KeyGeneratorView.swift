@@ -70,6 +70,11 @@ struct KeyGeneratorView: View {
                                 systemImage: copied ? "checkmark" : "doc.on.doc"
                             )
                         }
+
+                        ShareLink(item: key.publicKeyAuthorized) {
+                            Label("Share Public Key", systemImage: "square.and.arrow.up")
+                        }
+                        .accessibilityHint("Shares only the public SSH key; the private key stays on this device")
                     }
 
                     Section {

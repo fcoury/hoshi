@@ -23,6 +23,7 @@ Hoshi (星, "star" in Japanese) is designed around a specific workflow: connect 
 - **Mosh (Mobile Shell)** — UDP-based protocol that survives network changes, sleep, and roaming
 - **SSH** — full PTY support with automatic reconnection
 - Password and SSH key authentication (Ed25519, RSA)
+- Generate device-local SSH keys and share only the public key with the native iOS share sheet
 - Up to 5 concurrent sessions with a carousel UI for quick switching
 
 ### tmux Integration
