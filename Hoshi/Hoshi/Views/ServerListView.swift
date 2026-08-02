@@ -197,7 +197,9 @@ struct ServerListView: View {
                 }
                 .background(Color(theme.chromeBackground))
                 .navigationTitle("Hoshi")
+                .navigationBarTitleDisplayMode(.inline)
                 .searchable(text: $searchText, prompt: "Search servers")
+                .modifier(MinimizedSearchToolbarModifier())
                 .toolbar { navigationToolbar }
                 .toolbarBackground(Color(theme.chromeSurface), for: .navigationBar)
                 .toolbarBackground(.visible, for: .navigationBar)
@@ -263,49 +265,12 @@ struct ServerListView: View {
             if sessionManager.hasActiveSessions {
                 Section("Active Sessions") {
                     ForEach(sessionManager.sessions) { session in
-                        Button {
-                            sessionManager.switchTo(sessionID: session.id)
-                        } label: {
-                            Label {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    HStack(spacing: 6) {
-                                        Text(session.serverName)
-                                            .lineLimit(1)
-                                        AgentAttentionBadge(
-                                            count: session.unreadAgentEventCount,
-                                            kind: session.agentAttentionKind
-                                        )
-                                    }
-                                    if let tmux = session.tmuxSession {
-                                        Text(tmux)
-                                            .font(.caption.monospaced())
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            } icon: {
-                                Image(systemName: session.isMosh ? "antenna.radiowaves.left.and.right" : "terminal")
-                            }
-                        }
-                        .contextMenu {
-                            Button {
-                                duplicateSession(id: session.id)
-                            } label: {
-                                Label("Duplicate Session", systemImage: "plus.square.on.square")
-                            }
-                            Button(role: .destructive) {
-                                sessionPendingClosure = session
-                            } label: {
-                                Label("Close Session", systemImage: "xmark.circle")
-                            }
-                        }
-                        .accessibilityHint("Shows this terminal in the detail pane")
+                        sessionButton(session)
                     }
                 }
             }
 
-            sidebarSection("Favorites", systemImage: "star.fill", servers: catalog.favorites)
-            sidebarSection("Recent", systemImage: "clock", servers: catalog.recent)
-            sidebarSection("Servers", systemImage: "server.rack", servers: catalog.remaining)
+            sidebarSection("Servers", systemImage: "server.rack", servers: catalog.ordered)
 
             if catalog.isEmpty && !servers.isEmpty {
                 ContentUnavailableView.search(text: searchText)
@@ -336,44 +301,74 @@ struct ServerListView: View {
     }
 
     private var serverList: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                if sessionManager.hasActiveSessions {
-                    SessionCarouselView(
-                        sessions: sessionManager.sessions,
-                        onTap: { sessionManager.switchTo(sessionID: $0) },
-                        onDuplicate: duplicateSession,
-                        onClose: { id in
-                            sessionPendingClosure = sessionManager.sessions.first { $0.id == id }
+        List {
+            if sessionManager.hasActiveSessions {
+                Section {
+                    ForEach(sessionManager.sessions) { session in
+                        sessionButton(session)
+                            .listRowInsets(.init(top: 4, leading: 16, bottom: 4, trailing: 8))
+                            .listRowBackground(Color(theme.chromeBackground))
+                            .listRowSeparatorTint(Color(theme.separator))
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    sessionPendingClosure = session
+                                } label: {
+                                    Label("Close", systemImage: "xmark.circle")
+                                }
+
+                                Button {
+                                    duplicateSession(id: session.id)
+                                } label: {
+                                    Label("Duplicate", systemImage: "plus.square.on.square")
+                                }
+                                .tint(Color(theme.accentBlue))
+                            }
+                    }
+                } header: {
+                    sectionHeader("ACTIVE SESSIONS (\(sessionManager.sessions.count))")
+                }
+            }
+
+            Section {
+                ForEach(catalog.ordered) { server in
+                    serverButton(server)
+                        .listRowInsets(.init(top: 4, leading: 16, bottom: 4, trailing: 8))
+                        .listRowBackground(Color(theme.chromeBackground))
+                        .listRowSeparatorTint(Color(theme.separator))
+                        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                            Button {
+                                toggleFavorite(server)
+                            } label: {
+                                Label(
+                                    server.isFavorite ? "Unfavorite" : "Favorite",
+                                    systemImage: server.isFavorite ? "star.slash" : "star.fill"
+                                )
+                            }
+                            .tint(Color(theme.accentYellow))
                         }
-                    )
-                }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                serverPendingDeletion = server
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
 
-                serverSection("FAVORITES", servers: catalog.favorites)
-                serverSection("RECENT", servers: catalog.recent)
-                serverSection("SERVERS", servers: catalog.remaining)
+                            Button {
+                                editingServer = server
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                            .tint(Color(theme.accentBlue))
+                        }
+                }
+            } header: {
+                sectionHeader("SERVERS")
             }
         }
+        .listStyle(.plain)
+        .environment(\.defaultMinListRowHeight, 1)
+        .scrollContentBackground(.hidden)
         .background(Color(theme.chromeBackground))
-    }
-
-    @ViewBuilder
-    private func serverSection(_ title: String, servers: [Server]) -> some View {
-        if !servers.isEmpty {
-            sectionHeader(title)
-            ForEach(servers) { server in
-                serverButton(server)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 5)
-
-                if server.id != servers.last?.id {
-                    Rectangle()
-                        .fill(Color(theme.separator))
-                        .frame(height: 0.5)
-                        .padding(.leading, 16)
-                }
-            }
-        }
     }
 
     private func sectionHeader(_ title: String) -> some View {
@@ -386,23 +381,33 @@ struct ServerListView: View {
                 .fill(Color(theme.separator))
                 .frame(height: 0.5)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 4)
+        .padding(.vertical, 4)
+        .textCase(nil)
     }
 
     private func serverButton(_ server: Server) -> some View {
-        Button {
-            connectToServer(server)
-        } label: {
-            ServerRow(server: server, theme: theme)
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
+        HStack(spacing: 2) {
+            Button {
+                connectToServer(server)
+            } label: {
+                ServerRow(server: server, theme: theme)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+
+            Menu {
+                serverActions(for: server)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .foregroundStyle(Color(theme.secondaryForeground))
+                    .frame(width: 44, height: 44)
+                    .contentShape(.rect)
+            }
+            .accessibilityLabel("Actions for \(server.name)")
         }
-        .buttonStyle(.plain)
         .contextMenu { serverActions(for: server) }
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("Connects to \(server.hostname)")
+        .accessibilityElement(children: .contain)
         .accessibilityAction(named: Text(server.isFavorite ? "Remove Favorite" : "Add Favorite")) {
             toggleFavorite(server)
         }
@@ -411,6 +416,42 @@ struct ServerListView: View {
         }
         .accessibilityAction(named: Text("Delete Server")) {
             serverPendingDeletion = server
+        }
+    }
+
+    private func sessionButton(_ session: ManagedSession) -> some View {
+        HStack(spacing: 2) {
+            Button {
+                HapticService.mediumTap()
+                sessionManager.switchTo(sessionID: session.id)
+            } label: {
+                SessionRowView(session: session)
+                    .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Reopens the active terminal session")
+
+            SessionActionsMenu(
+                session: session,
+                onDuplicate: duplicateSession,
+                onClose: { id in
+                    sessionPendingClosure = sessionManager.sessions.first { $0.id == id }
+                }
+            )
+        }
+        .contextMenu {
+            Button {
+                duplicateSession(id: session.id)
+            } label: {
+                Label("Duplicate Session", systemImage: "plus.square.on.square")
+            }
+
+            Button(role: .destructive) {
+                sessionPendingClosure = session
+            } label: {
+                Label("Close Session", systemImage: "xmark.circle")
+            }
         }
     }
 
@@ -483,8 +524,10 @@ struct ServerListView: View {
         TerminalView(
             connectionVM: session.connectionVM,
             managedSession: session,
+            sessions: sessionManager.sessions,
             canSwapSession: sessionManager.sessions.count >= 2,
             onSwapSession: { sessionManager.switchToPrevious() },
+            onSelectSession: { sessionManager.switchTo(sessionID: $0) },
             onAlwaysUseSSH: { try preferSSH(for: session) },
             onDismiss: { sessionManager.returnToServerList() }
         )
@@ -751,7 +794,14 @@ struct ServerRow: View {
     var theme: TerminalTheme = AppearanceSettings.shared.currentTheme
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
+            Image(systemName: server.useMosh ? "antenna.radiowaves.left.and.right" : "terminal")
+                .font(.body.weight(.medium))
+                .foregroundStyle(transportColor)
+                .frame(width: 38, height: 38)
+                .background(transportColor.opacity(0.12), in: .rect(cornerRadius: 9))
+                .accessibilityHidden(true)
+
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     if server.isFavorite {
@@ -786,36 +836,45 @@ struct ServerRow: View {
 
             Spacer(minLength: 4)
 
-            HStack(spacing: 7) {
-                Text(server.transportPolicy.displayName.uppercased())
-                    .font(.caption2.weight(.bold).monospaced())
-                    .foregroundStyle(Color(server.useMosh ? theme.accentGreen : theme.accentBlue))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 3)
-                    .background(
-                        Color(server.useMosh ? theme.accentGreen : theme.accentBlue).opacity(0.15),
-                        in: .rect(cornerRadius: 4)
-                    )
-
-                Image(systemName: server.authMethod == .key ? "key.fill" : "lock.fill")
-                    .foregroundStyle(Color(theme.secondaryForeground))
-                    .font(.caption)
-                    .accessibilityLabel(server.authMethod == .key ? "SSH key authentication" : "Password authentication")
-
-                if ConnectionViewModel.hasStoredCredentials(for: server) {
-                    Image(systemName: "bolt.fill")
-                        .foregroundStyle(Color(theme.accentYellow).opacity(0.7))
-                        .font(.caption)
-                        .accessibilityLabel("Saved credentials")
-                } else {
-                    Image(systemName: "chevron.right")
-                        .foregroundStyle(Color(theme.secondaryForeground))
-                        .font(.caption)
-                        .accessibilityHidden(true)
-                }
-            }
+            Text(server.transportPolicy.displayName.uppercased())
+                .font(.caption2.weight(.bold).monospaced())
+                .foregroundStyle(transportColor)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(transportColor.opacity(0.14), in: .rect(cornerRadius: 5))
         }
         .padding(.vertical, 5)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint("Connects to \(server.hostname)")
+    }
+
+    private var transportColor: Color {
+        Color(server.useMosh ? theme.accentGreen : theme.accentBlue)
+    }
+
+    private var accessibilityLabel: String {
+        var components = [
+            server.isFavorite ? "Favorite" : nil,
+            server.name,
+            server.loginEndpoint,
+            server.transportPolicy.displayName,
+        ].compactMap { $0 }
+        if let tmux = server.tmuxSession {
+            components.append("tmux \(tmux)")
+        }
+        return components.joined(separator: ", ")
+    }
+}
+
+private struct MinimizedSearchToolbarModifier: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.searchToolbarBehavior(.minimize)
+        } else {
+            content
+        }
     }
 }
 

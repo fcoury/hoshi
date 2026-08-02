@@ -11,6 +11,46 @@ enum ConnectionState: Equatable {
     case error(String)
 }
 
+extension ConnectionState {
+    /// A compact, user-facing description shared by session lists and terminal chrome.
+    var conciseLabel: String {
+        switch self {
+        case .disconnected:
+            "Disconnected"
+        case .connecting:
+            "Connecting"
+        case .sshBootstrap:
+            "Starting SSH"
+        case .moshStarting:
+            "Starting Mosh"
+        case .connected:
+            "Connected"
+        case .reconnecting:
+            "Reconnecting"
+        case .error:
+            "Connection Error"
+        }
+    }
+
+    var isTransient: Bool {
+        switch self {
+        case .connecting, .sshBootstrap, .moshStarting, .reconnecting:
+            true
+        case .disconnected, .connected, .error:
+            false
+        }
+    }
+
+    var isUnavailable: Bool {
+        switch self {
+        case .disconnected, .error:
+            true
+        case .connecting, .sshBootstrap, .moshStarting, .connected, .reconnecting:
+            false
+        }
+    }
+}
+
 enum ConnectionRecoveryStatus: Equatable, Sendable {
     case idle
     case waitingForNetwork

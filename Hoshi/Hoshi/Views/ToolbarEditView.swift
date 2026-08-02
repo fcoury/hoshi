@@ -1,6 +1,7 @@
 import SwiftUI
 
-// Two-zone toolbar editor: top zone shows current layout, bottom zone shows available keys
+// Two-zone toolbar editor: top zone previews and orders the current layout,
+// while the bottom zone shows available keys.
 struct ToolbarEditView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -45,7 +46,7 @@ struct ToolbarEditView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Top zone: "Your Toolbar"
+                // Top zone: live preview and key order
                 yourToolbarSection
 
                 Divider()
@@ -81,14 +82,39 @@ struct ToolbarEditView: View {
         }
     }
 
-    // MARK: - Top zone: current toolbar layout
+    // MARK: - Top zone: current toolbar preview and layout
 
     private var yourToolbarSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("YOUR TOOLBAR")
+            Text("LIVE PREVIEW")
                 .font(.caption)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, 16)
+
+            KeyboardToolbarContent(
+                buttons: currentButtons,
+                activeModifiers: [],
+                selectionAvailable: true,
+                pasteAvailable: true,
+                voicePromptAvailable: true,
+                onButtonTap: { _ in },
+                onSwipeArrow: { _ in },
+                onEditTap: {}
+            )
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color(editTheme.separator), lineWidth: 0.5)
+            }
+            .clipShape(.rect(cornerRadius: 8))
+            .padding(.horizontal, 16)
+
+            Text("KEY ORDER")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 4)
                 .padding(.horizontal, 16)
 
             if currentButtons.isEmpty {

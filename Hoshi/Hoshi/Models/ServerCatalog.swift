@@ -37,6 +37,11 @@ struct ServerCatalog {
         favorites.isEmpty && recent.isEmpty && remaining.isEmpty
     }
 
+    /// A single scan-friendly list while preserving favorites-first and recent ordering.
+    var ordered: [Server] {
+        favorites + recent + remaining
+    }
+
     static func duplicatedName(from original: String, existingNames: some Sequence<String>) -> String {
         let existing = Set(existingNames)
         let baseName = "\(original) Copy"

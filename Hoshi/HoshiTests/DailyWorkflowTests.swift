@@ -187,6 +187,24 @@ final class DailyWorkflowTests: XCTestCase {
         XCTAssertEqual(ServerCatalog(servers: [older, newer]).favorites.map(\.name), ["Newer", "Older"])
     }
 
+    func testOrderedCatalogKeepsFavoritesFirstThenRecentAndRemaining() {
+        let olderFavorite = makeServer(name: "Older Favorite", favorite: true, connectedAt: 10)
+        let newerFavorite = makeServer(name: "Newer Favorite", favorite: true, connectedAt: 20)
+        let olderRecent = makeServer(name: "Older Recent", connectedAt: 30)
+        let newerRecent = makeServer(name: "Newer Recent", connectedAt: 40)
+        let remaining = makeServer(name: "Alphabetical")
+
+        let catalog = ServerCatalog(
+            servers: [remaining, olderRecent, newerFavorite, newerRecent, olderFavorite],
+            recentLimit: 2
+        )
+
+        XCTAssertEqual(
+            catalog.ordered.map(\.name),
+            ["Newer Favorite", "Older Favorite", "Newer Recent", "Older Recent", "Alphabetical"]
+        )
+    }
+
     func testServerCatalogSearchMatchesNamesHostsUsersAndTmuxSessions() {
         let server = Server(
             name: "Production",

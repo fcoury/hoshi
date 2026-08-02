@@ -37,6 +37,43 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertTrue(TerminalPasteboard.shared === pasteboard)
     }
 
+    func testConnectionStatesExposeCompactLabelsAndAvailability() {
+        XCTAssertEqual(ConnectionState.sshBootstrap.conciseLabel, "Starting SSH")
+        XCTAssertEqual(ConnectionState.moshStarting.conciseLabel, "Starting Mosh")
+        XCTAssertEqual(ConnectionState.error("failed").conciseLabel, "Connection Error")
+        XCTAssertTrue(ConnectionState.reconnecting.isTransient)
+        XCTAssertFalse(ConnectionState.connected.isTransient)
+        XCTAssertTrue(ConnectionState.disconnected.isUnavailable)
+        XCTAssertTrue(ConnectionState.error("failed").isUnavailable)
+        XCTAssertFalse(ConnectionState.reconnecting.isUnavailable)
+    }
+
+    func testTerminalHeaderPullDistinguishesPickerFromMinimize() {
+        XCTAssertEqual(
+            TerminalHeaderPullAction.resolve(translation: CGSize(width: 2, height: 48)),
+            .showSessions
+        )
+        XCTAssertEqual(
+            TerminalHeaderPullAction.resolve(translation: CGSize(width: 4, height: 120)),
+            .minimize
+        )
+    }
+
+    func testTerminalHeaderPullIgnoresHorizontalAndShortGestures() {
+        XCTAssertEqual(
+            TerminalHeaderPullAction.resolve(translation: CGSize(width: 50, height: 35)),
+            .none
+        )
+        XCTAssertEqual(
+            TerminalHeaderPullAction.resolve(translation: CGSize(width: 0, height: 20)),
+            .none
+        )
+        XCTAssertEqual(
+            TerminalHeaderPullAction.resolve(translation: CGSize(width: 0, height: -120)),
+            .none
+        )
+    }
+
     func testOrdinaryPasteDoesNotRequireConfirmation() {
         let assessment = TerminalPastePolicy.assess("echo hello", bracketedPasteEnabled: false)
 
