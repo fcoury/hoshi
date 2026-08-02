@@ -82,9 +82,23 @@ struct ReconnectionPolicy: Equatable, Sendable {
     let initialDelay: TimeInterval
     let maximumDelay: TimeInterval
     let maximumAttempts: Int
+    let foregroundBudget: TimeInterval
+    let attemptTimeout: TimeInterval
 
-    static let ssh = ReconnectionPolicy(initialDelay: 1, maximumDelay: 16, maximumAttempts: 5)
-    static let mosh = ReconnectionPolicy(initialDelay: 0.25, maximumDelay: 15, maximumAttempts: 8)
+    static let ssh = ReconnectionPolicy(
+        initialDelay: 1,
+        maximumDelay: 15,
+        maximumAttempts: .max,
+        foregroundBudget: 60,
+        attemptTimeout: 20
+    )
+    static let mosh = ReconnectionPolicy(
+        initialDelay: 0.25,
+        maximumDelay: 15,
+        maximumAttempts: .max,
+        foregroundBudget: 60,
+        attemptTimeout: 8
+    )
 
     func delay(forAttempt attempt: Int) -> TimeInterval {
         guard attempt > 0 else { return 0 }

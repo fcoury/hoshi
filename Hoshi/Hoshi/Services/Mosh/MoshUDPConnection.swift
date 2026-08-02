@@ -5,11 +5,10 @@ import Network
 protocol MoshUDPTransport: AnyObject {
     var isReady: Bool { get }
 
-    func connect(stateHandler: @escaping (NWConnection.State) -> Void)
+    func connect() async throws
     func send(_ data: Data) async throws
-    func receiveStream() -> AsyncStream<Data>
+    func receive() async throws -> Data
     func disconnect()
-    func reconnect()
 }
 
 // Manages the NWConnection-based UDP link to the remote mosh-server
@@ -18,7 +17,7 @@ final class MoshUDPConnection: MoshUDPTransport {
     private var connection: NWConnection?
     private let host: NWEndpoint.Host
     private let port: NWEndpoint.Port
-    private var stateHandler: ((NWConnection.State) -> Void)?
+    private var readinessContinuation: CheckedContinuation<Void, Error>?
 
     // Current connection state
     private(set) var isReady = false
@@ -32,36 +31,46 @@ final class MoshUDPConnection: MoshUDPTransport {
     }
 
     // Establish the UDP connection
-    func connect(stateHandler: @escaping (NWConnection.State) -> Void) {
-        self.stateHandler = stateHandler
-
+    func connect() async throws {
+        disconnect()
         let params = NWParameters.udp
         params.allowLocalEndpointReuse = true
 
         let conn = NWConnection(host: host, port: port, using: params)
         self.connection = conn
 
-        conn.stateUpdateHandler = { [weak self, weak conn] state in
-            Task { @MainActor in
-                guard let self,
-                      let conn,
-                      self.connection === conn else {
-                    return
-                }
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                readinessContinuation = continuation
+                conn.stateUpdateHandler = { [weak self, weak conn] state in
+                    Task { @MainActor in
+                        guard let self,
+                              let conn,
+                              self.connection === conn else { return }
 
-                switch state {
-                case .ready:
-                    self.isReady = true
-                case .failed, .cancelled:
-                    self.isReady = false
-                default:
-                    break
+                        switch state {
+                        case .ready:
+                            self.isReady = true
+                            self.finishReadiness()
+                        case .failed(let error):
+                            self.isReady = false
+                            self.finishReadiness(throwing: error)
+                        case .cancelled:
+                            self.isReady = false
+                            self.finishReadiness(throwing: CancellationError())
+                        default:
+                            break
+                        }
+                    }
                 }
-                stateHandler(state)
+                conn.start(queue: .global(qos: .userInteractive))
+            }
+        } onCancel: {
+            Task { @MainActor [weak self, weak conn] in
+                guard let self, self.connection === conn else { return }
+                self.disconnect()
             }
         }
-
-        conn.start(queue: .global(qos: .userInteractive))
     }
 
     // Send a datagram
@@ -100,46 +109,21 @@ final class MoshUDPConnection: MoshUDPTransport {
         }
     }
 
-    // Create an async stream of incoming datagrams.
-    // The inner task is cancelled via onTermination so that cancelling the
-    // outer consumer (receiveTask in MoshSession) actually stops the loop.
-    func receiveStream() -> AsyncStream<Data> {
-        AsyncStream { continuation in
-            let task = Task {
-                while !Task.isCancelled {
-                    do {
-                        let data = try await self.receive()
-                        continuation.yield(data)
-                    } catch {
-                        if Task.isCancelled { break }
-                        try? await Task.sleep(for: .milliseconds(100))
-                    }
-                }
-                continuation.finish()
-            }
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
-        }
-    }
-
     // Disconnect and release resources
     func disconnect() {
-        let wasConnecting = connection != nil
         connection?.cancel()
         connection = nil
         isReady = false
-        if wasConnecting {
-            stateHandler?(.cancelled)
-        }
+        finishReadiness(throwing: CancellationError())
     }
 
-    // Reconnect after network change — create a new NWConnection to the same endpoint
-    func reconnect() {
-        let handler = stateHandler
-        disconnect()
-        if let handler {
-            connect(stateHandler: handler)
+    private func finishReadiness(throwing error: Error? = nil) {
+        guard let continuation = readinessContinuation else { return }
+        readinessContinuation = nil
+        if let error {
+            continuation.resume(throwing: error)
+        } else {
+            continuation.resume()
         }
     }
 }

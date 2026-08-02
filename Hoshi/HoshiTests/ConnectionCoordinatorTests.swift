@@ -1,5 +1,4 @@
 import GhosttyKit
-import Network
 import SwiftData
 import UIKit
 import XCTest
@@ -111,7 +110,7 @@ final class ConnectionCoordinatorTests: XCTestCase {
         XCTAssertEqual(ReconnectionPolicy.ssh.delay(forAttempt: 1), 1)
         XCTAssertEqual(ReconnectionPolicy.ssh.delay(forAttempt: 2), 2)
         XCTAssertEqual(ReconnectionPolicy.ssh.delay(forAttempt: 3), 4)
-        XCTAssertEqual(ReconnectionPolicy.ssh.delay(forAttempt: 8), 16)
+        XCTAssertEqual(ReconnectionPolicy.ssh.delay(forAttempt: 8), 15)
     }
 
     func testMoshReconnectBackoffIsExponentialAndBounded() {
@@ -455,6 +454,53 @@ final class ConnectionCoordinatorTests: XCTestCase {
 
         XCTAssertFalse(transport.isReady)
         XCTAssertNotEqual(session.connectionState, .connected)
+    }
+
+    func testMoshResumeReconnectsOnlyAfterAuthenticatedResponse() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        let response = try await makeServerDatagrams(key: info.sessionKey).first!
+        transport.onSend = { transport.yield(response) }
+        try await session.establishUDP(info: info, timeout: 1)
+
+        await session.handleAppResume()
+
+        XCTAssertEqual(transport.connectCount, 2)
+        XCTAssertEqual(session.connectionState, .connected)
+        XCTAssertEqual(session.recoveryStatus, .idle)
+        await session.disconnect()
+    }
+
+    func testMoshRecoveryExhaustionBlocksInputAndExposesActions() async throws {
+        let transport = FakeMoshUDPTransport()
+        let policy = ReconnectionPolicy(
+            initialDelay: 0.01,
+            maximumDelay: 0.01,
+            maximumAttempts: .max,
+            foregroundBudget: 0.08,
+            attemptTimeout: 0.03
+        )
+        let session = makeMoshSession(transport: transport, policy: policy)
+        let info = makeMoshConnectionInfo()
+        let response = try await makeServerDatagrams(key: info.sessionKey).first!
+        transport.onSend = { transport.yield(response) }
+        try await session.establishUDP(info: info, timeout: 1)
+        transport.onSend = nil
+
+        await session.handleAppResume()
+
+        guard case .unavailable = session.recoveryStatus else {
+            return XCTFail("Expected unavailable recovery status, got \(session.recoveryStatus)")
+        }
+        guard case .error = session.connectionState else {
+            return XCTFail("Expected terminal error state, got \(session.connectionState)")
+        }
+
+        let viewModel = ConnectionViewModel()
+        viewModel.moshSession = session
+        XCTAssertFalse(viewModel.canAcceptTerminalInput)
+        await session.disconnect()
     }
 
     func testAutoTransportMayFallBackWhenMoshServerNeverResponds() {
@@ -940,9 +986,13 @@ final class ConnectionCoordinatorTests: XCTestCase {
         return copy
     }
 
-    private func makeMoshSession(transport: FakeMoshUDPTransport) -> MoshSession {
+    private func makeMoshSession(
+        transport: FakeMoshUDPTransport,
+        policy: ReconnectionPolicy = .mosh
+    ) -> MoshSession {
         MoshSession(
             server: Server(name: "Mosh", hostname: "127.0.0.1", username: "user", transportPolicy: .auto),
+            reconnectionPolicy: policy,
             makeUDPConnection: { _, _ in transport }
         )
     }
@@ -999,22 +1049,17 @@ final class ConnectionCoordinatorTests: XCTestCase {
 private final class FakeMoshUDPTransport: MoshUDPTransport {
     private(set) var isReady = false
     private(set) var sentDatagrams: [Data] = []
+    private(set) var connectCount = 0
     var onSend: (() -> Void)?
+    var connectError: Error?
 
-    private let stream: AsyncStream<Data>
-    private let continuation: AsyncStream<Data>.Continuation
-    private var stateHandler: ((NWConnection.State) -> Void)?
+    private var queuedDatagrams: [Data] = []
+    private var receiveWaiters: [CheckedContinuation<Data, Error>] = []
 
-    init() {
-        let (stream, continuation) = AsyncStream<Data>.makeStream()
-        self.stream = stream
-        self.continuation = continuation
-    }
-
-    func connect(stateHandler: @escaping (NWConnection.State) -> Void) {
-        self.stateHandler = stateHandler
+    func connect() async throws {
+        connectCount += 1
+        if let connectError { throw connectError }
         isReady = true
-        stateHandler(.ready)
     }
 
     func send(_ data: Data) async throws {
@@ -1023,25 +1068,29 @@ private final class FakeMoshUDPTransport: MoshUDPTransport {
         onSend?()
     }
 
-    func receiveStream() -> AsyncStream<Data> {
-        stream
+    func receive() async throws -> Data {
+        guard isReady else { throw MoshUDPError.notConnected }
+        if !queuedDatagrams.isEmpty {
+            return queuedDatagrams.removeFirst()
+        }
+        return try await withCheckedThrowingContinuation { continuation in
+            receiveWaiters.append(continuation)
+        }
     }
 
     func yield(_ data: Data) {
-        continuation.yield(data)
+        if receiveWaiters.isEmpty {
+            queuedDatagrams.append(data)
+        } else {
+            receiveWaiters.removeFirst().resume(returning: data)
+        }
     }
 
     func disconnect() {
-        guard isReady else { return }
         isReady = false
-        continuation.finish()
-        stateHandler?(.cancelled)
-    }
-
-    func reconnect() {
-        guard let stateHandler else { return }
-        isReady = true
-        stateHandler(.ready)
+        let waiters = receiveWaiters
+        receiveWaiters.removeAll()
+        waiters.forEach { $0.resume(throwing: CancellationError()) }
     }
 }
 

@@ -6,6 +6,7 @@ import os.log
 import QuartzCore
 
 private let sspLog = Logger(subsystem: "com.hoshi.app.dev", category: "SSP")
+private let recoveryLog = Logger(subsystem: "com.hoshi.app.dev", category: "ConnectionRecovery")
 
 // Full mosh session: SSH bootstrap -> mosh-server detection/launch -> UDP communication
 @MainActor
@@ -13,6 +14,7 @@ final class MoshSession: ObservableObject {
     private static let inputTraceEnabled = ProcessInfo.processInfo.environment["HOSHI_INPUT_TRACE"] == "1"
     private static let sspTraceEnabled = false
     @Published var connectionState: ConnectionState = .disconnected
+    @Published var recoveryStatus: ConnectionRecoveryStatus = .idle
     @Published var outputBuffer: String = ""
     private var bufferedTerminalOutput = Data()
     private let agentEventDecoder = AgentEventStreamDecoder()
@@ -41,7 +43,16 @@ final class MoshSession: ObservableObject {
     private var networkWatchTask: Task<Void, Never>?
     private var startupProbeTask: Task<Void, Never>?
     private var startupReadinessContinuation: AsyncStream<Void>.Continuation?
-    private var isReconnecting = false
+    private var recoveryTask: Task<Void, Never>?
+    private var recoveryElapsed: TimeInterval = 0
+    private var recoveryStartedAt: Date?
+    private var isAppActive = true
+    private var transportGeneration = UUID()
+    private var udpHost: String?
+    private var udpPort: UInt16?
+    private var pendingTerminalSize: (cols: Int, rows: Int)?
+    private var outboundTask: Task<Void, Never>?
+    private var outboundTaskID: UUID?
 
     // SSP state tracking
     private var localStateNum: UInt64 = 0
@@ -256,27 +267,10 @@ final class MoshSession: ObservableObject {
 
     // Send keystrokes via the SSP protocol over UDP
     func send(_ data: Data) async {
-        do {
-            // Encode as user input protobuf
-            let userInput = MoshUserInput.encodeKeystroke(data)
-
-            // Wrap in a transport instruction
-            var instruction = MoshTransportInstruction()
-            instruction.oldNum = localStateNum
-            localStateNum += 1
-            instruction.newNum = localStateNum
-            instruction.ackNum = remoteStateNum
-            instruction.diff = userInput
-
-            if Self.inputTraceEnabled {
-                let preview = data.prefix(4).map { String(format: "%02x", $0) }.joined(separator: " ")
-                print("[INPUT_TRACE] moshSend state=\(instruction.oldNum)→\(instruction.newNum) ack=\(instruction.ackNum) diffLen=\(userInput.count) preview=\(preview)")
-            }
-
-            try await sendTransportInstruction(instruction)
-        } catch {
-            reportNonFatalError(error, context: "send keystroke")
-        }
+        guard connectionState == .connected, recoveryStatus == .idle else { return }
+        let userInput = MoshUserInput.encodeKeystroke(data)
+        let preview = data.prefix(4).map { String(format: "%02x", $0) }.joined(separator: " ")
+        _ = await sendStatefulDiff(userInput, context: "send keystroke", inputPreview: preview)
     }
 
     // Send a string
@@ -287,30 +281,51 @@ final class MoshSession: ObservableObject {
 
     // Resize the remote terminal
     func resize(cols: Int, rows: Int) async {
-        do {
-            let userInput = MoshUserInput.encodeResize(width: Int32(cols), height: Int32(rows))
-            var instruction = MoshTransportInstruction()
-            instruction.oldNum = localStateNum
-            localStateNum += 1
-            instruction.newNum = localStateNum
-            instruction.ackNum = remoteStateNum
-            instruction.diff = userInput
-            try await sendTransportInstruction(instruction)
-        } catch {
-            reportNonFatalError(error, context: "send resize")
+        pendingTerminalSize = (cols, rows)
+        guard connectionState == .connected, recoveryStatus == .idle else { return }
+        let userInput = MoshUserInput.encodeResize(width: Int32(cols), height: Int32(rows))
+        let sent = await sendStatefulDiff(userInput, context: "send resize")
+        if sent {
+            if pendingTerminalSize?.cols == cols, pendingTerminalSize?.rows == rows {
+                pendingTerminalSize = nil
+            }
         }
     }
 
     // Called when the app returns to foreground to ensure UDP connectivity
     func handleAppResume() async {
+        isAppActive = true
         guard connectionState == .connected || connectionState == .reconnecting else { return }
+        requestRecovery(trigger: "app became active")
+        await recoveryTask?.value
+    }
 
-        // Force a UDP reconnect to re-establish the path after potential iOS suspension
-        await handleNetworkChange()
+    func handleAppBackground() {
+        isAppActive = false
+        pauseRecoveryBudget()
+        recoveryTask?.cancel()
+        outboundTask?.cancel()
+        recoveryTask = nil
+        outboundTask = nil
+        outboundTaskID = nil
+        receiveTask?.cancel()
+        heartbeatTask?.cancel()
+        startupProbeTask?.cancel()
+    }
+
+    func retryRecovery() async {
+        guard connectionState != .disconnected else { return }
+        recoveryElapsed = 0
+        recoveryStartedAt = nil
+        connectionError = nil
+        requestRecovery(trigger: "manual retry")
+        await recoveryTask?.value
     }
 
     // Disconnect everything
     func disconnect() async {
+        isAppActive = false
+        recoveryTask?.cancel()
         receiveTask?.cancel()
         heartbeatTask?.cancel()
         networkWatchTask?.cancel()
@@ -321,6 +336,10 @@ final class MoshSession: ObservableObject {
         networkWatchTask = nil
         startupProbeTask = nil
         startupReadinessContinuation = nil
+        recoveryTask = nil
+        recoveryElapsed = 0
+        recoveryStartedAt = nil
+        recoveryStatus = .idle
 
         udpConnection?.disconnect()
         udpConnection = nil
@@ -354,6 +373,9 @@ final class MoshSession: ObservableObject {
         // Create UDP connection
         let udp = makeUDPConnection(info.serverIP, info.udpPort)
         self.udpConnection = udp
+        udpHost = info.serverIP
+        udpPort = info.udpPort
+        transportGeneration = UUID()
         localStateNum = 0
         remoteStateNum = 0
         needsImmediateAck = false
@@ -369,7 +391,7 @@ final class MoshSession: ObservableObject {
 
         do {
             try await ConnectionDeadline.run(timeout: timeout, phase: .udpConnection) {
-                try await self.waitForUDPSocketReady(udp)
+                try await udp.connect()
                 try Task.checkCancellation()
                 try await self.awaitAuthenticatedServerResponse()
             }
@@ -390,40 +412,15 @@ final class MoshSession: ObservableObject {
         }
 
         connectionState = .connected
+        recoveryStatus = .idle
+        recoveryElapsed = 0
+        recoveryStartedAt = nil
 
         // Start heartbeat to maintain NAT mapping
         startHeartbeat()
 
         // Start network monitoring for auto-reconnect
         startNetworkWatch()
-    }
-
-    private func waitForUDPSocketReady(_ udp: any MoshUDPTransport) async throws {
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                var resumed = false
-                udp.connect { state in
-                    guard !resumed else { return }
-                    switch state {
-                    case .ready:
-                        resumed = true
-                        continuation.resume()
-                    case .failed(let error):
-                        resumed = true
-                        continuation.resume(throwing: error)
-                    case .cancelled:
-                        resumed = true
-                        continuation.resume(throwing: CancellationError())
-                    default:
-                        break
-                    }
-                }
-            }
-        } onCancel: {
-            Task { @MainActor in
-                udp.disconnect()
-            }
-        }
     }
 
     private func awaitAuthenticatedServerResponse() async throws {
@@ -502,11 +499,24 @@ final class MoshSession: ObservableObject {
     // Continuously receive and process incoming datagrams from mosh-server
     private func startReceiveLoop() {
         guard let udpConnection else { return }
+        let generation = transportGeneration
 
         receiveTask = Task { [weak self] in
-            for await datagram in udpConnection.receiveStream() {
-                guard let self, !Task.isCancelled else { break }
-                await self.processDatagram(datagram)
+            while !Task.isCancelled {
+                do {
+                    let datagram = try await udpConnection.receive()
+                    guard let self,
+                          !Task.isCancelled,
+                          self.transportGeneration == generation else { return }
+                    await self.processDatagram(datagram)
+                } catch {
+                    guard let self,
+                          !Task.isCancelled,
+                          self.transportGeneration == generation else { return }
+                    self.reportNonFatalError(error, context: "receive datagram")
+                    self.requestRecovery(trigger: "receive failure", underlyingError: error)
+                    return
+                }
             }
         }
     }
@@ -692,6 +702,8 @@ final class MoshSession: ObservableObject {
                     try await self.sendTransportInstruction(instruction)
                 } catch {
                     self.reportNonFatalError(error, context: "heartbeat")
+                    self.requestRecovery(trigger: "heartbeat failure", underlyingError: error)
+                    return
                 }
             }
         }
@@ -708,54 +720,160 @@ final class MoshSession: ObservableObject {
 
                 if self.networkMonitor.didChangeNetwork {
                     self.networkMonitor.acknowledgeNetworkChange()
-                    await self.handleNetworkChange()
+                    self.requestRecovery(trigger: "network path changed")
                 }
             }
         }
     }
 
-    // Handle network change: reconnect UDP (mosh-server keeps session alive).
-    // Guarded to prevent overlapping calls from scene activation + network change.
-    private func handleNetworkChange() async {
-        guard !isReconnecting else { return }
-        isReconnecting = true
-        defer { isReconnecting = false }
+    private func requestRecovery(trigger: String, underlyingError: Error? = nil) {
+        guard isAppActive,
+              connectionState != .disconnected,
+              recoveryTask == nil else { return }
 
+        if let underlyingError {
+            connectionError = underlyingError
+        }
+        recoveryLog.notice("Mosh recovery requested: \(trigger, privacy: .public)")
         connectionState = .reconnecting
+        recoveryStatus = networkMonitor.isConnected ? .reconnecting : .waitingForNetwork
+        recoveryStartedAt = Date()
 
-        // Cancel the receive loop and discard stale partial fragments
+        recoveryTask = Task { [weak self] in
+            guard let self else { return }
+            await self.runRecoveryLoop()
+            if !Task.isCancelled {
+                self.recoveryTask = nil
+            }
+        }
+    }
+
+    private func runRecoveryLoop() async {
+        transportGeneration = UUID()
+        outboundTask?.cancel()
+        outboundTask = nil
+        outboundTaskID = nil
         receiveTask?.cancel()
+        heartbeatTask?.cancel()
+        startupProbeTask?.cancel()
+        startupReadinessContinuation?.finish()
+        receiveTask = nil
+        heartbeatTask = nil
+        startupProbeTask = nil
+        startupReadinessContinuation = nil
+        udpConnection?.disconnect()
+        udpConnection = nil
         await protocolEngine?.discardIncompleteFragments()
 
-        for attempt in 1...reconnectionPolicy.maximumAttempts {
-            guard !Task.isCancelled else { return }
+        var attempt = 0
+        var lastError: Error = MoshSessionError.udpNotReady
 
+        while isAppActive, !Task.isCancelled, remainingRecoveryBudget > 0 {
             if !networkMonitor.isConnected {
+                recoveryStatus = .waitingForNetwork
                 do {
-                    try await Task.sleep(for: .seconds(reconnectionPolicy.delay(forAttempt: attempt)))
+                    try await Task.sleep(for: .seconds(min(1, remainingRecoveryBudget)))
                 } catch {
+                    pauseRecoveryBudget()
                     return
                 }
                 continue
             }
 
-            udpConnection?.reconnect()
+            recoveryStatus = .reconnecting
+            attempt += 1
+            recoveryLog.notice("Mosh recovery attempt \(attempt, privacy: .public)")
 
             do {
-                try await Task.sleep(for: .seconds(reconnectionPolicy.delay(forAttempt: attempt)))
-                try Task.checkCancellation()
-            } catch {
+                try await attemptMoshRecovery(timeout: min(reconnectionPolicy.attemptTimeout, remainingRecoveryBudget))
+                guard !Task.isCancelled, isAppActive else { return }
+                recoveryElapsed = 0
+                recoveryStartedAt = nil
+                connectionError = nil
+                recoveryStatus = .idle
+                connectionState = .connected
+                startHeartbeat()
+                if let size = pendingTerminalSize {
+                    await resize(cols: size.cols, rows: size.rows)
+                }
+                recoveryLog.notice("Mosh recovery authenticated successfully")
                 return
+            } catch is CancellationError {
+                pauseRecoveryBudget()
+                return
+            } catch {
+                lastError = error
+                connectionError = error
+                reportNonFatalError(error, context: "recovery attempt \(attempt)")
             }
 
-            if udpConnection?.isReady == true {
-                connectionState = .connected
-                startReceiveLoop()
+            let delay = min(reconnectionPolicy.delay(forAttempt: attempt), remainingRecoveryBudget)
+            guard delay > 0 else { break }
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                pauseRecoveryBudget()
                 return
             }
         }
 
-        connectionState = .error("Mosh could not restore its UDP connection. Check network access and retry.")
+        pauseRecoveryBudget()
+        guard isAppActive, !Task.isCancelled else { return }
+        let message = "Mosh could not restore its UDP connection after 60 seconds."
+        recoveryStatus = .unavailable(message)
+        connectionError = lastError
+        connectionState = .error(message)
+        recoveryLog.error("Mosh recovery budget exhausted")
+    }
+
+    private func attemptMoshRecovery(timeout: TimeInterval) async throws {
+        guard timeout > 0,
+              let udpHost,
+              let udpPort,
+              protocolEngine != nil else {
+            throw MoshSessionError.udpNotReady
+        }
+
+        receiveTask?.cancel()
+        startupProbeTask?.cancel()
+        startupReadinessContinuation?.finish()
+        udpConnection?.disconnect()
+
+        let generation = UUID()
+        transportGeneration = generation
+        let udp = makeUDPConnection(udpHost, udpPort)
+        udpConnection = udp
+
+        do {
+            try await ConnectionDeadline.run(timeout: timeout, phase: .udpConnection) {
+                try await udp.connect()
+                try Task.checkCancellation()
+                guard self.transportGeneration == generation else { throw CancellationError() }
+                try await self.awaitAuthenticatedServerResponse()
+            }
+        } catch {
+            if transportGeneration == generation {
+                receiveTask?.cancel()
+                startupProbeTask?.cancel()
+                startupReadinessContinuation?.finish()
+                startupReadinessContinuation = nil
+                udp.disconnect()
+                udpConnection = nil
+            }
+            throw error
+        }
+    }
+
+    private var remainingRecoveryBudget: TimeInterval {
+        let activeElapsed = recoveryStartedAt.map { Date().timeIntervalSince($0) } ?? 0
+        return max(0, reconnectionPolicy.foregroundBudget - recoveryElapsed - activeElapsed)
+    }
+
+    private func pauseRecoveryBudget() {
+        if let recoveryStartedAt {
+            recoveryElapsed += Date().timeIntervalSince(recoveryStartedAt)
+        }
+        recoveryStartedAt = nil
     }
 
     // Detect full-screen repaints by counting erase-to-end-of-line
@@ -794,6 +912,59 @@ final class MoshSession: ObservableObject {
             try await udpConnection.send(datagram)
             debugSendDatagramCount += 1
         }
+    }
+
+    /// Serializes SSP state transitions while dropping any work that belongs to
+    /// a socket generation that has entered recovery. State advances only after
+    /// every datagram for the instruction has been accepted by the UDP transport.
+    private func sendStatefulDiff(
+        _ diff: Data,
+        context: String,
+        inputPreview: String? = nil
+    ) async -> Bool {
+        guard connectionState == .connected, recoveryStatus == .idle else { return false }
+
+        let generation = transportGeneration
+        let previousTask = outboundTask
+        let taskID = UUID()
+        outboundTaskID = taskID
+
+        let task = Task { [weak self] in
+            await previousTask?.value
+            guard let self,
+                  !Task.isCancelled,
+                  self.transportGeneration == generation,
+                  self.connectionState == .connected,
+                  self.recoveryStatus == .idle else { return false }
+
+            var instruction = MoshTransportInstruction()
+            instruction.oldNum = self.localStateNum
+            instruction.newNum = self.localStateNum + 1
+            instruction.ackNum = self.remoteStateNum
+            instruction.diff = diff
+
+            if Self.inputTraceEnabled, let inputPreview {
+                print("[INPUT_TRACE] moshSend state=\(instruction.oldNum)→\(instruction.newNum) ack=\(instruction.ackNum) diffLen=\(diff.count) preview=\(inputPreview)")
+            }
+
+            do {
+                try await self.sendTransportInstruction(instruction)
+                guard self.transportGeneration == generation else { return false }
+                self.localStateNum = instruction.newNum
+                return true
+            } catch {
+                self.reportNonFatalError(error, context: context)
+                self.requestRecovery(trigger: "\(context) failure", underlyingError: error)
+                return false
+            }
+        }
+        outboundTask = Task { _ = await task.value }
+        let sent = await task.value
+        if outboundTaskID == taskID {
+            outboundTask = nil
+            outboundTaskID = nil
+        }
+        return sent
     }
 
     private func reportNonFatalError(_ error: Error, context: String) {

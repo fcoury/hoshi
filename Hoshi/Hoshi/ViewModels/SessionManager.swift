@@ -115,6 +115,9 @@ final class SessionManager {
 
     // Capture thumbnail of the active session when entering background
     func handleSceneBackground() {
+        for session in sessions {
+            session.connectionVM.handleSceneBackground()
+        }
         if let current = activeSession {
             current.redactThumbnail()
         }

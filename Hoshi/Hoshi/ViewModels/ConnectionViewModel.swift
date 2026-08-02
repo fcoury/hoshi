@@ -46,10 +46,13 @@ final class ConnectionViewModel {
     // don't trigger @Observable updates. This stored property is synced via
     // a Combine subscription so SwiftUI sees changes.
     private(set) var currentSessionState: ConnectionState = .disconnected
+    private(set) var currentRecoveryStatus: ConnectionRecoveryStatus = .idle
 
     // Combine subscription that forwards session state changes
     @ObservationIgnored
     private var sessionStateCancellable: AnyCancellable?
+    @ObservationIgnored
+    private var recoveryStatusCancellable: AnyCancellable?
     @ObservationIgnored
     private var coordinator: ConnectionCoordinator?
     @ObservationIgnored
@@ -62,28 +65,50 @@ final class ConnectionViewModel {
         return currentSessionState
     }
 
+    var recoveryStatus: ConnectionRecoveryStatus {
+        currentRecoveryStatus
+    }
+
+    var canAcceptTerminalInput: Bool {
+        connectionState == .connected && recoveryStatus == .idle
+    }
+
     // Subscribe to the active session's @Published connectionState and
     // mirror it into currentSessionState so @Observable can track it.
     private func bindSessionState() {
         sessionStateCancellable?.cancel()
         sessionStateCancellable = nil
+        recoveryStatusCancellable?.cancel()
+        recoveryStatusCancellable = nil
 
         if showTmuxPicker {
             currentSessionState = .connecting
+            currentRecoveryStatus = .idle
         } else if let moshSession {
             currentSessionState = moshSession.connectionState
+            currentRecoveryStatus = moshSession.recoveryStatus
             sessionStateCancellable = moshSession.$connectionState
                 .sink { [weak self] state in
                     self?.currentSessionState = state
                 }
+            recoveryStatusCancellable = moshSession.$recoveryStatus
+                .sink { [weak self] status in
+                    self?.currentRecoveryStatus = status
+                }
         } else if let sshSession {
             currentSessionState = sshSession.connectionState
+            currentRecoveryStatus = sshSession.recoveryStatus
             sessionStateCancellable = sshSession.$connectionState
                 .sink { [weak self] state in
                     self?.currentSessionState = state
                 }
+            recoveryStatusCancellable = sshSession.$recoveryStatus
+                .sink { [weak self] status in
+                    self?.currentRecoveryStatus = status
+                }
         } else {
             currentSessionState = .disconnected
+            currentRecoveryStatus = .idle
         }
         bindAgentEvents()
     }
@@ -130,7 +155,7 @@ final class ConnectionViewModel {
     func withVerifiedFileTransferClient<Result: Sendable>(
         _ operation: @escaping @Sendable (SSHClient) async throws -> Result
     ) async throws -> Result {
-        guard connectionState == .connected else { throw FileUploadError.disconnected }
+        guard canAcceptTerminalInput else { throw FileUploadError.disconnected }
 
         if let client = sshSession?.client {
             return try await operation(client)
@@ -206,6 +231,7 @@ final class ConnectionViewModel {
 
     // Send raw keystroke bytes to the active session
     func sendBytes(_ bytes: ArraySlice<UInt8>) async {
+        guard canAcceptTerminalInput else { return }
         let data = Data(bytes)
         if let moshSession { await moshSession.send(data) }
         else if let sshSession { await sshSession.send(data) }
@@ -332,11 +358,51 @@ final class ConnectionViewModel {
         if let sshSession {
             // If the SSH session silently died while backgrounded, trigger reconnect.
             // Don't reconnect if the user typed 'exit' — that's an intentional end.
-            if sshSession.connectionState == .disconnected && !sshSession.sessionEndedNormally {
+            if (sshSession.connectionState == .disconnected || sshSession.connectionState == .reconnecting)
+                && !sshSession.sessionEndedNormally {
                 Task {
                     await sshSession.reconnect()
                 }
             }
+        }
+    }
+
+    func handleSceneBackground() {
+        moshSession?.handleAppBackground()
+        sshSession?.handleAppBackground()
+    }
+
+    func retryConnection() async {
+        if let moshSession {
+            await moshSession.retryRecovery()
+        } else if let sshSession {
+            await sshSession.retryRecovery()
+        }
+    }
+
+    func restartConnection() async {
+        guard let server = pendingServer ?? moshSession?.server ?? sshSession?.server else { return }
+        let password = pendingPassword
+        let keyTag = pendingKeyTag ?? server.keyID
+
+        connectionGeneration = nil
+        connectionTask?.cancel()
+        connectionTask = nil
+        await coordinator?.cancel()
+        coordinator = nil
+        await moshSession?.disconnect()
+        await sshSession?.disconnect()
+        moshSession = nil
+        sshSession = nil
+
+        await connect(server: server, password: password, keyTag: keyTag)
+    }
+
+    func presentRecoveryDetails() {
+        if let error = moshSession?.connectionError ?? sshSession?.connectionError {
+            presentConnectionError(error)
+        } else if case .unavailable(let message) = recoveryStatus {
+            presentConnectionError(ErrorMessageFailure(message: message))
         }
     }
 
@@ -368,12 +434,14 @@ final class ConnectionViewModel {
 
     // Send data to the active session
     func send(_ data: Data) async {
+        guard canAcceptTerminalInput else { return }
         if let moshSession { await moshSession.send(data) }
         else if let sshSession { await sshSession.send(data) }
     }
 
     // Send a string to the active session
     func sendString(_ string: String) async {
+        guard canAcceptTerminalInput else { return }
         if let moshSession { await moshSession.sendString(string) }
         else if let sshSession { await sshSession.sendString(string) }
     }

@@ -205,7 +205,27 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertEqual(geometry.rows, 41)
         XCTAssertEqual(geometry.snappedWidthPixels, 1_152)
         XCTAssertEqual(geometry.snappedHeightPixels, 2_091)
+        XCTAssertEqual(geometry.centeredOrigin, CGPoint(x: 3, y: 2))
+        XCTAssertEqual(geometry.centeredFrame, CGRect(x: 3, y: 2, width: 384, height: 697))
         XCTAssertEqual(geometry.snappedSize.height, 697)
+    }
+
+    func testViewportBalancesRemainderAroundCenteredGridAtPixelBoundaries() throws {
+        let geometry = try XCTUnwrap(TerminalViewportGeometry(
+            bounds: CGSize(width: 100, height: 100),
+            displayScale: 3,
+            cellWidthPixels: 29,
+            cellHeightPixels: 43
+        ))
+
+        let leftPixels = Int((geometry.centeredFrame.minX * geometry.displayScale).rounded())
+        let topPixels = Int((geometry.centeredFrame.minY * geometry.displayScale).rounded())
+        let rightPixels = geometry.widthPixels - geometry.snappedWidthPixels - leftPixels
+        let bottomPixels = geometry.heightPixels - geometry.snappedHeightPixels - topPixels
+
+        XCTAssertLessThanOrEqual(abs(leftPixels - rightPixels), 1)
+        XCTAssertLessThanOrEqual(abs(topPixels - bottomPixels), 1)
+        XCTAssertEqual(geometry.centeredFrame.size, geometry.snappedSize)
     }
 
     func testKeyboardShowingReducesRowsAndHidingRestoresThem() throws {
@@ -327,6 +347,18 @@ final class TerminalInteractionTests: XCTestCase {
         ), 0)
     }
 
+    func testOnlyActiveKeyboardDismissalsChangeTheUserPreference() {
+        XCTAssertTrue(TerminalApplicationLifecycle.shouldRecordKeyboardDismissal(
+            applicationState: .active
+        ))
+        XCTAssertFalse(TerminalApplicationLifecycle.shouldRecordKeyboardDismissal(
+            applicationState: .inactive
+        ))
+        XCTAssertFalse(TerminalApplicationLifecycle.shouldRecordKeyboardDismissal(
+            applicationState: .background
+        ))
+    }
+
     func testDefaultToolbarContainsPaste() {
         XCTAssertTrue(ToolbarButton.defaultButtons.contains(.paste))
     }
@@ -344,14 +376,14 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertEqual(ToolbarConfigurationService.shared.loadButtons(), [.ctrl, .arrowUp])
     }
 
-    func testSelectionAddsCopyImmediatelyBeforePaste() {
+    func testSelectionAddsCopyAtFrontOfToolbar() {
         let toolbar = KeyboardToolbarAccessoryView(buttons: [.ctrl, .paste])
 
         XCTAssertEqual(toolbar.displayedButtons, [.ctrl, .paste])
 
         toolbar.setSelectionAvailable(true)
 
-        XCTAssertEqual(toolbar.displayedButtons, [.ctrl, .copy, .paste])
+        XCTAssertEqual(toolbar.displayedButtons, [.copy, .ctrl, .paste])
 
         toolbar.setSelectionAvailable(false)
 
@@ -442,10 +474,11 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertTrue(toolbar.activeModifiers.isEmpty)
     }
 
-    func testToolbarMeetsMinimumTouchHeightAndAccessibleLabels() {
+    func testToolbarUsesCompactHeightWithMinimumTouchTargetsAndAccessibleLabels() {
         let toolbar = KeyboardToolbarAccessoryView(buttons: ToolbarButton.defaultButtons)
 
-        XCTAssertGreaterThanOrEqual(toolbar.intrinsicContentSize.height, 44)
+        XCTAssertEqual(toolbar.intrinsicContentSize.height, 44)
+        XCTAssertEqual(KeyboardToolbarAccessoryView.buttonVisualHeight, 36)
         XCTAssertEqual(ToolbarButton.arrowUp.accessibilityLabel, "Up arrow")
         XCTAssertEqual(ToolbarButton.ctrlB.accessibilityLabel, "Control B, tmux prefix")
     }
@@ -472,6 +505,19 @@ final class TerminalInteractionTests: XCTestCase {
 
         surface.setKeyboardVisible(true)
         XCTAssertTrue(surface.isKeyboardVisible)
+    }
+
+    func testTerminalCanRestoreInputFocusAfterAnInteractionTakesIt() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let controller = UIViewController()
+        let surface = GhosttyTerminalSurfaceView(app: nil, fontSize: 14, keyboardVisible: true)
+        controller.view = surface
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        XCTAssertTrue(surface.restoreInputFocus())
+        XCTAssertTrue(surface.isFirstResponder)
     }
 
     func testSoftwareKeyboardInputUsesTerminalNewlinesAndStickyModifiers() {
@@ -681,6 +727,23 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertTrue(pasteboard.string?.contains("hello from the remote terminal") == true)
         XCTAssertTrue(surface.toolbarAccessory.selectionAvailable)
         XCTAssertTrue(surface.toolbarAccessory.displayedButtons.contains(.copy))
+    }
+
+    func testTypingClearsLiveSelectionAndRestoresToolbarState() throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.writeRemoteOutput(Array("selected terminal output".utf8))
+        var sent: [Data] = []
+        surface.onInputData = { sent.append($0) }
+
+        surface.selectAll(nil)
+        XCTAssertTrue(surface.hasSelection())
+        XCTAssertTrue(surface.toolbarAccessory.selectionAvailable)
+
+        surface.insertText("x")
+
+        XCTAssertFalse(surface.hasSelection())
+        XCTAssertFalse(surface.toolbarAccessory.selectionAvailable)
+        XCTAssertEqual(sent, [Data("x".utf8)])
     }
 
     func testDeniedRemoteClipboardPoliciesDoNotBlockIntentionalLocalCopy() throws {

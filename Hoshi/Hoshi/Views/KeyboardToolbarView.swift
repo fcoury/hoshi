@@ -16,7 +16,8 @@ enum ClipboardAction: Equatable {
 /// xterm conventions: escape sequences get `;{code}` inserted, single bytes get
 /// Ctrl masking / Shift casing / Opt ESC-prefixing.
 class KeyboardToolbarAccessoryView: UIView {
-    static let preferredHeight: CGFloat = 52
+    static let preferredHeight: CGFloat = 44
+    static let buttonVisualHeight: CGFloat = 36
 
     private var hostingController: UIHostingController<KeyboardToolbarContent>?
 
@@ -108,8 +109,7 @@ class KeyboardToolbarAccessoryView: UIView {
         }
 
         var result = buttons
-        let insertionIndex = result.firstIndex(where: { $0.id == ToolbarButton.paste.id }) ?? result.endIndex
-        result.insert(.copy, at: insertionIndex)
+        result.insert(.copy, at: result.startIndex)
         return result
     }
 
@@ -120,6 +120,7 @@ class KeyboardToolbarAccessoryView: UIView {
     private func setupHostingController() {
         let content = makeContent()
         let hosting = UIHostingController(rootView: content)
+        hosting.safeAreaRegions = []
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
         hosting.view.backgroundColor = .clear
         addSubview(hosting.view)
@@ -306,7 +307,7 @@ struct KeyboardToolbarContent: View {
         HStack(spacing: 0) {
             // Scrollable button row
             ScrollView(.horizontal) {
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     ForEach(buttons) { button in
                         if ToolbarButton.swipeButtonIDs.contains(button.id) {
                             swipeButton(button)
@@ -315,23 +316,25 @@ struct KeyboardToolbarContent: View {
                         }
                     }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 6)
             }
             .scrollIndicators(.hidden)
 
             // Edit button (gear icon) pinned to trailing edge
             Divider()
-                .frame(height: 24)
-                .padding(.horizontal, 4)
+                .frame(height: 20)
+                .padding(.horizontal, 2)
 
             Button(action: onEditTap) {
                 Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 14))
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
-                    .frame(width: 44, height: 44)
+                    .frame(width: KeyboardToolbarAccessoryView.buttonVisualHeight,
+                           height: KeyboardToolbarAccessoryView.buttonVisualHeight)
             }
+            .frame(width: 44, height: 44)
+            .contentShape(.rect)
             .accessibilityLabel("Customize keyboard toolbar")
-            .padding(.trailing, 4)
         }
         .frame(height: KeyboardToolbarAccessoryView.preferredHeight)
         .background(SwiftUI.Color(AppearanceSettings.shared.currentTheme.chromeSurface))
@@ -360,26 +363,29 @@ struct KeyboardToolbarContent: View {
                     Text(button.label)
                 }
             }
-                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(isHighlighted
                     ? SwiftUI.Color(AppearanceSettings.shared.currentTheme.background)
                     : SwiftUI.Color(AppearanceSettings.shared.currentTheme.foreground))
-                .frame(minWidth: 44, minHeight: 44)
-                .padding(.horizontal, 10)
+                .frame(minWidth: KeyboardToolbarAccessoryView.buttonVisualHeight,
+                       minHeight: KeyboardToolbarAccessoryView.buttonVisualHeight)
+                .padding(.horizontal, 6)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: 5)
                         .fill(isHighlighted
                             ? SwiftUI.Color(AppearanceSettings.shared.currentTheme.foreground)
                             : SwiftUI.Color(AppearanceSettings.shared.currentTheme.cardSurface))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: 5)
                         .strokeBorder(SwiftUI.Color(AppearanceSettings.shared.currentTheme.separator), lineWidth: 0.5)
                 )
                 // Scale bounce on modifier toggle
-                .scaleEffect(isHighlighted ? 1.1 : 1.0)
+                .scaleEffect(isHighlighted ? 1.06 : 1.0)
                 .animation(.spring(duration: 0.15, bounce: 0.4), value: isHighlighted)
         }
+        .frame(minHeight: 44)
+        .contentShape(.rect)
         .disabled(!isEnabled)
         .accessibilityLabel(button.accessibilityLabel)
         .accessibilityValue(isModifier ? (isHighlighted ? "Active" : "Inactive") : "")
@@ -423,21 +429,23 @@ private struct SwipeArrowButton: View {
 
     var body: some View {
         Text(label)
-            .font(.system(size: 14, weight: .medium, design: .monospaced))
+            .font(.system(size: 13, weight: .medium, design: .monospaced))
             .foregroundStyle(isDragging
                 ? SwiftUI.Color(AppearanceSettings.shared.currentTheme.background)
                 : SwiftUI.Color(AppearanceSettings.shared.currentTheme.foreground))
-            .frame(width: 50, height: 44)
+            .frame(width: 44, height: KeyboardToolbarAccessoryView.buttonVisualHeight)
             .background(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: 5)
                     .fill(isDragging
                         ? SwiftUI.Color(AppearanceSettings.shared.currentTheme.foreground)
                         : SwiftUI.Color(AppearanceSettings.shared.currentTheme.cardSurface))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: 5)
                     .strokeBorder(SwiftUI.Color(AppearanceSettings.shared.currentTheme.separator), lineWidth: 0.5)
             )
+            .frame(minHeight: 44)
+            .contentShape(.rect)
             .gesture(
                 DragGesture(minimumDistance: 5)
                     .onChanged { value in

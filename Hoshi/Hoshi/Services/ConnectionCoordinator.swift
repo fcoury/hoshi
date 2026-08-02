@@ -407,7 +407,7 @@ final class ConnectionCoordinator {
 
         if let sshSession {
             sshSession.initialCommand = command
-            await sshSession.openTerminal()
+            try await sshSession.openTerminal()
             return .connected
         }
 

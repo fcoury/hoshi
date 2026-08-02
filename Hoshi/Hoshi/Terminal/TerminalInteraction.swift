@@ -317,6 +317,18 @@ struct TerminalViewportGeometry: Equatable {
             height: CGFloat(snappedHeightPixels) / displayScale
         )
     }
+
+    /// Pixel-aligned origin that balances incomplete-cell space across both edges.
+    var centeredOrigin: CGPoint {
+        CGPoint(
+            x: CGFloat((widthPixels - snappedWidthPixels) / 2) / displayScale,
+            y: CGFloat((heightPixels - snappedHeightPixels) / 2) / displayScale
+        )
+    }
+
+    var centeredFrame: CGRect {
+        CGRect(origin: centeredOrigin, size: snappedSize)
+    }
 }
 
 enum TerminalKeyboardGeometry {
@@ -330,5 +342,11 @@ enum TerminalKeyboardGeometry {
         }
 
         return intersection.height
+    }
+}
+
+enum TerminalApplicationLifecycle {
+    static func shouldRecordKeyboardDismissal(applicationState: UIApplication.State) -> Bool {
+        applicationState == .active
     }
 }

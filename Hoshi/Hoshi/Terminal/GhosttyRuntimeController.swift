@@ -149,6 +149,25 @@ final class GhosttyRuntimeController: ObservableObject {
             GhosttyTerminalSurfaceView.updateScrollbar(for: surface, total: sb.total, offset: sb.offset, len: sb.len)
             return true
 
+        case GHOSTTY_ACTION_COLOR_CHANGE:
+            guard target.tag == GHOSTTY_TARGET_SURFACE,
+                  let surface = target.target.surface
+            else {
+                return true
+            }
+
+            let change = action.action.color_change
+            guard change.kind == GHOSTTY_ACTION_COLOR_KIND_BACKGROUND else {
+                return true
+            }
+            GhosttyTerminalSurfaceView.updateBackgroundColor(
+                for: surface,
+                red: change.r,
+                green: change.g,
+                blue: change.b
+            )
+            return true
+
         default:
             return false
         }

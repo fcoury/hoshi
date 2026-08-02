@@ -242,6 +242,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
     private var lastGridSize: (cols: Int, rows: Int) = (0, 0)
     private var pendingPanScrollLines: CGFloat = 0
     private var snappedRenderSize: CGSize = .zero
+    private var snappedRenderOrigin: CGPoint = .zero
     private weak var renderLayer: CALayer?
     private var recentDirectInputs: [(canonical: Data, time: CFTimeInterval)] = []
     private let mirroredInputWindow: CFTimeInterval = 0.08
@@ -252,7 +253,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
     private let pressInsertOverlap: CFTimeInterval = 0.05
     private var lastAppliedSettingsHash: Int = 0
     private var pendingFocusRetryWorkItem: DispatchWorkItem?
-    private var pendingKeyboardLayoutWorkItem: DispatchWorkItem?
+    private var pendingKeyboardLayoutWorkItems: [DispatchWorkItem] = []
     private var lastSurfacePixelSize: CGSize = .zero
     private var lastContentScale: CGFloat = 0
     private var selectionModifiers: ghostty_input_mods_e = GHOSTTY_MODS_NONE
@@ -323,7 +324,10 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
 
         super.init(frame: .zero)
 
-        backgroundColor = AppearanceSettings.shared.currentTheme.background
+        let appearance = AppearanceSettings.shared
+        backgroundColor = appearance.currentTheme.background.withAlphaComponent(
+            CGFloat(appearance.backgroundOpacity)
+        )
         clipsToBounds = true
         isAccessibilityElement = true
         accessibilityLabel = "Terminal"
@@ -362,6 +366,18 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
             self,
             selector: #selector(handleKeyboardDidHide(_:)),
             name: UIResponder.keyboardDidHideNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleApplicationDidBecomeActive(_:)),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleApplicationWillResignActive(_:)),
+            name: UIApplication.willResignActiveNotification,
             object: nil
         )
 
@@ -413,7 +429,8 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
 
     deinit {
         pendingFocusRetryWorkItem?.cancel()
-        pendingKeyboardLayoutWorkItem?.cancel()
+        pendingKeyboardLayoutWorkItems.forEach { $0.cancel() }
+        pendingKeyboardLayoutWorkItems.removeAll()
         NotificationCenter.default.removeObserver(self)
         scrollbarFadeTimer?.invalidate()
         scrollbarOverlay.removeFromSuperview()
@@ -460,7 +477,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
     override func selectAll(_ sender: Any?) {
         guard let surface else { return }
         performBindingAction("select_all", on: surface)
-        updateSelectionAffordances(showMenu: true)
+        updateSelectionAffordances()
     }
 
     // Ghostty's current iOS Metal path sends addSublayer: to the provided UIView.
@@ -471,7 +488,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         // never extends beyond the grid. Fall back to full bounds before
         // cell metrics have been computed.
         let frame = snappedRenderSize != .zero
-            ? CGRect(origin: .zero, size: snappedRenderSize)
+            ? CGRect(origin: snappedRenderOrigin, size: snappedRenderSize)
             : CGRect(origin: .zero, size: layer.bounds.size)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -673,22 +690,67 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
 
     @objc private func handleKeyboardDidHide(_ notification: Notification) {
         guard window != nil else { return }
-        onKeyboardVisibilityChanged?(false)
+
+        // iOS also hides the keyboard while the app is becoming inactive. That
+        // is temporary and must not overwrite the user's keyboard preference.
+        if TerminalApplicationLifecycle.shouldRecordKeyboardDismissal(
+            applicationState: UIApplication.shared.applicationState
+        ) {
+            onKeyboardVisibilityChanged?(false)
+        }
         scheduleKeyboardLayoutUpdate(after: 0)
     }
 
-    private func scheduleKeyboardLayoutUpdate(after duration: TimeInterval) {
-        pendingKeyboardLayoutWorkItem?.cancel()
+    @objc private func handleApplicationWillResignActive(_ notification: Notification) {
+        pendingFocusRetryWorkItem?.cancel()
+        pendingFocusRetryWorkItem = nil
+        guard let surface else { return }
+        ghostty_surface_set_occlusion(surface, false)
+    }
 
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.pendingKeyboardLayoutWorkItem = nil
-            self.setNeedsLayout()
-            self.layoutIfNeeded()
-            self.updateSurfaceSizeIfNeeded(forceResizeSignal: true)
+    @objc private func handleApplicationDidBecomeActive(_ notification: Notification) {
+        guard window != nil else { return }
+
+        if let surface {
+            ghostty_surface_set_occlusion(surface, true)
         }
-        pendingKeyboardLayoutWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, duration), execute: workItem)
+
+        // Foregrounding and keyboard transitions both update SwiftUI safe-area
+        // layout asynchronously. Run an immediate pass and a settled pass so
+        // the Metal viewport always catches the final UIView bounds.
+        scheduleKeyboardLayoutUpdate(after: 0)
+
+        guard isKeyboardVisible else { return }
+        if isFirstResponder {
+            reloadInputViews()
+            updateSurfaceFocus()
+        } else {
+            scheduleFocusAcquisition()
+        }
+    }
+
+    private func scheduleKeyboardLayoutUpdate(after duration: TimeInterval) {
+        pendingKeyboardLayoutWorkItems.forEach { $0.cancel() }
+        pendingKeyboardLayoutWorkItems.removeAll()
+
+        let firstDelay = max(0, duration)
+        let delays = [firstDelay, firstDelay + 0.12]
+
+        pendingKeyboardLayoutWorkItems = delays.map { delay in
+            let workItem = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.superview?.setNeedsLayout()
+                self.superview?.layoutIfNeeded()
+                self.setNeedsLayout()
+                self.layoutIfNeeded()
+                self.updateSurfaceSizeIfNeeded(forceResizeSignal: true)
+                if let surface = self.surface {
+                    ghostty_surface_refresh(surface)
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+            return workItem
+        }
     }
 
     func reloadToolbarButtons() {
@@ -718,7 +780,9 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         ghostty_surface_set_color_scheme(surface, scheme)
 
         // Update background color to match theme
-        backgroundColor = settings.currentTheme.background
+        backgroundColor = settings.currentTheme.background.withAlphaComponent(
+            CGFloat(settings.backgroundOpacity)
+        )
     }
 
     // Snapshot the terminal for thumbnail use, downscaled to ~400pt wide
@@ -953,6 +1017,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
             bracketedPasteEnabled: ghostty_surface_bracketed_paste_enabled(surface)
         )
         guard assessment.requiresConfirmation else {
+            clearSelectionForInput()
             performBindingAction("paste_from_clipboard", on: surface)
             return
         }
@@ -963,6 +1028,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
             assessment: assessment
         ) { [weak self] approved in
             guard approved, let self, let surface = self.surface else { return }
+            self.clearSelectionForInput()
             content.withCString { text in
                 ghostty_surface_text(surface, text, UInt(content.utf8.count))
             }
@@ -1026,6 +1092,16 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         selectionRect() ?? CGRect(origin: configuration.sourcePoint, size: .zero)
     }
 
+    func editMenuInteraction(
+        _ interaction: UIEditMenuInteraction,
+        willDismissMenuFor configuration: UIEditMenuConfiguration,
+        animator: UIEditMenuInteractionAnimating
+    ) {
+        animator.addCompletion { [weak self] in
+            self?.restoreInputFocus()
+        }
+    }
+
     private func presentEditMenu(at point: CGPoint? = nil) {
         guard window != nil else { return }
         let source = point ?? selectionRect().map { CGPoint(x: $0.midX, y: $0.minY) }
@@ -1048,8 +1124,14 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         }
 
         let scale = max(1, window?.screen.scale ?? traitCollection.displayScale)
-        let topLeft = CGPoint(x: selected.tl_px_x / scale, y: selected.tl_px_y / scale)
-        let bottomRight = CGPoint(x: selected.br_px_x / scale, y: selected.br_px_y / scale)
+        let topLeft = viewPoint(fromSurfacePoint: CGPoint(
+            x: selected.tl_px_x / scale,
+            y: selected.tl_px_y / scale
+        ))
+        let bottomRight = viewPoint(fromSurfacePoint: CGPoint(
+            x: selected.br_px_x / scale,
+            y: selected.br_px_y / scale
+        ))
         let cellHeight = CGFloat(ghostty_surface_size(surface).cell_height_px) / scale
 
         selectionAnchor = topLeft
@@ -1062,7 +1144,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         )
     }
 
-    private func updateSelectionAffordances(showMenu: Bool = false) {
+    private func updateSelectionAffordances() {
         let selected = hasSelection()
         toolbarAccessory.setSelectionAvailable(selected)
 
@@ -1096,9 +1178,6 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         }
 
         updateSelectionHandleFrames()
-        if showMenu {
-            presentEditMenu()
-        }
     }
 
     private func updateSelectionHandleFrames() {
@@ -1133,8 +1212,8 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
             return
         }
 
-        let start = isStart ? point : fixedPoint
-        let end = isStart ? fixedPoint : point
+        let start = surfacePoint(fromViewPoint: isStart ? point : fixedPoint)
+        let end = surfacePoint(fromViewPoint: isStart ? fixedPoint : point)
         let modifiers = ghostty_surface_mouse_captured(surface) ? GHOSTTY_MODS_SHIFT : GHOSTTY_MODS_NONE
 
         ghostty_surface_mouse_pos(surface, start.x, start.y, modifiers)
@@ -1174,6 +1253,30 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         }
     }
 
+    static func updateBackgroundColor(
+        for surface: ghostty_surface_t,
+        red: UInt8,
+        green: UInt8,
+        blue: UInt8
+    ) {
+        let ptr = UnsafeRawPointer(surface)
+
+        registryLock.lock()
+        let view = surfaceRegistry[ptr]?.view
+        registryLock.unlock()
+
+        guard let view else { return }
+        DispatchQueue.main.async {
+            let alpha = CGFloat(AppearanceSettings.shared.backgroundOpacity)
+            view.backgroundColor = UIColor(
+                red: CGFloat(red) / 255,
+                green: CGFloat(green) / 255,
+                blue: CGFloat(blue) / 255,
+                alpha: alpha
+            )
+        }
+    }
+
     static func updateScrollbar(for surface: ghostty_surface_t, total: UInt64, offset: UInt64, len: UInt64) {
         let ptr = UnsafeRawPointer(surface)
 
@@ -1197,6 +1300,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
 
         let trackInset: CGFloat = 4
         let scrollbarWidth: CGFloat = 3
+        let contentWidth = snappedRenderSize.width > 0 ? snappedRenderSize.width : frame.width
         let contentHeight = snappedRenderSize.height > 0 ? snappedRenderSize.height : frame.height
         let trackHeight = max(1, contentHeight - trackInset * 2)
 
@@ -1205,8 +1309,8 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
 
         // Position in superview coordinates
         scrollbarOverlay.frame = CGRect(
-            x: frame.maxX - scrollbarWidth - 2,
-            y: frame.minY + thumbY,
+            x: frame.minX + snappedRenderOrigin.x + contentWidth - scrollbarWidth - 2,
+            y: frame.minY + snappedRenderOrigin.y + thumbY,
             width: scrollbarWidth,
             height: thumbHeight
         )
@@ -1319,14 +1423,15 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         }
 
         let snapped = geometry?.snappedSize ?? CGSize(width: targetPixels.width / scale, height: targetPixels.height / scale)
-        if snapped != snappedRenderSize {
-            snappedRenderSize = snapped
-        }
+        let origin = geometry?.centeredOrigin ?? .zero
+        if snapped != snappedRenderSize { snappedRenderSize = snapped }
+        if origin != snappedRenderOrigin { snappedRenderOrigin = origin }
 
-        if let renderLayer, renderLayer.frame.size != snapped {
+        let renderFrame = CGRect(origin: origin, size: snapped)
+        if let renderLayer, renderLayer.frame != renderFrame {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
-            renderLayer.frame = CGRect(origin: .zero, size: snapped)
+            renderLayer.frame = renderFrame
             CATransaction.commit()
         }
 
@@ -1376,8 +1481,33 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
+    @discardableResult
+    func restoreInputFocus() -> Bool {
+        guard isKeyboardVisible, window != nil else { return false }
+
+        pendingFocusRetryWorkItem?.cancel()
+        pendingFocusRetryWorkItem = nil
+
+        if !isFirstResponder {
+            _ = becomeFirstResponder()
+        }
+        updateSurfaceFocus()
+
+        if !isFirstResponder {
+            scheduleFocusAcquisition(attempt: 1)
+        }
+        return isFirstResponder
+    }
+
+    private func clearSelectionForInput() {
+        guard let surface, ghostty_surface_clear_selection(surface) else { return }
+        updateSelectionAffordances()
+    }
+
     private func sendInputData(_ data: Data) {
         guard !data.isEmpty else { return }
+
+        clearSelectionForInput()
 
         // Snap viewport to bottom on any user keystroke
         if let surface {
@@ -1537,15 +1667,32 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         return data
     }
 
+    private var renderFrame: CGRect {
+        snappedRenderSize == .zero
+            ? bounds
+            : CGRect(origin: snappedRenderOrigin, size: snappedRenderSize)
+    }
+
+    private func surfacePoint(fromViewPoint point: CGPoint) -> CGPoint {
+        let frame = renderFrame
+        return CGPoint(
+            x: (point.x - frame.minX).clamped(to: 0...max(0, frame.width)),
+            y: (point.y - frame.minY).clamped(to: 0...max(0, frame.height))
+        )
+    }
+
+    private func viewPoint(fromSurfacePoint point: CGPoint) -> CGPoint {
+        CGPoint(x: point.x + renderFrame.minX, y: point.y + renderFrame.minY)
+    }
+
     // MARK: - Gesture → Ghostty Mouse/Scroll Events
 
     // Tap sends a click at the tap location for mouse-aware apps (vim, htop, URLs)
     @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
         guard let surface else { return }
-        if hasSelection() {
-            updateSelectionAffordances()
-        }
-        let pos = gesture.location(in: self)
+        editMenuInteraction?.dismissMenu()
+        restoreInputFocus()
+        let pos = surfacePoint(fromViewPoint: gesture.location(in: self))
         ghostty_surface_mouse_pos(surface, pos.x, pos.y, GHOSTTY_MODS_NONE)
         ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
         ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE)
@@ -1554,6 +1701,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
 
     @objc private func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
         guard gesture.state == .ended else { return }
+        restoreInputFocus()
         performDoubleTapAction(at: gesture.location(in: self))
     }
 
@@ -1574,12 +1722,13 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         guard let surface else { return }
         let modifiers = ghostty_surface_mouse_captured(surface) ? GHOSTTY_MODS_SHIFT : GHOSTTY_MODS_NONE
 
-        ghostty_surface_mouse_pos(surface, point.x, point.y, modifiers)
+        let localPoint = surfacePoint(fromViewPoint: point)
+        ghostty_surface_mouse_pos(surface, localPoint.x, localPoint.y, modifiers)
         for _ in 0..<2 {
             ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, modifiers)
             ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, modifiers)
         }
-        updateSelectionAffordances(showMenu: true)
+        updateSelectionAffordances()
     }
 
     @objc private func handleTwoFingerTap(_ gesture: UITapGestureRecognizer) {
@@ -1651,10 +1800,11 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
     // Long press + drag for mouse selection in terminal apps
     @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
         guard let surface else { return }
-        let pos = gesture.location(in: self)
+        let pos = surfacePoint(fromViewPoint: gesture.location(in: self))
 
         switch gesture.state {
         case .began:
+            restoreInputFocus()
             selectionModifiers = ghostty_surface_mouse_captured(surface) ? GHOSTTY_MODS_SHIFT : GHOSTTY_MODS_NONE
             editMenuInteraction?.dismissMenu()
             ghostty_surface_mouse_pos(surface, pos.x, pos.y, selectionModifiers)
@@ -1664,7 +1814,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         case .ended:
             ghostty_surface_mouse_pos(surface, pos.x, pos.y, selectionModifiers)
             ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, selectionModifiers)
-            updateSelectionAffordances(showMenu: true)
+            updateSelectionAffordances()
             if hasSelection() {
                 HapticService.selection()
             }

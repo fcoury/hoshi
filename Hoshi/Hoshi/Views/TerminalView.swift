@@ -12,8 +12,8 @@ import UIKit
 /// - **Banners** slide in as floating pills for reconnecting/disconnected states.
 /// - **Haptic feedback** fires on every state transition (success, warning, error).
 ///
-/// The view auto-dismisses when the connection drops from a previously-connected
-/// state (e.g. user typed `exit`), returning the user to the server list.
+/// The view auto-dismisses only when the remote shell exits normally. Recoverable
+/// connection failures stay on-screen so the user can retry without losing context.
 struct TerminalView: View {
     @Bindable var connectionVM: ConnectionViewModel
     var managedSession: ManagedSession?
@@ -78,14 +78,7 @@ struct TerminalView: View {
             // Status bar
             statusBar
 
-            // Connection status banners — slide in from top
-            if connectionVM.connectionState == .reconnecting {
-                reconnectingBanner
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            } else if connectionVM.connectionState == .disconnected && connectionVM.hasActiveSession {
-                disconnectedBanner
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            } else if connectionVM.connectionState == .connected,
+            if connectionVM.connectionState == .connected,
                       let fallback = connectionVM.transportFallbackNotice {
                 TransportFallbackBanner(
                     presentation: fallback,
@@ -117,9 +110,28 @@ struct TerminalView: View {
                 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .top) {
+                if connectionVM.recoveryStatus != .idle {
+                    ConnectionRecoveryBanner(
+                        status: connectionVM.recoveryStatus,
+                        isMosh: isMosh,
+                        onRetry: {
+                            Task { await connectionVM.retryConnection() }
+                        },
+                        onRestart: isMosh ? {
+                            Task { await connectionVM.restartConnection() }
+                        } : nil,
+                        onDetails: connectionVM.presentRecoveryDetails
+                    )
+                    .padding(.top, 8)
+                    .padding(.horizontal, 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(reduceMotion ? nil : .spring(duration: 0.35), value: connectionVM.connectionState)
+        .animation(reduceMotion ? nil : .spring(duration: 0.35), value: connectionVM.recoveryStatus)
         .onChange(of: fontSize) { _, newSize in
             appearanceSettings.fontSize = newSize
         }
@@ -154,9 +166,23 @@ struct TerminalView: View {
             if oldState == .connected {
                 if newState == .disconnected {
                     onDismiss?()
-                } else if case .error = newState {
-                    onDismiss?()
                 }
+            }
+        }
+        .onChange(of: connectionVM.recoveryStatus) { oldStatus, newStatus in
+            guard oldStatus != newStatus else { return }
+            if newStatus.blocksInput {
+                cancelClipboardRequests()
+            }
+            switch newStatus {
+            case .waitingForNetwork:
+                UIAccessibility.post(notification: .announcement, argument: "No network. Waiting to retry.")
+            case .reconnecting:
+                UIAccessibility.post(notification: .announcement, argument: "Connection interrupted. Reconnecting.")
+            case .unavailable:
+                UIAccessibility.post(notification: .announcement, argument: "Could not reconnect. Actions are available.")
+            case .idle:
+                break
             }
         }
         .onChange(of: showToolbarEditor) { _, isPresented in
@@ -214,14 +240,14 @@ struct TerminalView: View {
         }
         .sheet(isPresented: $showFileUploader) {
             FileUploadView(connection: connectionVM) { data in
-                guard connectionVM.connectionState == .connected else { return false }
+                guard connectionVM.canAcceptTerminalInput else { return false }
                 await connectionVM.send(data)
                 return true
             }
         }
         .sheet(isPresented: $showFileBrowser) {
             RemoteFileBrowserView(connection: connectionVM, serverName: serverName) { data in
-                guard connectionVM.connectionState == .connected else { return false }
+                guard connectionVM.canAcceptTerminalInput else { return false }
                 await connectionVM.send(data)
                 return true
             }
@@ -245,6 +271,14 @@ struct TerminalView: View {
             }
         } message: { request in
             Text(request.message)
+        }
+        .alert(
+            connectionVM.presentedError?.title ?? "Connection Error",
+            isPresented: $connectionVM.showError
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(connectionVM.presentedError?.fullMessage ?? connectionVM.errorMessage ?? "The connection failed.")
         }
         .overlay(alignment: .top) {
             if let clipboardNotice, scenePhase == .active {
@@ -285,7 +319,7 @@ struct TerminalView: View {
     }
 
     private func enqueueClipboardRequest(_ request: TerminalClipboardRequest) {
-        guard scenePhase == .active else {
+        guard scenePhase == .active, connectionVM.canAcceptTerminalInput else {
             request.onDecision(false)
             return
         }
@@ -438,6 +472,7 @@ struct TerminalView: View {
                     .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
                     .frame(minWidth: 44, minHeight: 44)
             }
+            .disabled(!connectionVM.canAcceptTerminalInput)
             .accessibilityLabel("Upload a file or photo securely")
             .accessibilityHint("Transfers the selected item using verified SSH and SFTP")
             .accessibilityIdentifier("terminal.upload.open")
@@ -450,6 +485,7 @@ struct TerminalView: View {
                     .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
                     .frame(minWidth: 44, minHeight: 44)
             }
+            .disabled(!connectionVM.canAcceptTerminalInput)
             .accessibilityLabel("Browse server files securely")
             .accessibilityHint("Opens your remote home folder using verified SSH and SFTP")
             .accessibilityIdentifier("terminal.files.open")
@@ -463,6 +499,7 @@ struct TerminalView: View {
                         .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
                         .frame(minWidth: 44, minHeight: 44)
                 }
+                .disabled(!connectionVM.canAcceptTerminalInput)
                 .accessibilityLabel("Compose on-device voice prompt")
                 .accessibilityHint("Opens a private push-to-talk draft")
                 .accessibilityIdentifier("terminal.voice.open")
@@ -476,6 +513,7 @@ struct TerminalView: View {
                     .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
                     .frame(minWidth: 44, minHeight: 44)
             }
+            .disabled(!connectionVM.canAcceptTerminalInput)
             .accessibilityLabel("Open tmux command palette")
             .keyboardShortcut("p", modifiers: [.command, .shift])
 
@@ -522,70 +560,6 @@ struct TerminalView: View {
         .background(SwiftUI.Color(appearanceSettings.currentTheme.chromeSurface))
     }
 
-    // Floating pill banner — Dynamic Island inspired, centered at top
-    private var reconnectingBanner: some View {
-        HStack(spacing: 6) {
-            ProgressView()
-                .controlSize(.mini)
-                .tint(SwiftUI.Color(appearanceSettings.currentTheme.accentYellow))
-            Text("Reconnecting")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.accentYellow))
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(SwiftUI.Color(appearanceSettings.currentTheme.accentYellow).opacity(0.15))
-                .overlay(
-                    Capsule()
-                        .strokeBorder(SwiftUI.Color(appearanceSettings.currentTheme.accentYellow).opacity(0.3), lineWidth: 0.5)
-                )
-        )
-        .frame(maxWidth: .infinity)
-    }
-
-    // Floating pill banner for disconnected state with reconnect action
-    private var disconnectedBanner: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "wifi.slash")
-                .font(.system(size: 11))
-                .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.accentRed))
-            Text("Disconnected")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.accentRed))
-
-            Button {
-                Task {
-                    if let sshSession = connectionVM.sshSession {
-                        await sshSession.reconnect()
-                    }
-                }
-            } label: {
-                Text("Retry")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.accentRed))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(
-                        Capsule()
-                            .strokeBorder(SwiftUI.Color(appearanceSettings.currentTheme.accentRed).opacity(0.5), lineWidth: 0.5)
-                    )
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(SwiftUI.Color(appearanceSettings.currentTheme.accentRed).opacity(0.15))
-                .overlay(
-                    Capsule()
-                        .strokeBorder(SwiftUI.Color(appearanceSettings.currentTheme.accentRed).opacity(0.3), lineWidth: 0.5)
-                )
-        )
-        .frame(maxWidth: .infinity)
-    }
-
     private var statusColor: SwiftUI.Color {
         switch connectionVM.connectionState {
         case .connected: return .green
@@ -606,6 +580,115 @@ struct TerminalView: View {
         case .disconnected: "Disconnected"
         case .error: "Connection error"
         }
+    }
+}
+
+private struct ConnectionRecoveryBanner: View {
+    let status: ConnectionRecoveryStatus
+    let isMosh: Bool
+    let onRetry: () -> Void
+    let onRestart: (() -> Void)?
+    let onDetails: () -> Void
+
+    private let appearanceSettings = AppearanceSettings.shared
+
+    private var accentColor: SwiftUI.Color {
+        switch status {
+        case .idle:
+            SwiftUI.Color(appearanceSettings.currentTheme.accentGreen)
+        case .waitingForNetwork, .reconnecting:
+            SwiftUI.Color(appearanceSettings.currentTheme.accentYellow)
+        case .unavailable:
+            SwiftUI.Color(appearanceSettings.currentTheme.accentRed)
+        }
+    }
+
+    private var message: String {
+        switch status {
+        case .idle:
+            "Connected"
+        case .waitingForNetwork:
+            "No network — waiting"
+        case .reconnecting:
+            "Connection interrupted — retrying"
+        case .unavailable:
+            "Couldn’t reconnect"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            switch status {
+            case .reconnecting:
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(accentColor)
+            case .waitingForNetwork:
+                Image(systemName: "wifi.slash")
+                    .font(.system(size: 11, weight: .semibold))
+            case .unavailable:
+                Image(systemName: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
+                    .font(.system(size: 11, weight: .semibold))
+            case .idle:
+                EmptyView()
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(message)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .lineLimit(1)
+                Text("Input paused")
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .opacity(0.75)
+            }
+
+            if case .unavailable = status {
+                Spacer(minLength: 2)
+                recoveryButton("Retry", action: onRetry)
+                if isMosh, let onRestart {
+                    recoveryButton("Restart", action: onRestart)
+                        .accessibilityLabel("Restart Mosh session")
+                }
+                Button(action: onDetails) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 14, weight: .medium))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Connection error details")
+            }
+        }
+        .foregroundStyle(accentColor)
+        .padding(.leading, 12)
+        .padding(.trailing, status.isUnavailable ? 6 : 12)
+        .padding(.vertical, 7)
+        .background(
+            Capsule()
+                .fill(SwiftUI.Color(appearanceSettings.currentTheme.chromeSurface).opacity(0.96))
+                .overlay(Capsule().strokeBorder(accentColor.opacity(0.45), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.22), radius: 8, y: 3)
+        )
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func recoveryButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .padding(.horizontal, 8)
+                .frame(height: 28)
+                .background(accentColor.opacity(0.14), in: Capsule())
+                .overlay(Capsule().strokeBorder(accentColor.opacity(0.45), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private extension ConnectionRecoveryStatus {
+    var isUnavailable: Bool {
+        if case .unavailable = self { return true }
+        return false
     }
 }
 
