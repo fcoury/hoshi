@@ -25,7 +25,11 @@ class HoshiCompanionIntegrationTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.directory = tempfile.TemporaryDirectory(prefix="hoshi-agent-companion-")
         cls.token = "test-" + "a" * 32
-        cls.environment = dict(os.environ, HOSHI_AGENT_TOKEN=cls.token)
+        cls.environment = dict(
+            os.environ,
+            HOSHI_AGENT_TOKEN=cls.token,
+            HOSHI_AGENT_HOSTNAME="test-agent.example.com",
+        )
         cls.process = subprocess.Popen(
             [
                 "python3",
@@ -161,6 +165,7 @@ class HoshiCompanionIntegrationTests(unittest.TestCase):
             ["python3", str(SCRIPT), "emit", "needs_attention", "--title", "Review requested"],
             check=True,
             capture_output=True,
+            env=self.environment,
         )
 
         prefix = b"\x1b]777;hoshi;"
@@ -169,6 +174,7 @@ class HoshiCompanionIntegrationTests(unittest.TestCase):
         payload = json.loads(base64.b64decode(result.stdout[len(prefix) : -1]))
         self.assertEqual(payload["kind"], "needs_attention")
         self.assertEqual(payload["title"], "Review requested")
+        self.assertEqual(payload["hostname"], "test-agent.example.com")
 
     def test_cli_posts_events_to_the_real_companion(self) -> None:
         _, initial = self.request("GET")
