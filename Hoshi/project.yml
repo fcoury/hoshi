@@ -66,6 +66,7 @@ targets:
     info:
       path: HoshiLiveActivity/Info.plist
       properties:
+        CFBundleDisplayName: Hoshi Live Activity
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
