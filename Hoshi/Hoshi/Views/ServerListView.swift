@@ -870,11 +870,15 @@ struct ServerRow: View {
 private struct MinimizedSearchToolbarModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
+#if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             content.searchToolbarBehavior(.minimize)
         } else {
             content
         }
+#else
+        content
+#endif
     }
 }
 
