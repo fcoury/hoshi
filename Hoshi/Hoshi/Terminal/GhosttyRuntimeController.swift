@@ -3,6 +3,60 @@ import UIKit
 import GhosttyKit
 import os.log
 
+struct TerminalDesktopNotification: Equatable, Sendable {
+    let title: String
+    let body: String?
+
+    init?(title: String?, body: String?) {
+        let normalizedTitle = Self.normalized(title, maximumUTF8Bytes: 512)
+        let normalizedBody = Self.normalized(body, maximumUTF8Bytes: 4_096)
+        guard normalizedTitle != nil || normalizedBody != nil else { return nil }
+
+        self.title = normalizedTitle ?? "Terminal Notification"
+        self.body = normalizedBody
+    }
+
+    var agentEventKind: AgentEventKind {
+        let text = "\(title) \(body ?? "")".lowercased()
+        if text.contains("approval") || text.contains("permission") {
+            return .approvalRequested
+        }
+        if text.contains("needs input")
+            || text.contains("waiting for input")
+            || text.contains("action required")
+            || text.contains("needs attention") {
+            return .needsAttention
+        }
+        return .completed
+    }
+
+    var agentEventEnvelope: AgentEventEnvelope {
+        AgentEventEnvelope(kind: agentEventKind, title: title, message: body)
+    }
+
+    private static func normalized(_ value: String?, maximumUTF8Bytes: Int) -> String? {
+        guard let value else { return nil }
+        let cleaned = String(value.unicodeScalars.map { scalar in
+            CharacterSet.controlCharacters.contains(scalar) ? " " : Character(scalar)
+        })
+        let collapsed = cleaned
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard !collapsed.isEmpty else { return nil }
+
+        var result = ""
+        var byteCount = 0
+        for character in collapsed {
+            let bytes = String(character).utf8.count
+            guard byteCount + bytes <= maximumUTF8Bytes else { break }
+            result.append(character)
+            byteCount += bytes
+        }
+        return result.isEmpty ? nil : result
+    }
+}
+
 @MainActor
 final class GhosttyRuntimeController: ObservableObject {
     static let shared = GhosttyRuntimeController()
@@ -124,6 +178,20 @@ final class GhosttyRuntimeController: ObservableObject {
                let surface = target.target.surface {
                 GhosttyTerminalSurfaceView.requestRender(for: surface)
             }
+            return true
+
+        case GHOSTTY_ACTION_DESKTOP_NOTIFICATION:
+            guard target.tag == GHOSTTY_TARGET_SURFACE,
+                  let surface = target.target.surface,
+                  let notification = TerminalDesktopNotification(
+                      title: action.action.desktop_notification.title.flatMap(String.init(validatingUTF8:)),
+                      body: action.action.desktop_notification.body.flatMap(String.init(validatingUTF8:))
+                  )
+            else {
+                return true
+            }
+
+            GhosttyTerminalSurfaceView.deliverDesktopNotification(notification, for: surface)
             return true
 
         case GHOSTTY_ACTION_SET_TITLE:

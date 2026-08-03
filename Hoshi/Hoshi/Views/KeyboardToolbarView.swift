@@ -103,14 +103,7 @@ class KeyboardToolbarAccessoryView: UIView {
     }
 
     var displayedButtons: [ToolbarButton] {
-        guard selectionAvailable,
-              !buttons.contains(where: { $0.id == ToolbarButton.copy.id }) else {
-            return buttons
-        }
-
-        var result = buttons
-        result.insert(.copy, at: result.startIndex)
-        return result
+        buttons
     }
 
     private func refreshPasteAvailability() {

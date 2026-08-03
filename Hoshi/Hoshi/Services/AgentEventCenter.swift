@@ -79,7 +79,25 @@ final class AgentEventCenter {
             session: session,
             serverID: session.serverID,
             hostname: session.server.hostname,
-            origin: .terminal
+            origin: .terminal,
+            alwaysNotify: false
+        )
+    }
+
+    /// Desktop notifications have already passed the terminal application's own
+    /// notification policy. Honor that request even while its session is visible.
+    @discardableResult
+    func ingest(
+        _ notification: TerminalDesktopNotification,
+        from session: ManagedSession
+    ) -> AgentInboxEvent? {
+        insert(
+            notification.agentEventEnvelope,
+            session: session,
+            serverID: session.serverID,
+            hostname: session.server.hostname,
+            origin: .terminal,
+            alwaysNotify: true
         )
     }
 
@@ -108,7 +126,8 @@ final class AgentEventCenter {
             session: session,
             serverID: session?.serverID ?? envelope.serverID,
             hostname: session?.server.hostname ?? envelope.hostname,
-            origin: .companion
+            origin: .companion,
+            alwaysNotify: false
         )
     }
 
@@ -210,7 +229,8 @@ final class AgentEventCenter {
         session: ManagedSession?,
         serverID: UUID?,
         hostname: String?,
-        origin: AgentEventOrigin
+        origin: AgentEventOrigin,
+        alwaysNotify: Bool
     ) -> AgentInboxEvent? {
         guard envelope.isValid,
               !events.contains(where: { $0.id == envelope.id }) else { return nil }
@@ -242,7 +262,8 @@ final class AgentEventCenter {
         synchronizeSessionAttention()
 
         let shouldNotify = notificationsEnabled
-            && (session == nil
+            && (alwaysNotify
+                || session == nil
                 || sessionManager?.activeSessionID != session?.id
                 || envelope.kind == .approvalRequested)
         if shouldNotify {

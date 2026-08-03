@@ -172,7 +172,10 @@ final class MoshBootstrapService {
         let executable = shellEscape(binary.flatMap { $0.isEmpty ? nil : $0 } ?? "mosh-server")
         let rangeArgument = portRange.map { " -p \(shellEscape($0.argument))" } ?? ""
         let commandArgument = initialCommand.map { " -- sh -lc \(shellEscape($0))" } ?? ""
-        let command = "[ -n \"$SSH_CONNECTION\" ] && printf \"\\nMOSH SSH_CONNECTION %s\\n\" \"$SSH_CONNECTION\"; \(executable) new -s -c 256 -l LANG=en_US.UTF-8\(rangeArgument)\(commandArgument)"
+        let terminalEnvironment = TerminalIdentity.environment
+            .map { " -l \(shellEscape("\($0.name)=\($0.value)"))" }
+            .joined()
+        let command = "[ -n \"$SSH_CONNECTION\" ] && printf \"\\nMOSH SSH_CONNECTION %s\\n\" \"$SSH_CONNECTION\"; \(executable) new -s -c 256 -l LANG=en_US.UTF-8\(terminalEnvironment)\(rangeArgument)\(commandArgument)"
         return "sh -lc \(shellEscape(command)) 2>&1"
     }
 

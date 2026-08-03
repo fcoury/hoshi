@@ -265,6 +265,20 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertEqual(geometry.centeredFrame.size, geometry.snappedSize)
     }
 
+    func testSelectionGeometryDoesNotScaleGhosttyPointCoordinatesTwice() throws {
+        let geometry = try XCTUnwrap(TerminalSelectionGeometry(
+            topLeft: CGPoint(x: 20, y: 480),
+            bottomRight: CGPoint(x: 140, y: 480),
+            cellHeightPixels: 51,
+            displayScale: 3,
+            renderOrigin: CGPoint(x: 3, y: 2)
+        ))
+
+        XCTAssertEqual(geometry.startAnchor, CGPoint(x: 23, y: 482))
+        XCTAssertEqual(geometry.endAnchor, CGPoint(x: 143, y: 482))
+        XCTAssertEqual(geometry.rect, CGRect(x: 23, y: 482, width: 120, height: 17))
+    }
+
     func testKeyboardShowingReducesRowsAndHidingRestoresThem() throws {
         let expanded = try XCTUnwrap(TerminalViewportGeometry(
             bounds: CGSize(width: 390, height: 760),
@@ -413,14 +427,14 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertEqual(ToolbarConfigurationService.shared.loadButtons(), [.ctrl, .arrowUp])
     }
 
-    func testSelectionAddsCopyAtFrontOfToolbar() {
+    func testSelectionDoesNotInjectCopyIntoToolbar() {
         let toolbar = KeyboardToolbarAccessoryView(buttons: [.ctrl, .paste])
 
         XCTAssertEqual(toolbar.displayedButtons, [.ctrl, .paste])
 
         toolbar.setSelectionAvailable(true)
 
-        XCTAssertEqual(toolbar.displayedButtons, [.copy, .ctrl, .paste])
+        XCTAssertEqual(toolbar.displayedButtons, [.ctrl, .paste])
 
         toolbar.setSelectionAvailable(false)
 
@@ -763,7 +777,50 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertTrue(surface.copyToClipboard())
         XCTAssertTrue(pasteboard.string?.contains("hello from the remote terminal") == true)
         XCTAssertTrue(surface.toolbarAccessory.selectionAvailable)
-        XCTAssertTrue(surface.toolbarAccessory.displayedButtons.contains(.copy))
+        XCTAssertFalse(surface.toolbarAccessory.displayedButtons.contains(.copy))
+    }
+
+    func testStationaryLongPressSelectsAWordForNativeCopyMenu() throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.writeRemoteOutput(Array("hello from the remote terminal".utf8))
+        let point = CGPoint(x: 14, y: 8)
+
+        surface.beginLongPressSelection(at: point)
+        surface.endLongPressSelection(at: point, cancelled: false)
+
+        XCTAssertTrue(surface.hasSelection())
+        XCTAssertFalse(surface.readSelection()?.isEmpty ?? true)
+        XCTAssertTrue(surface.toolbarAccessory.selectionAvailable)
+    }
+
+    func testLongPressDragSelectsRangeForNativeCopyMenu() throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.writeRemoteOutput(Array("drag across this terminal output".utf8))
+
+        surface.beginLongPressSelection(at: CGPoint(x: 8, y: 8))
+        surface.updateLongPressSelection(at: CGPoint(x: 120, y: 8))
+        surface.endLongPressSelection(at: CGPoint(x: 120, y: 8), cancelled: false)
+
+        XCTAssertTrue(surface.hasSelection())
+        XCTAssertFalse(surface.readSelection()?.isEmpty ?? true)
+    }
+
+    func testNativeEditMenuOffersCopyPasteAndSelectAll() throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.writeRemoteOutput(Array("native terminal edit menu".utf8))
+        surface.selectAll(nil)
+        pasteboard.string = "paste me"
+        let interaction = UIEditMenuInteraction(delegate: surface)
+        let configuration = UIEditMenuConfiguration(identifier: nil, sourcePoint: .zero)
+
+        let menu = try XCTUnwrap(surface.editMenuInteraction(
+            interaction,
+            menuFor: configuration,
+            suggestedActions: []
+        ))
+        let titles = menu.children.compactMap { ($0 as? UIAction)?.title }
+
+        XCTAssertEqual(titles, ["Copy", "Paste", "Select All"])
     }
 
     func testTypingClearsLiveSelectionAndRestoresToolbarState() throws {
@@ -1072,6 +1129,80 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertEqual(notice?.kind, .payloadTooLarge)
         let response = String(data: sent.reduce(Data(), +), encoding: .utf8) ?? ""
         XCTAssertLessThan(response.utf8.count, 64)
+    }
+
+    func testLiveOSC9RoutesGhosttyDesktopNotificationToSurface() async throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        var received: TerminalDesktopNotification?
+        surface.onDesktopNotification = { received = $0 }
+
+        surface.writeRemoteOutput(Array("\u{1B}]9;Agent turn complete\u{07}".utf8))
+        await waitUntil { received != nil }
+
+        XCTAssertEqual(received?.body ?? received?.title, "Agent turn complete")
+    }
+
+    func testFingerDragScrollsPrimaryScreenBackThroughScrollback() async throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 240))
+        let ghosttySurface = try XCTUnwrap(surface.surface)
+        let output = (0..<100).map { "scrollback line \($0)\r\n" }.joined()
+        surface.writeRemoteOutput(Array(output.utf8))
+        await waitUntil { ghostty_surface_scrollback_offset(ghosttySurface) > 0 }
+        let bottomOffset = ghostty_surface_scrollback_offset(ghosttySurface)
+
+        surface.scrollByTouchTranslation(120)
+        await waitUntil { ghostty_surface_scrollback_offset(ghosttySurface) < bottomOffset }
+
+        XCTAssertLessThan(ghostty_surface_scrollback_offset(ghosttySurface), bottomOffset)
+    }
+
+    func testFingerDragUsesNativeAlternateScreenScrolling() async throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 240))
+        let ghosttySurface = try XCTUnwrap(surface.surface)
+        var sent: [Data] = []
+        surface.onInputData = { sent.append($0) }
+        surface.writeRemoteOutput(Array("\u{1B}[?1049h\u{1B}[?1007h".utf8))
+        await waitUntil { ghostty_surface_is_alternate_screen(ghosttySurface) }
+
+        surface.scrollByTouchTranslation(120)
+        await waitUntil { !sent.isEmpty }
+
+        let input = sent.reduce(Data(), +)
+        XCTAssertTrue(
+            input.range(of: Data("\u{1B}[A".utf8)) != nil
+                || input.range(of: Data("\u{1B}OA".utf8)) != nil
+        )
+    }
+
+    func testFingerDragSendsMouseWheelEventsToTmuxMouseMode() async throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 240))
+        let ghosttySurface = try XCTUnwrap(surface.surface)
+        var sent: [Data] = []
+        surface.onInputData = { sent.append($0) }
+
+        // tmux with `set -g mouse on` enables alternate screen, button-event
+        // mouse tracking, and SGR mouse encoding on the outer terminal.
+        surface.writeRemoteOutput(Array("\u{1B}[?1049h\u{1B}[?1002h\u{1B}[?1006h".utf8))
+        await waitUntil { ghostty_surface_mouse_captured(ghosttySurface) }
+
+        surface.scrollByTouchTranslation(120, at: CGPoint(x: 20, y: 20))
+        await waitUntil { !sent.isEmpty }
+
+        let input = String(decoding: sent.reduce(Data(), +), as: UTF8.self)
+        XCTAssertTrue(input.contains("\u{1B}[<64;"), "Expected an SGR wheel-up event, got \(input.debugDescription)")
+    }
+
+    func testDesktopNotificationClassifiesAttentionAndBoundsUntrustedText() throws {
+        let notification = try XCTUnwrap(TerminalDesktopNotification(
+            title: " Codex\npermission\u{07}required ",
+            body: String(repeating: "🟢", count: 2_000)
+        ))
+
+        XCTAssertEqual(notification.title, "Codex permission required")
+        XCTAssertEqual(notification.agentEventKind, .approvalRequested)
+        XCTAssertLessThanOrEqual(notification.title.utf8.count, 512)
+        XCTAssertLessThanOrEqual(try XCTUnwrap(notification.body).utf8.count, 4_096)
+        XCTAssertTrue(notification.agentEventEnvelope.isValid)
     }
 
     private func makeLiveSurface(size: CGSize) throws -> GhosttyTerminalSurfaceView {

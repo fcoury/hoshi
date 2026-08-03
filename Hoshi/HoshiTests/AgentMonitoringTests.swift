@@ -373,6 +373,27 @@ final class AgentMonitoringTests: XCTestCase {
         XCTAssertTrue(notifier.deliveredEvents.isEmpty)
     }
 
+    func testTerminalDesktopNotificationHonorsExplicitRequestForFocusedSession() async throws {
+        let notifier = MockAgentNotifications()
+        let center = makeEventCenter(notifier: notifier)
+        let manager = makeSessionManager(center)
+        let session = try XCTUnwrap(manager.createSession(for: makeServer()))
+        manager.switchTo(sessionID: session.id)
+        await center.setNotificationsEnabled(true)
+        let notification = try XCTUnwrap(TerminalDesktopNotification(
+            title: "Codex",
+            body: "Agent turn complete"
+        ))
+
+        session.connectionVM.onTerminalNotification?(notification)
+        await yieldUntil { !notifier.deliveredEvents.isEmpty }
+
+        let event = try XCTUnwrap(center.events.first)
+        XCTAssertEqual(event.kind, .completed)
+        XCTAssertEqual(event.sessionID, session.id)
+        XCTAssertEqual(notifier.deliveredEvents.map(\.id), [event.id])
+    }
+
     func testApprovalRequestNotifiesEvenForFocusedSession() async {
         let notifier = MockAgentNotifications()
         let center = makeEventCenter(notifier: notifier)

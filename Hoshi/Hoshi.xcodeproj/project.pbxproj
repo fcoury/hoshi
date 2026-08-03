@@ -77,6 +77,7 @@
 		71C6EE46A566E725287FA4AA /* TmuxSessionPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCE7EC1DDE1A89967CD4B68A /* TmuxSessionPickerView.swift */; };
 		7457ECA03F102D7AE06FD427 /* CursorStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AEDC4750F347303ED02613A /* CursorStyle.swift */; };
 		74BDDAA9CBDA058C1B8B0DA5 /* FantasqueSansMNerdFont-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CBCD39EB73247795B564239E /* FantasqueSansMNerdFont-Regular.ttf */; };
+		7B44A8DD287B22879E7EFDBE /* TerminalIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16D26ABDA765717B8480F607 /* TerminalIdentity.swift */; };
 		7B56E49F91FD048AECE71B08 /* VictorMonoNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 405617842535DD42813E4158 /* VictorMonoNerdFontMono-Italic.ttf */; };
 		7BA09D7B29B1E1612C638411 /* FontPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C0FA717B1413451034834BC /* FontPickerView.swift */; };
 		7D019FB1219572EE0FF60426 /* TmuxSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4701DC070A2F4F79A3F9D48 /* TmuxSettingsView.swift */; };
@@ -200,6 +201,7 @@
 		11287515AC4FE877D7F9CC7F /* RemoteFileBrowserService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileBrowserService.swift; sourceTree = "<group>"; };
 		1317C1167CDFEB8F24854E5E /* FantasqueSansMNerdFont-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFont-Bold.ttf"; sourceTree = "<group>"; };
 		168EE5B0051233375A63B33F /* MesloLGSNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MesloLGSNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
+		16D26ABDA765717B8480F607 /* TerminalIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalIdentity.swift; sourceTree = "<group>"; };
 		1913DF729009DA8DC0A599B5 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
 		19AC806BCFBA24FD814B9962 /* AgentDeepLinkRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDeepLinkRouter.swift; sourceTree = "<group>"; };
 		19D8FFFF3A11114D6122B6B0 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -562,6 +564,7 @@
 				377CA272FAF5C434090B21E5 /* SSHConnectionService.swift */,
 				98A8C6B94D769B9D7B243F28 /* SSHKeyService.swift */,
 				B73D4FAFF8219BC7CB25BA12 /* SSHService.swift */,
+				16D26ABDA765717B8480F607 /* TerminalIdentity.swift */,
 				9FFB21F11FD5AD284E2064AB /* TmuxConfigurationService.swift */,
 				08326AEDEEBE494F5026A5FD /* TmuxDetectionService.swift */,
 				DEEF1DFBFD9A93E3AFE91086 /* ToolbarConfigurationService.swift */,
@@ -834,6 +837,7 @@
 				26B826D28D58615A4D882013 /* SessionProtocol.swift in Sources */,
 				3C42FB85D6E594C7AE94E8D3 /* SettingsView.swift in Sources */,
 				EDBD3D7E5EE610CF4A15365B /* SplashScreenView.swift in Sources */,
+				7B44A8DD287B22879E7EFDBE /* TerminalIdentity.swift in Sources */,
 				BC0B757FC86FAEB2AF4A909F /* TerminalInteraction.swift in Sources */,
 				A08BCE350D681A0F24BF8B26 /* TerminalTheme.swift in Sources */,
 				D22DB61E421382204913A526 /* TerminalView.swift in Sources */,

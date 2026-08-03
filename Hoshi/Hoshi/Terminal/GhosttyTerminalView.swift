@@ -65,6 +65,9 @@ struct GhosttyTerminalView: UIViewRepresentable {
         view.onClipboardNotice = { [weak coordinator] notice in
             coordinator?.onClipboardNotice(notice)
         }
+        view.onDesktopNotification = { [weak connectionVM] notification in
+            connectionVM?.onTerminalNotification?(notification)
+        }
         view.clipboardPolicy = clipboardPolicy
         view.onKeyboardVisibilityChanged = { [weak coordinator] visible in
             coordinator?.updateKeyboardVisibility(visible)
@@ -108,6 +111,9 @@ struct GhosttyTerminalView: UIViewRepresentable {
         uiView.onClipboardNotice = { [weak coordinator] notice in
             coordinator?.onClipboardNotice(notice)
         }
+        uiView.onDesktopNotification = { [weak connectionVM] notification in
+            connectionVM?.onTerminalNotification?(notification)
+        }
         uiView.clipboardPolicy = clipboardPolicy
         uiView.onKeyboardVisibilityChanged = { [weak coordinator] visible in
             coordinator?.updateKeyboardVisibility(visible)
@@ -148,6 +154,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
         // real scrollback, cursor, selections, and alternate-screen state.
         if coordinator.managedSession?.surfaceView !== uiView {
             coordinator.connectionVM.setDataCallback(nil)
+            uiView.onDesktopNotification = nil
         }
     }
 
@@ -259,6 +266,9 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
     private var selectionModifiers: ghostty_input_mods_e = GHOSTTY_MODS_NONE
     private var selectionAnchor: CGPoint?
     private var selectionEndpoint: CGPoint?
+    private var longPressStartPoint: CGPoint?
+    private var longPressIsSelecting = false
+    private var reopenEditMenuAfterDismissal = false
     private var editMenuInteraction: UIEditMenuInteraction?
     private var selectionStartHandle: TerminalSelectionHandleView?
     private var selectionEndHandle: TerminalSelectionHandleView?
@@ -304,6 +314,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
     var onSwapSession: (() -> Void)?
     var onClipboardRequest: ((TerminalClipboardRequest) -> Void)?
     var onClipboardNotice: ((TerminalClipboardNotice) -> Void)?
+    var onDesktopNotification: ((TerminalDesktopNotification) -> Void)?
     var clipboardPolicy = TerminalRemoteClipboardPolicy()
     var onKeyboardVisibilityChanged: ((Bool) -> Void)?
     private var pendingClipboardDecisions: [UUID: @MainActor (Bool) -> Void] = [:]
@@ -1078,6 +1089,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
 
         if surface != nil {
             actions.append(UIAction(title: "Select All", image: UIImage(systemName: "selection.pin.in.out")) { [weak self] _ in
+                self?.reopenEditMenuAfterDismissal = true
                 self?.selectAll(nil)
             })
         }
@@ -1098,7 +1110,12 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         animator: UIEditMenuInteractionAnimating
     ) {
         animator.addCompletion { [weak self] in
-            self?.restoreInputFocus()
+            guard let self else { return }
+            self.restoreInputFocus()
+            if self.reopenEditMenuAfterDismissal {
+                self.reopenEditMenuAfterDismissal = false
+                self.presentEditMenu()
+            }
         }
     }
 
@@ -1116,32 +1133,18 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         guard ghostty_surface_read_selection(surface, &selected) else { return nil }
         defer { ghostty_surface_free_text(surface, &selected) }
 
-        guard selected.tl_px_x >= 0,
-              selected.tl_px_y >= 0,
-              selected.br_px_x >= 0,
-              selected.br_px_y >= 0 else {
-            return nil
-        }
-
         let scale = max(1, window?.screen.scale ?? traitCollection.displayScale)
-        let topLeft = viewPoint(fromSurfacePoint: CGPoint(
-            x: selected.tl_px_x / scale,
-            y: selected.tl_px_y / scale
-        ))
-        let bottomRight = viewPoint(fromSurfacePoint: CGPoint(
-            x: selected.br_px_x / scale,
-            y: selected.br_px_y / scale
-        ))
-        let cellHeight = CGFloat(ghostty_surface_size(surface).cell_height_px) / scale
+        guard let geometry = TerminalSelectionGeometry(
+            topLeft: CGPoint(x: selected.tl_px_x, y: selected.tl_px_y),
+            bottomRight: CGPoint(x: selected.br_px_x, y: selected.br_px_y),
+            cellHeightPixels: CGFloat(ghostty_surface_size(surface).cell_height_px),
+            displayScale: scale,
+            renderOrigin: renderFrame.origin
+        ) else { return nil }
 
-        selectionAnchor = topLeft
-        selectionEndpoint = bottomRight
-        return CGRect(
-            x: min(topLeft.x, bottomRight.x),
-            y: min(topLeft.y, bottomRight.y),
-            width: max(1, abs(bottomRight.x - topLeft.x)),
-            height: max(cellHeight, abs(bottomRight.y - topLeft.y) + cellHeight)
-        )
+        selectionAnchor = geometry.startAnchor
+        selectionEndpoint = geometry.endAnchor
+        return geometry.rect
     }
 
     private func updateSelectionAffordances() {
@@ -1234,6 +1237,22 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         guard let view else { return }
         DispatchQueue.main.async {
             view.onTitleChanged?(title)
+        }
+    }
+
+    static func deliverDesktopNotification(
+        _ notification: TerminalDesktopNotification,
+        for surface: ghostty_surface_t
+    ) {
+        let ptr = UnsafeRawPointer(surface)
+
+        registryLock.lock()
+        let view = surfaceRegistry[ptr]?.view
+        registryLock.unlock()
+
+        guard let view else { return }
+        DispatchQueue.main.async {
+            view.onDesktopNotification?(notification)
         }
     }
 
@@ -1719,7 +1738,13 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
             break
         }
 
-        guard let surface else { return }
+        selectWord(at: point)
+        presentEditMenu(at: point)
+    }
+
+    @discardableResult
+    func selectWord(at point: CGPoint) -> Bool {
+        guard let surface else { return false }
         let modifiers = ghostty_surface_mouse_captured(surface) ? GHOSTTY_MODS_SHIFT : GHOSTTY_MODS_NONE
 
         let localPoint = surfacePoint(fromViewPoint: point)
@@ -1729,6 +1754,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
             ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, modifiers)
         }
         updateSelectionAffordances()
+        return hasSelection()
     }
 
     @objc private func handleTwoFingerTap(_ gesture: UITapGestureRecognizer) {
@@ -1749,44 +1775,13 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
 
     // Pan scrolls the terminal buffer using natural scrolling (swipe down = see history)
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        guard let surface else { return }
         switch gesture.state {
         case .began:
             pendingPanScrollLines = 0
 
         case .changed:
             let delta = gesture.translation(in: self)
-            let multiplier = AppearanceSettings.shared.scrollMultiplier
-
-            if ghostty_surface_mouse_captured(surface) {
-                // Preserve app-directed wheel behavior only when the terminal
-                // explicitly requested mouse capture.
-                ghostty_surface_mouse_scroll(surface, 0, delta.y * multiplier, 1)
-                gesture.setTranslation(.zero, in: self)
-                return
-            }
-
-            let size = ghostty_surface_size(surface)
-            let scale = window?.screen.scale ?? traitCollection.displayScale
-            let cellHeight = CGFloat(size.cell_height_px) / max(scale, 1)
-            guard cellHeight > 0 else {
-                gesture.setTranslation(.zero, in: self)
-                return
-            }
-
-            // Touch pan should scroll the viewport, not synthesize cursor keys
-            // in alternate-screen apps that don't capture the mouse.
-            pendingPanScrollLines += (delta.y * multiplier) / cellHeight
-
-            let lineDelta = Int(pendingPanScrollLines.rounded(.towardZero))
-            if lineDelta != 0 {
-                let action = "scroll_page_lines:\(-lineDelta)"
-                action.withCString { cAction in
-                    _ = ghostty_surface_binding_action(surface, cAction, UInt(action.utf8.count))
-                }
-                pendingPanScrollLines -= CGFloat(lineDelta)
-            }
-
+            scrollByTouchTranslation(delta.y, at: gesture.location(in: self))
             gesture.setTranslation(.zero, in: self)
 
         case .ended, .cancelled, .failed:
@@ -1797,34 +1792,100 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         }
     }
 
+    /// Applies a vertical finger drag using the behavior appropriate to the
+    /// terminal's current screen. The primary screen owns Hoshi's scrollback;
+    /// alternate-screen apps receive Ghostty's native precision-scroll path.
+    func scrollByTouchTranslation(_ translationY: CGFloat, at point: CGPoint? = nil) {
+        guard let surface, translationY != 0 else { return }
+        let multiplier = AppearanceSettings.shared.scrollMultiplier
+
+        if ghostty_surface_mouse_captured(surface) || ghostty_surface_is_alternate_screen(surface) {
+            if let point {
+                let position = surfacePoint(fromViewPoint: point)
+                ghostty_surface_mouse_pos(surface, position.x, position.y, GHOSTTY_MODS_NONE)
+            }
+            ghostty_surface_mouse_scroll(surface, 0, translationY * multiplier, 1)
+            return
+        }
+
+        let size = ghostty_surface_size(surface)
+        let scale = window?.screen.scale ?? traitCollection.displayScale
+        let cellHeight = CGFloat(size.cell_height_px) / max(scale, 1)
+        guard cellHeight > 0 else { return }
+
+        pendingPanScrollLines += (translationY * multiplier) / cellHeight
+        let lineDelta = Int(pendingPanScrollLines.rounded(.towardZero))
+        guard lineDelta != 0 else { return }
+
+        let action = "scroll_page_lines:\(-lineDelta)"
+        action.withCString { cAction in
+            _ = ghostty_surface_binding_action(surface, cAction, UInt(action.utf8.count))
+        }
+        pendingPanScrollLines -= CGFloat(lineDelta)
+    }
+
     // Long press + drag for mouse selection in terminal apps
     @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
-        guard let surface else { return }
         let pos = surfacePoint(fromViewPoint: gesture.location(in: self))
 
         switch gesture.state {
         case .began:
-            restoreInputFocus()
-            selectionModifiers = ghostty_surface_mouse_captured(surface) ? GHOSTTY_MODS_SHIFT : GHOSTTY_MODS_NONE
-            editMenuInteraction?.dismissMenu()
-            ghostty_surface_mouse_pos(surface, pos.x, pos.y, selectionModifiers)
-            ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, selectionModifiers)
+            beginLongPressSelection(at: pos)
         case .changed:
-            ghostty_surface_mouse_pos(surface, pos.x, pos.y, selectionModifiers)
+            updateLongPressSelection(at: pos)
         case .ended:
-            ghostty_surface_mouse_pos(surface, pos.x, pos.y, selectionModifiers)
-            ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, selectionModifiers)
-            updateSelectionAffordances()
-            if hasSelection() {
-                HapticService.selection()
-            }
+            endLongPressSelection(at: pos, cancelled: false)
         case .cancelled, .failed:
-            ghostty_surface_mouse_pos(surface, pos.x, pos.y, selectionModifiers)
-            ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, selectionModifiers)
-            updateSelectionAffordances()
+            endLongPressSelection(at: pos, cancelled: true)
         default:
             break
         }
+    }
+
+    func beginLongPressSelection(at point: CGPoint) {
+        guard let surface else { return }
+        restoreInputFocus()
+        editMenuInteraction?.dismissMenu()
+        selectionModifiers = ghostty_surface_mouse_captured(surface) ? GHOSTTY_MODS_SHIFT : GHOSTTY_MODS_NONE
+        longPressStartPoint = point
+        longPressIsSelecting = false
+    }
+
+    func updateLongPressSelection(at point: CGPoint) {
+        guard let surface, let start = longPressStartPoint else { return }
+
+        if !longPressIsSelecting {
+            let distance = hypot(point.x - start.x, point.y - start.y)
+            guard distance >= 6 else { return }
+
+            ghostty_surface_mouse_pos(surface, start.x, start.y, selectionModifiers)
+            ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, selectionModifiers)
+            longPressIsSelecting = true
+        }
+
+        ghostty_surface_mouse_pos(surface, point.x, point.y, selectionModifiers)
+    }
+
+    func endLongPressSelection(at point: CGPoint, cancelled: Bool) {
+        guard let surface else { return }
+        defer {
+            longPressStartPoint = nil
+            longPressIsSelecting = false
+        }
+
+        if longPressIsSelecting {
+            ghostty_surface_mouse_pos(surface, point.x, point.y, selectionModifiers)
+            ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, selectionModifiers)
+            updateSelectionAffordances()
+        } else if !cancelled {
+            _ = selectWord(at: viewPoint(fromSurfacePoint: point))
+        }
+
+        guard !cancelled else { return }
+        if hasSelection() {
+            HapticService.selection()
+        }
+        presentEditMenu(at: viewPoint(fromSurfacePoint: point))
     }
 
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {

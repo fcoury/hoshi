@@ -23,7 +23,6 @@ final class SessionManager {
     ) {
         self.persistenceStore = persistenceStore
         self.agentEventCenter = agentEventCenter
-        agentEventCenter?.attach(sessionManager: self)
     }
 
     var activeSession: ManagedSession? {
@@ -41,7 +40,7 @@ final class SessionManager {
         let session = ManagedSession(server: server)
         configureAgentMonitoring(for: session)
         promoteSessionToFront(session)
-        agentEventCenter?.synchronizeSessionAttention()
+        attachAgentEventCenter()
         persistSessionDescriptors()
         return session
     }
@@ -107,6 +106,7 @@ final class SessionManager {
 
     // Forward scene-active to all sessions for reconnect handling
     func handleSceneActive() {
+        attachAgentEventCenter()
         activeSession?.captureThumbnail()
         for session in sessions {
             session.connectionVM.handleSceneActive()
@@ -145,7 +145,7 @@ final class SessionManager {
             }
 
         sessions = restored
-        agentEventCenter?.synchronizeSessionAttention()
+        attachAgentEventCenter()
         persistSessionDescriptors()
         return restored
     }
@@ -202,11 +202,22 @@ final class SessionManager {
         persistenceStore.save(sessions.map(\.persistedDescriptor))
     }
 
+    /// Attaches only after this manager has become the retained session owner.
+    /// SwiftUI may construct and discard temporary view values, so initialization
+    /// must not mutate the shared event center's weak manager reference.
+    private func attachAgentEventCenter() {
+        agentEventCenter?.attach(sessionManager: self)
+    }
+
     private func configureAgentMonitoring(for session: ManagedSession) {
         guard agentEventCenter != nil else { return }
         session.connectionVM.onAgentEvent = { [weak self, weak session] event in
             guard let self, let session else { return }
             self.agentEventCenter?.ingest(event, from: session)
+        }
+        session.connectionVM.onTerminalNotification = { [weak self, weak session] notification in
+            guard let self, let session else { return }
+            self.agentEventCenter?.ingest(notification, from: session)
         }
     }
 }

@@ -21,6 +21,7 @@ final class ConnectionViewModel {
     var onAgentEvent: (@MainActor (AgentEventEnvelope) -> Void)? {
         didSet { bindAgentEvents() }
     }
+    var onTerminalNotification: (@MainActor (TerminalDesktopNotification) -> Void)?
 
     // Mosh-specific UI state
     var connectionPhase: String = ""

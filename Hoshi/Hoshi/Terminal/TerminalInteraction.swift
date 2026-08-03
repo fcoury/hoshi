@@ -331,6 +331,54 @@ struct TerminalViewportGeometry: Equatable {
     }
 }
 
+struct TerminalSelectionGeometry: Equatable {
+    let startAnchor: CGPoint
+    let endAnchor: CGPoint
+    let rect: CGRect
+
+    init?(
+        topLeft: CGPoint,
+        bottomRight: CGPoint,
+        cellHeightPixels: CGFloat,
+        displayScale: CGFloat,
+        renderOrigin: CGPoint
+    ) {
+        guard topLeft.x.isFinite,
+              topLeft.y.isFinite,
+              bottomRight.x.isFinite,
+              bottomRight.y.isFinite,
+              topLeft.x >= 0,
+              topLeft.y >= 0,
+              bottomRight.x >= 0,
+              bottomRight.y >= 0,
+              cellHeightPixels > 0,
+              displayScale > 0 else {
+            return nil
+        }
+
+        // Ghostty's text viewport coordinates are already logical points.
+        // Only the cell metrics remain in framebuffer pixels.
+        let startAnchor = CGPoint(
+            x: topLeft.x + renderOrigin.x,
+            y: topLeft.y + renderOrigin.y
+        )
+        let endAnchor = CGPoint(
+            x: bottomRight.x + renderOrigin.x,
+            y: bottomRight.y + renderOrigin.y
+        )
+        let cellHeight = cellHeightPixels / displayScale
+
+        self.startAnchor = startAnchor
+        self.endAnchor = endAnchor
+        self.rect = CGRect(
+            x: min(startAnchor.x, endAnchor.x),
+            y: min(startAnchor.y, endAnchor.y),
+            width: max(1, abs(endAnchor.x - startAnchor.x)),
+            height: max(cellHeight, abs(endAnchor.y - startAnchor.y) + cellHeight)
+        )
+    }
+}
+
 enum TerminalKeyboardGeometry {
     static func overlapHeight(viewFrame: CGRect, keyboardFrame: CGRect) -> CGFloat {
         guard !viewFrame.isEmpty, !keyboardFrame.isEmpty else { return 0 }

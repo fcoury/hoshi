@@ -427,7 +427,18 @@ final class SSHSession: ObservableObject {
                     ])
                 )
 
-                        try await client.withPTY(ptyRequest) { [weak self] inbound, outbound in
+                        let terminalEnvironment = TerminalIdentity.environment.map {
+                            SSHChannelRequestEvent.EnvironmentRequest(
+                                wantReply: false,
+                                name: $0.name,
+                                value: $0.value
+                            )
+                        }
+
+                        try await client.withPTY(
+                            ptyRequest,
+                            environment: terminalEnvironment
+                        ) { [weak self] inbound, outbound in
                             guard let self else { return }
 
                             // Recovery is complete only after the PTY accepts input.

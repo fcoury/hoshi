@@ -239,6 +239,8 @@ final class ConnectionCoordinatorTests: XCTestCase {
         XCTAssertTrue(command.contains("tmux attach -t"))
         XCTAssertTrue(command.contains("coding agents"))
         XCTAssertTrue(command.contains(" -- sh -lc "))
+        XCTAssertTrue(command.contains("TERM_PROGRAM=ghostty"))
+        XCTAssertTrue(command.contains("TERM_PROGRAM_VERSION="))
     }
 
     func testRawMoshLaunchDoesNotInjectTmuxCommand() {
@@ -250,6 +252,20 @@ final class ConnectionCoordinatorTests: XCTestCase {
 
         XCTAssertTrue(command.contains("mosh-server"))
         XCTAssertFalse(command.contains(" -- sh -lc "))
+        XCTAssertTrue(command.contains("TERM_PROGRAM=ghostty"))
+        XCTAssertTrue(command.contains("TERM_PROGRAM_VERSION="))
+    }
+
+    func testEmbeddedTerminalIdentityAdvertisesGhostty() {
+        XCTAssertEqual(TerminalIdentity.program, "ghostty")
+        XCTAssertFalse(TerminalIdentity.version.isEmpty)
+        XCTAssertEqual(
+            Dictionary(uniqueKeysWithValues: TerminalIdentity.environment),
+            [
+                "TERM_PROGRAM": "ghostty",
+                "TERM_PROGRAM_VERSION": TerminalIdentity.version,
+            ]
+        )
     }
 
     func testMoshProtocolEngineRoundTripsEncryptedInstructions() async throws {

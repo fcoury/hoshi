@@ -354,6 +354,38 @@ final class AgentLiveActivityTests: XCTestCase {
         XCTAssertEqual(provider.ended.first?.attributes.sessionID, session.id)
     }
 
+    func testDiscardedManagerCannotDetachRetainedSessionsFromLiveActivities() throws {
+        let service = makeService()
+        let center = AgentEventCenter(
+            persistence: AgentEventPersistenceStore(defaults: defaults),
+            liveActivities: service,
+            defaults: defaults
+        )
+        let manager = SessionManager(
+            persistenceStore: SessionPersistenceStore(defaults: defaults),
+            agentEventCenter: center
+        )
+        center.setLiveActivitiesEnabled(true)
+        let session = try XCTUnwrap(manager.createSession(for: makeServer()))
+
+        weak var discardedManager: SessionManager?
+        autoreleasepool {
+            let transient = SessionManager(
+                persistenceStore: SessionPersistenceStore(defaults: defaults),
+                agentEventCenter: center
+            )
+            discardedManager = transient
+        }
+        XCTAssertNil(discardedManager)
+
+        center.refreshLiveActivities()
+
+        XCTAssertEqual(service.monitoredSessionCount, 1)
+        XCTAssertEqual(service.activeActivityCount, 1)
+        XCTAssertEqual(provider.activeActivities.first?.attributes.sessionID, session.id)
+        XCTAssertTrue(provider.ended.isEmpty)
+    }
+
     func testCompanionEventsUpdateOnlyTheMatchedSessionActivity() async throws {
         let service = makeService()
         let center = AgentEventCenter(
