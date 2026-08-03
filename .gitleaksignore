@@ -1,0 +1,2 @@
+# Fake OpenSSH private-key fixture used to verify multiline secret redaction.
+761d627c93d2aace139e45326e8e7ca3ea1c1ad7:Hoshi/HoshiTests/ErrorPresentationTests.swift:private-key:365
