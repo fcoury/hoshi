@@ -67,28 +67,37 @@
 <div class="container">
   <a href="/" class="back">&larr; gethoshi.app</a>
   <h1>Privacy Policy</h1>
-  <p class="date">Effective date: March 15, 2026</p>
+  <p class="date">Effective date: August 3, 2026</p>
 
   <h2>Overview</h2>
   <p>Hoshi is an SSH and Mosh terminal client for iOS. Your privacy is important to us. This policy explains what data Hoshi handles and how.</p>
 
   <h2>Data We Collect</h2>
-  <p>Hoshi does not collect, transmit, or store any personal data on our servers. We have no analytics, no tracking, and no telemetry.</p>
+  <p>Hoshi does not collect or store personal data on developer-operated servers. We have no analytics, advertising, tracking, or telemetry.</p>
 
   <h2>Data Stored on Your Device</h2>
   <p>Hoshi stores the following data locally on your device to function:</p>
   <ul>
     <li><strong>Server configurations</strong> — hostnames, ports, usernames, and display names you enter when adding a server.</li>
     <li><strong>Authentication credentials</strong> — passwords and SSH keys are stored in the iOS Keychain, which is encrypted and protected by your device passcode.</li>
-    <li><strong>App preferences</strong> — theme, font size, toolbar layout, and other settings.</li>
+    <li><strong>App preferences</strong> — theme, font size, toolbar layout, notification choices, and other settings.</li>
+    <li><strong>Agent events</strong> — recent coding-agent status events are kept locally so Hoshi can show its inbox, badges, notifications, and optional Live Activities.</li>
   </ul>
-  <p>This data never leaves your device. It is not sent to us or any third party.</p>
+  <p>This locally stored data is not sent to us or sold to third parties.</p>
+
+  <h2>Data Hoshi Handles Temporarily</h2>
+  <ul>
+    <li><strong>Terminal and clipboard content</strong> — Hoshi displays data received from your server and sends text or clipboard actions only when you initiate them. Remote clipboard requests require your approval.</li>
+    <li><strong>Voice prompts</strong> — microphone audio is processed using on-device speech recognition. Audio and transcript drafts are kept in memory only and are cleared when submitted, cancelled, the app locks, or the app moves to the background.</li>
+    <li><strong>Files and photos</strong> — items you select are read only to upload them to your chosen server. Remote-file previews use temporary local files that are removed after use or when the app locks.</li>
+    <li><strong>Notifications and Live Activities</strong> — when enabled, Hoshi shares the minimum event status needed with iOS to display local notifications, badges, Lock Screen updates, and Dynamic Island updates.</li>
+  </ul>
 
   <h2>Network Connections</h2>
-  <p>Hoshi connects only to the SSH and Mosh servers you configure. All connections are encrypted by the SSH or Mosh protocol. Hoshi does not connect to any other servers, APIs, or services.</p>
+  <p>Hoshi connects to the SSH and Mosh servers you configure. Terminal traffic and file transfers use encrypted SSH, SFTP, or Mosh connections. If you enable the optional coding-agent companion, Hoshi also polls the self-hosted HTTPS endpoint and bearer token that you configure. Hoshi does not operate a cloud relay for these connections.</p>
 
   <h2>Third-Party Services</h2>
-  <p>Hoshi does not integrate with any third-party analytics, advertising, or tracking services.</p>
+  <p>Hoshi does not integrate with third-party analytics, advertising, or tracking services. Standard Apple system services provide app distribution, permissions, Keychain protection, notifications, Live Activities, document and photo selection, sharing, and on-device speech recognition.</p>
 
   <h2>Children's Privacy</h2>
   <p>Hoshi is not directed at children under 13 and does not knowingly collect any personal information from children.</p>
