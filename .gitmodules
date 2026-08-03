@@ -4,5 +4,5 @@
 	branch = fix-ios-machport
 [submodule "vendor/ghostty"]
 	path = vendor/ghostty
-	url = https://github.com/eriklangille/ghostty.git
+	url = https://github.com/fcoury/hoshi-ghostty.git
 	branch = clauntty
