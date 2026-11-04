@@ -699,6 +699,74 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertEqual(document.length, 1)
     }
 
+    func testTextInputDocumentDeleteHonorsMarkedCaret() {
+        var document = TerminalTextInputDocument()
+        document.setMarkedText("abc", selectedRange: NSRange(location: 1, length: 0))
+
+        XCTAssertTrue(document.deleteBackwardInMarkedText())
+        XCTAssertEqual(document.markedText, "bc")
+        XCTAssertEqual(document.selectedRange, NSRange(location: 1, length: 0))
+
+        // Caret at the start of the composition: consumed, nothing removed.
+        XCTAssertTrue(document.deleteBackwardInMarkedText())
+        XCTAssertEqual(document.markedText, "bc")
+    }
+
+    func testTextInputDocumentDeleteRemovesMarkedSelection() {
+        var document = TerminalTextInputDocument()
+        document.setMarkedText("abc", selectedRange: NSRange(location: 0, length: 2))
+
+        XCTAssertTrue(document.deleteBackwardInMarkedText())
+        XCTAssertEqual(document.markedText, "c")
+        XCTAssertEqual(document.selectedRange, NSRange(location: 1, length: 0))
+    }
+
+    func testTextInputDocumentDeleteRemovesWholeComposedCharacter() {
+        var document = TerminalTextInputDocument()
+        document.setMarkedText("a👍🏽", selectedRange: NSRange(location: 5, length: 0))
+
+        XCTAssertTrue(document.deleteBackwardInMarkedText())
+        XCTAssertEqual(document.markedText, "a")
+    }
+
+    func testTextInputDocumentReplacesWithinComposition() {
+        var document = TerminalTextInputDocument()
+        document.setMarkedText("abc", selectedRange: NSRange(location: 3, length: 0))
+
+        // Document offsets: the placeholder occupies 0, "abc" occupies 1..<4.
+        XCTAssertTrue(document.replaceInMarkedText(NSRange(location: 2, length: 1), with: "X"))
+        XCTAssertEqual(document.markedText, "aXc")
+        XCTAssertEqual(document.selectedRange, NSRange(location: 3, length: 0))
+
+        XCTAssertTrue(document.replaceInMarkedText(NSRange(location: 1, length: 1), with: ""))
+        XCTAssertEqual(document.markedText, "Xc")
+
+        // Ranges overlapping the placeholder only touch the composition.
+        XCTAssertTrue(document.replaceInMarkedText(NSRange(location: 0, length: 2), with: "Y"))
+        XCTAssertEqual(document.markedText, "Yc")
+
+        XCTAssertTrue(document.replaceInMarkedText(NSRange(location: 1, length: 2), with: ""))
+        XCTAssertFalse(document.hasMarkedText)
+        XCTAssertFalse(document.replaceInMarkedText(NSRange(location: 1, length: 0), with: "Z"))
+    }
+
+    func testReplaceWithinCompositionStaysLocal() throws {
+        let surface = GhosttyTerminalSurfaceView(app: nil, fontSize: 14, keyboardVisible: false)
+        var sent: [Data] = []
+        surface.onInputData = { sent.append($0) }
+
+        surface.setMarkedText("abc", selectedRange: NSRange(location: 3, length: 0))
+        let middle = try XCTUnwrap(surface.textRange(
+            from: try XCTUnwrap(surface.position(from: surface.beginningOfDocument, offset: 2)),
+            to: try XCTUnwrap(surface.position(from: surface.beginningOfDocument, offset: 3))
+        ))
+        surface.replace(middle, withText: "X")
+        XCTAssertTrue(sent.isEmpty)
+
+        surface.unmarkText()
+        XCTAssertEqual(sent, [Data("aXc".utf8)])
+    }
+
     func testTextInputDocumentClampsOutOfBoundsRequests() {
         var document = TerminalTextInputDocument()
         document.setMarkedText("ab", selectedRange: NSRange(location: 9, length: 9))

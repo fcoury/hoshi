@@ -2178,8 +2178,15 @@ extension GhosttyTerminalSurfaceView {
     }
 
     func replace(_ range: UITextRange, withText text: String) {
-        // The document has no editable terminal content. Replacement text is
-        // new input; an empty replacement has nothing to delete remotely.
+        // Replacements touching the composition edit it locally, like any
+        // other preedit change.
+        if let range = documentRange(range), textInputDocument.replaceInMarkedText(range, with: text) {
+            updatePreedit()
+            return
+        }
+        // Outside a composition there is no editable terminal content.
+        // Replacement text is new input; an empty replacement has nothing to
+        // delete remotely.
         guard !text.isEmpty else { return }
         insertText(text)
     }

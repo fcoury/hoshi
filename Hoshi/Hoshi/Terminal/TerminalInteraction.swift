@@ -538,14 +538,52 @@ struct TerminalTextInputDocument: Equatable {
         return committed
     }
 
-    /// Removes the composition's last composed character. Returns `false`
-    /// when there is no composition, meaning the delete belongs to the PTY.
+    /// Deletes backward inside the composition, honoring the IME's selection:
+    /// a non-empty selection is removed, otherwise the composed character
+    /// before the caret is. Returns `false` when there is no composition,
+    /// meaning the delete belongs to the PTY. With the caret at the start of
+    /// the composition there is nothing local to delete, but the delete is
+    /// still consumed so it cannot reach remote text behind the preedit.
     mutating func deleteBackwardInMarkedText() -> Bool {
         guard hasMarkedText else { return false }
-        markedText.removeLast()
-        let markedLength = (markedText as NSString).length
-        markedSelection = NSRange(location: markedLength, length: 0)
+        let marked = markedText as NSString
+        var deletion = markedSelection
+        if deletion.length == 0 {
+            guard deletion.location > 0 else { return true }
+            deletion = marked.rangeOfComposedCharacterSequence(at: deletion.location - 1)
+        }
+        replaceMarkedSubrange(deletion, with: "")
         return true
+    }
+
+    /// Applies a text-system replacement that touches the composition.
+    /// `range` is in document offsets; the part of it inside the composition
+    /// is replaced and the caret lands after the inserted text. Returns
+    /// `false` when there is no composition or `range` does not touch it, in
+    /// which case the replacement is terminal input.
+    mutating func replaceInMarkedText(_ range: NSRange, with replacement: String) -> Bool {
+        guard let markedRange else { return false }
+        let requested = clamp(range)
+        let requestedEnd = requested.location + requested.length
+        let markedEnd = markedRange.location + markedRange.length
+        // Insertion points at either edge of the composition belong to it.
+        guard requestedEnd >= markedRange.location, requested.location <= markedEnd else { return false }
+
+        let location = max(requested.location, markedRange.location)
+        let end = min(max(requestedEnd, location), markedEnd)
+        replaceMarkedSubrange(
+            NSRange(location: location - markedRange.location, length: end - location),
+            with: replacement
+        )
+        return true
+    }
+
+    /// Replaces `range` (relative to the composition) and places the caret
+    /// after the replacement. Emptying the composition ends it.
+    private mutating func replaceMarkedSubrange(_ range: NSRange, with replacement: String) {
+        markedText = (markedText as NSString).replacingCharacters(in: range, with: replacement)
+        let caret = range.location + (replacement as NSString).length
+        markedSelection = hasMarkedText ? NSRange(location: caret, length: 0) : NSRange(location: 0, length: 0)
     }
 }
 
