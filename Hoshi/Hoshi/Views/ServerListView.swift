@@ -133,11 +133,31 @@ struct ServerListView: View {
             }
             .alert(quickLaunchError?.title ?? "Unable to Complete Action", isPresented: Binding(
                 get: { quickLaunchError != nil },
-                set: { if !$0 { quickLaunchError = nil } }
+                set: {
+                    if !$0 {
+                        quickLaunchError = nil
+                        quickLaunchFailedServer = nil
+                    }
+                }
             )) {
-                if let change = quickLaunchError?.hostKeyChange, let server = quickLaunchFailedServer {
-                    Button("Forget Old Key and Verify Again", role: .destructive) {
-                        forgetHostKeyAndRetry(change, server: server)
+                if let server = quickLaunchFailedServer {
+                    if let change = quickLaunchError?.hostKeyChange {
+                        Button("Forget Old Key and Verify Again", role: .destructive) {
+                            forgetHostKeyAndRetry(change, server: server)
+                        }
+                    } else if quickLaunchError?.isCredentialFailure == true, server.authMethod == .password {
+                        Button("Enter Password…") {
+                            launchSession(for: server, promptForCredentials: true)
+                        }
+                    } else {
+                        Button("Retry") {
+                            launchSession(for: server)
+                        }
+                    }
+                    if let saved = servers.first(where: { $0.id == server.id }) {
+                        Button("Edit Server") {
+                            editingServer = saved
+                        }
                     }
                 }
                 Button("OK", role: .cancel) {}
@@ -646,9 +666,11 @@ struct ServerListView: View {
     private func launchSession(
         for server: Server,
         tmuxOverride: String? = nil,
-        herdr: HerdrAttachment? = nil
+        herdr: HerdrAttachment? = nil,
+        promptForCredentials: Bool = false
     ) {
         quickLaunchError = nil
+        quickLaunchFailedServer = nil
         let connectionServer = connectionServer(from: server, tmuxOverride: tmuxOverride)
 
         guard let session = sessionManager.createSession(for: connectionServer) else {
@@ -662,7 +684,7 @@ struct ServerListView: View {
         session.connectionVM.preferredHerdrAttachment = herdr
         connectingSession = session
 
-        if ConnectionViewModel.hasStoredCredentials(for: connectionServer) {
+        if !promptForCredentials, ConnectionViewModel.hasStoredCredentials(for: connectionServer) {
             quickLaunching = true
             Task {
                 await session.connectionVM.quickLaunch(server: connectionServer)

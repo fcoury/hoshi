@@ -211,6 +211,8 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
     let context: ErrorContext
     /// Set when the failure is a changed SSH host key, so the UI can offer to re-verify.
     var hostKeyChange: HostKeyChange?
+    /// Set when the server rejected or lacked credentials, so the UI can offer to re-enter them.
+    var isCredentialFailure = false
 
     init(
         title: String,
@@ -360,7 +362,23 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
             context: context
         )
         presentation.hostKeyChange = HostKeyChange(in: error)
+        presentation.isCredentialFailure = isCredentialFailure(error)
         return presentation
+    }
+
+    static func isCredentialFailure(_ error: any Error) -> Bool {
+        if let fallback = error as? ConnectionFallbackError {
+            return isCredentialFailure(fallback.sshError) || isCredentialFailure(fallback.moshError)
+        }
+        if error is AuthenticationFailed { return true }
+        if let error = error as? SSHClientError, case .allAuthenticationOptionsFailed = error { return true }
+        if let error = error as? SSHConnectionError {
+            switch error {
+            case .authenticationFailed, .passwordNotFound: return true
+            default: return false
+            }
+        }
+        return false
     }
 
     static func sshTransportPreferenceSaveFailure(

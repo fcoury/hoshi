@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import SwiftData
 import Citadel
 import NIOCore
 
@@ -30,6 +31,7 @@ struct TerminalView: View {
     /// host-key prompts (e.g. a reconnect that meets a new key).
     var presentsHostKeyPrompts = false
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let appearanceSettings = AppearanceSettings.shared
@@ -282,7 +284,14 @@ struct TerminalView: View {
                 }
             }
             .sheet(isPresented: $showFileBrowser) {
-                RemoteFileBrowserView(connection: connectionVM, serverName: serverName) { data in
+                RemoteFileBrowserView(
+                    connection: connectionVM,
+                    serverName: serverName,
+                    initialDirectory: RemoteFileBrowserPolicy.directory(
+                        fromWorkingDirectory: managedSession?.workingDirectory,
+                        username: currentServer?.username ?? ""
+                    )
+                ) { data in
                     guard connectionVM.canAcceptTerminalInput else { return false }
                     await connectionVM.send(data)
                     return true
@@ -318,6 +327,12 @@ struct TerminalView: View {
                 }
                 Button(request.kind.confirmButtonTitle) {
                     resolveClipboardRequest(request, approved: true)
+                }
+                if let server = clipboardServer, canRememberClipboardApproval(for: request.kind, on: server) {
+                    Button("Always Allow for \(server.name)") {
+                        rememberClipboardApproval(for: request.kind, on: server)
+                        resolveClipboardRequest(request, approved: true)
+                    }
                 }
             } message: { request in
                 Text(request.message)
@@ -449,6 +464,33 @@ struct TerminalView: View {
             guard pendingClipboardRequest == nil else { return }
             isKeyboardVisible = true
         }
+    }
+
+    private var clipboardServer: Server? {
+        managedSession?.server ?? connectionVM.moshSession?.server ?? connectionVM.sshSession?.server
+    }
+
+    private func canRememberClipboardApproval(for kind: TerminalClipboardRequestKind, on server: Server) -> Bool {
+        switch kind {
+        case .remoteRead: server.remoteClipboardReadPolicy != .allow
+        case .remoteWrite: server.remoteClipboardWritePolicy != .allow
+        case .paste: false
+        }
+    }
+
+    /// Persists the same per-server policy that Edit Server exposes, so it can be undone there.
+    private func rememberClipboardApproval(for kind: TerminalClipboardRequestKind, on server: Server) {
+        // Sessions run on a detached copy of the server; update it and the stored record.
+        let serverID = server.id
+        let stored = try? modelContext.fetch(FetchDescriptor<Server>(predicate: #Predicate { $0.id == serverID })).first
+        for target in [server, stored].compactMap({ $0 }) {
+            switch kind {
+            case .remoteRead: target.remoteClipboardReadPolicy = .allow
+            case .remoteWrite: target.remoteClipboardWritePolicy = .allow
+            case .paste: return
+            }
+        }
+        try? modelContext.save()
     }
 
     private func cancelClipboardRequests() {
