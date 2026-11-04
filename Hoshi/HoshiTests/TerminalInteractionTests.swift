@@ -567,23 +567,20 @@ final class TerminalInteractionTests: XCTestCase {
     }
 
     func testModifierSurvivesChangedToolbarLayoutWhenStillPresent() {
-        ToolbarConfigurationService.shared.saveButtons([.ctrl, .paste])
-        let toolbar = KeyboardToolbarAccessoryView()
+        let toolbar = KeyboardToolbarAccessoryView(buttons: [.ctrl, .paste])
         toolbar.handleButtonTap(.ctrl)
 
-        ToolbarConfigurationService.shared.saveButtons([.ctrl, .arrowUp, .paste])
-        toolbar.reloadButtons()
+        toolbar.apply(buttons: [.ctrl, .arrowUp, .paste], chip: nil)
 
         XCTAssertEqual(toolbar.activeModifiers, ["ctrl"])
     }
 
     func testRemovedModifierDoesNotSurviveToolbarCustomization() {
-        ToolbarConfigurationService.shared.saveButtons([.ctrl, .paste])
-        let toolbar = KeyboardToolbarAccessoryView()
+        let toolbar = KeyboardToolbarAccessoryView(buttons: [.ctrl, .paste])
         toolbar.handleButtonTap(.ctrl)
 
-        ToolbarConfigurationService.shared.saveButtons([.arrowUp, .paste])
-        toolbar.reloadButtons()
+        // Switching key sets (or editing one) drops modifiers the new layout lacks.
+        toolbar.apply(buttons: [.arrowUp, .paste], chip: nil)
 
         XCTAssertTrue(toolbar.activeModifiers.isEmpty)
     }
@@ -1640,5 +1637,202 @@ final class TerminalHeaderContextTests: XCTestCase {
         XCTAssertEqual(estimator.record(0.2), 0.1125, accuracy: 1e-9)
         estimator.reset()
         XCTAssertNil(estimator.smoothed)
+    }
+}
+
+final class KeyChordTests: XCTestCase {
+    private func bytes(_ binding: String, prefix: String? = nil) throws -> [UInt8] {
+        try KeyChord.encode(binding, prefix: prefix)
+    }
+
+    func testControlAltShiftChords() throws {
+        XCTAssertEqual(try bytes("ctrl+s"), [0x13])
+        XCTAssertEqual(try bytes("ctrl+["), [0x1B])
+        XCTAssertEqual(try bytes("alt+h"), [0x1B, 0x68])
+        XCTAssertEqual(try bytes("shift+b"), Array("B".utf8))
+        XCTAssertEqual(try bytes("shift+tab"), Array("\u{1B}[Z".utf8))
+        XCTAssertEqual(try bytes("alt+enter"), [0x1B, 0x0D])
+    }
+
+    func testNamedAndModifiedSpecialKeys() throws {
+        XCTAssertEqual(try bytes("up"), Array("\u{1B}[A".utf8))
+        XCTAssertEqual(try bytes("alt+up"), Array("\u{1B}[1;3A".utf8))
+        XCTAssertEqual(try bytes("ctrl+left"), Array("\u{1B}[1;5D".utf8))
+        XCTAssertEqual(try bytes("pgdn"), Array("\u{1B}[6~".utf8))
+        XCTAssertEqual(try bytes("f1"), Array("\u{1B}OP".utf8))
+        XCTAssertEqual(try bytes("f5"), Array("\u{1B}[15~".utf8))
+    }
+
+    func testPrefixExpansion() throws {
+        XCTAssertEqual(try bytes("prefix+d", prefix: "ctrl+s"), [0x13, 0x64])
+        XCTAssertEqual(try bytes("prefix+shift+b", prefix: "ctrl+s"), [0x13, 0x42])
+        XCTAssertEqual(try bytes("prefix+minus", prefix: "ctrl+b"), [0x02, 0x2D])
+        XCTAssertEqual(try bytes("prefix+{", prefix: "ctrl+b"), [0x02, 0x7B])
+        XCTAssertEqual(try bytes("prefix+;", prefix: "ctrl+b"), [0x02, 0x3B])
+        XCTAssertEqual(try bytes("prefix+left", prefix: "ctrl+b"), [0x02] + Array("\u{1B}[D".utf8))
+        XCTAssertEqual(try bytes("prefix", prefix: "ctrl+a"), [0x01])
+        XCTAssertThrowsError(try bytes("prefix+d")) { error in
+            XCTAssertEqual(error as? KeyChord.EncodingError, .missingPrefix)
+        }
+    }
+
+    func testSequencesAndLiterals() throws {
+        XCTAssertEqual(try bytes(":w enter"), Array(":w\r".utf8))
+        XCTAssertEqual(try bytes("esc colon q"), [0x1B] + Array(":q".utf8))
+        XCTAssertEqual(try bytes("+"), Array("+".utf8))
+    }
+
+    func testRejectsRangesAndUnknownModifiers() {
+        XCTAssertThrowsError(try bytes("prefix+1..9", prefix: "ctrl+b"))
+        XCTAssertThrowsError(try bytes("hyper+x"))
+        XCTAssertThrowsError(try bytes("   "))
+    }
+
+    func testTmuxNotation() {
+        XCTAssertEqual(KeyChord.chord(fromTmuxNotation: "^B"), "ctrl+b")
+        XCTAssertEqual(KeyChord.chord(fromTmuxNotation: "C-a"), "ctrl+a")
+        XCTAssertNil(KeyChord.chord(fromTmuxNotation: "F12"))
+    }
+
+    func testDisplayString() {
+        XCTAssertEqual(KeyChord.displayString("ctrl+s"), "⌃s")
+        XCTAssertEqual(KeyChord.displayString("prefix+shift+b"), "Pfx ⇧b")
+    }
+}
+
+final class HerdrKeyImportTests: XCTestCase {
+    private let sampleConfig = """
+    onboarding = false
+
+    [session]
+    resume_agents_on_restore = true
+
+    [keys]
+    prefix = "ctrl+s"
+
+    # Management and navigation.
+    workspace_picker = ["prefix+b", "prefix+o"]
+    goto = "prefix+w"
+    detach = "prefix+minus"
+    previous_workspace = ["prefix+left", "alt+up", "alt+h"]
+    next_agent = "prefix+down"
+    focus_agent = "prefix+alt+1..9"
+    toggle_sidebar = "prefix+shift+b" # moved
+    switch_tab = [
+      "alt+1..9",
+      "prefix+1..9",
+    ]
+    split_vertical = "prefix+d"
+    split_horizontal = "prefix+s"
+    last_pane = "prefix+;"
+    close_pane = ""
+
+    [ui]
+    pane_borders = "auto"
+    """
+
+    func testParsesKeysSectionOnly() {
+        let keys = HerdrKeyImport.parseKeysSection(sampleConfig)
+        XCTAssertEqual(keys["prefix"], ["ctrl+s"])
+        XCTAssertEqual(keys["workspace_picker"], ["prefix+b", "prefix+o"])
+        XCTAssertEqual(keys["toggle_sidebar"], ["prefix+shift+b"])
+        XCTAssertEqual(keys["switch_tab"], ["alt+1..9", "prefix+1..9"])
+        XCTAssertEqual(keys["last_pane"], ["prefix+;"])
+        XCTAssertEqual(keys["close_pane"], [""])
+        XCTAssertNil(keys["pane_borders"])
+        XCTAssertNil(keys["resume_agents_on_restore"])
+    }
+
+    func testImportUsesConfiguredPrefixAndBindings() throws {
+        let result = HerdrKeyImport.profileKeys(fromConfig: sampleConfig)
+        XCTAssertEqual(result.prefix, "ctrl+s")
+
+        func key(_ action: String) -> ToolbarButton? {
+            result.keys.first { $0.id == "custom-herdr-\(action)" }?.resolved(prefix: result.prefix)
+        }
+        XCTAssertEqual(key("workspace_picker")?.bytes, [0x13, 0x62])
+        XCTAssertEqual(key("split_vertical")?.bytes, [0x13, 0x64])
+        XCTAssertEqual(key("toggle_sidebar")?.bytes, [0x13, 0x42])
+        XCTAssertEqual(key("previous_workspace")?.bytes, [0x13] + Array("\u{1B}[D".utf8))
+        XCTAssertEqual(key("next_agent")?.bytes, [0x13] + Array("\u{1B}[B".utf8))
+        // Explicitly unbound in config.
+        XCTAssertNil(key("close_pane"))
+        // Unset in config, falls back to Herdr's default.
+        XCTAssertEqual(key("zoom")?.bytes, [0x13, 0x7A])
+        // Unbound by default and not configured.
+        XCTAssertNil(key("previous_agent"))
+    }
+
+    func testDefaultsWithoutConfig() {
+        let result = HerdrKeyImport.profileKeys(fromConfig: nil)
+        XCTAssertEqual(result.prefix, "ctrl+b")
+        XCTAssertEqual(result.importedActionCount, 0)
+        let split = result.keys.first { $0.id == "custom-herdr-split_horizontal" }?.resolved(prefix: result.prefix)
+        XCTAssertEqual(split?.bytes, [0x02, 0x2D])
+    }
+}
+
+@MainActor
+final class KeyProfileTests: XCTestCase {
+    private func profiles() -> [KeyProfile] {
+        KeyProfile.builtIns
+    }
+
+    func testResolverMatchesTitleWords() {
+        XCTAssertEqual(KeyProfileResolver.resolve(title: "nvim main.rs", pinnedID: nil, autoSwitch: true, profiles: profiles()).id, KeyProfile.vimID)
+        XCTAssertEqual(KeyProfileResolver.resolve(title: "✳ Claude Code", pinnedID: nil, autoSwitch: true, profiles: profiles()).id, KeyProfile.agentID)
+        XCTAssertEqual(KeyProfileResolver.resolve(title: "herdr · hoshi", pinnedID: nil, autoSwitch: true, profiles: profiles()).id, KeyProfile.herdrID)
+        // Whole-word matching: "desktop" must not select the Pager set via "top".
+        XCTAssertEqual(KeyProfileResolver.resolve(title: "~/Desktop", pinnedID: nil, autoSwitch: true, profiles: profiles()).id, KeyProfile.shellID)
+    }
+
+    func testPinAndAutoSwitch() {
+        XCTAssertEqual(KeyProfileResolver.resolve(title: "vim", pinnedID: KeyProfile.herdrID, autoSwitch: true, profiles: profiles()).id, KeyProfile.herdrID)
+        XCTAssertEqual(KeyProfileResolver.resolve(title: "vim", pinnedID: nil, autoSwitch: false, profiles: profiles()).id, KeyProfile.shellID)
+    }
+
+    func testBuiltInCustomKeysEncode() {
+        for profile in profiles() {
+            for key in profile.keys where key.isCustom {
+                XCTAssertTrue(
+                    KeyChord.isValid(key.chord ?? "", prefix: profile.prefix),
+                    "\(profile.name) key \(key.label) does not encode"
+                )
+            }
+        }
+    }
+
+    func testStorePersistsEditsAndPins() throws {
+        let suiteName = "KeyProfileTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = KeyProfileStore(defaults: defaults)
+        var herdr = try XCTUnwrap(store.profile(id: KeyProfile.herdrID))
+        herdr.prefix = "ctrl+s"
+        herdr.keys.append(.custom(label: "Split", chord: "prefix+d", id: "custom-test-split"))
+        store.update(herdr)
+        let serverID = UUID()
+        store.pin(KeyProfile.herdrID, for: serverID)
+
+        let reloaded = KeyProfileStore(defaults: defaults)
+        let restored = try XCTUnwrap(reloaded.profile(id: KeyProfile.herdrID))
+        XCTAssertEqual(restored.prefix, "ctrl+s")
+        XCTAssertEqual(restored.resolvedKeys.last?.bytes, [0x13, 0x64])
+        XCTAssertEqual(reloaded.resolve(title: "zsh", serverID: serverID).id, KeyProfile.herdrID)
+
+        reloaded.pin(nil, for: serverID)
+        XCTAssertEqual(reloaded.resolve(title: "zsh", serverID: serverID).id, KeyProfile.shellID)
+    }
+
+    func testCustomButtonsRoundTripThroughCodable() throws {
+        let button = ToolbarButton.custom(label: "Split", chord: "prefix+d", symbol: "rectangle.split.2x1", id: "custom-x")
+        let decoded = try JSONDecoder().decode(ToolbarButton.self, from: JSONEncoder().encode(button))
+        XCTAssertEqual(decoded, button)
+        // Legacy payloads without the new fields still decode.
+        let legacy = #"{"id":"esc","label":"Esc","bytes":[27],"category":"modifier"}"#
+        let esc = try JSONDecoder().decode(ToolbarButton.self, from: Data(legacy.utf8))
+        XCTAssertNil(esc.chord)
+        XCTAssertEqual(esc.symbolName, nil)
     }
 }

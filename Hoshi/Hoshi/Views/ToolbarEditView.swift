@@ -5,18 +5,43 @@ import SwiftUI
 struct ToolbarEditView: View {
     @Environment(\.dismiss) private var dismiss
 
+    @State private var profile: KeyProfile
     @State private var currentButtons: [ToolbarButton]
     @State private var selectedCategory: ToolbarButton.Category = .modifier
     @State private var showResetAlert = false
     @State private var draggingButton: ToolbarButton?
+    @State private var customKeyDraft: CustomKeyDraft?
+    @State private var showKeySetSettings = false
+
+    private let serverName: String?
+    private let herdrConfigLoader: (() async throws -> String?)?
 
     // Callback to refresh the toolbar after saving
     var onSave: (() -> Void)?
 
-    init(onSave: (() -> Void)? = nil) {
-        let buttons = ToolbarConfigurationService.shared.loadButtons()
-        _currentButtons = State(initialValue: buttons)
+    /// - Parameters:
+    ///   - profileID: Key set to edit; defaults to the Shell toolbar.
+    ///   - serverName: Connected server, used to label the Herdr import action.
+    ///   - herdrConfigLoader: Reads the server's Herdr config.toml; nil when not connected.
+    init(
+        profileID: String = KeyProfile.shellID,
+        serverName: String? = nil,
+        herdrConfigLoader: (() async throws -> String?)? = nil,
+        onSave: (() -> Void)? = nil
+    ) {
+        let store = KeyProfileStore.shared
+        let profile = store.profile(id: profileID) ?? store.shell
+        _profile = State(initialValue: profile)
+        _currentButtons = State(initialValue: profile.keys)
+        self.serverName = serverName
+        self.herdrConfigLoader = herdrConfigLoader
         self.onSave = onSave
+    }
+
+    private func save() {
+        var updated = profile
+        updated.keys = currentButtons
+        KeyProfileStore.shared.update(updated)
     }
 
     // All buttons for the selected category, with already-added ones dimmed
@@ -55,29 +80,63 @@ struct ToolbarEditView: View {
                 availableKeysSection
             }
             .background(SwiftUI.Color(AppearanceSettings.shared.currentTheme.chromeBackground))
-            .navigationTitle("Edit Toolbar")
+            .navigationTitle(profile.isShell ? "Edit Toolbar" : "\(profile.name) Keys")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if !profile.isShell {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            showKeySetSettings = true
+                        } label: {
+                            Label("Key Set Settings", systemImage: "gearshape")
+                        }
+                        .accessibilityIdentifier("toolbar.editor.keyset.settings")
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
-                        ToolbarConfigurationService.shared.saveButtons(currentButtons)
+                        save()
                         onSave?()
                         dismiss()
                     }
                     .fontWeight(.semibold)
                 }
             }
-            .alert("Reset Toolbar?", isPresented: $showResetAlert) {
+            .alert(profile.isShell ? "Reset Toolbar?" : "Reset \(profile.name) Keys?", isPresented: $showResetAlert) {
                 Button("Cancel", role: .cancel) {}
                 Button("Reset", role: .destructive) {
                     HapticService.warning()
                     withAnimation {
-                        ToolbarConfigurationService.shared.resetToDefaults()
-                        currentButtons = ToolbarButton.defaultButtons
+                        KeyProfileStore.shared.reset(id: profile.id)
+                        if let restored = KeyProfileStore.shared.profile(id: profile.id) {
+                            profile = restored
+                            currentButtons = restored.keys
+                        }
                     }
                 }
             } message: {
-                Text("This will restore the default toolbar layout.")
+                Text(profile.isShell
+                    ? "This will restore the default toolbar layout."
+                    : "This restores the built-in keys, prefix and title words for \(profile.name).")
+            }
+            .sheet(item: $customKeyDraft) { draft in
+                CustomKeyEditorSheet(draft: draft, prefix: profile.prefix) { button in
+                    withAnimation {
+                        if let index = currentButtons.firstIndex(where: { $0.id == button.id }) {
+                            currentButtons[index] = button
+                        } else {
+                            currentButtons.append(button)
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showKeySetSettings) {
+                KeySetSettingsSheet(
+                    profile: $profile,
+                    currentButtons: $currentButtons,
+                    serverName: serverName,
+                    herdrConfigLoader: herdrConfigLoader
+                )
             }
         }
     }
@@ -147,7 +206,7 @@ struct ToolbarEditView: View {
                 }
             }
 
-            Text("Long-press & drag to reorder")
+            Text("Long-press & drag to reorder · tap a custom key to edit it")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, 16)
@@ -161,6 +220,10 @@ struct ToolbarEditView: View {
     private func toolbarChip(_ button: ToolbarButton) -> some View {
         ZStack(alignment: .topTrailing) {
             ToolbarKeyGlyph(button: button)
+                .onTapGesture {
+                    guard button.isCustom else { return }
+                    customKeyDraft = CustomKeyDraft(editing: button)
+                }
                 .font(.system(size: 14, weight: .medium, design: .monospaced))
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
@@ -203,6 +266,19 @@ struct ToolbarEditView: View {
             // Pill-shaped category tabs
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
+                    Button {
+                        customKeyDraft = CustomKeyDraft()
+                    } label: {
+                        Label("Custom", systemImage: "plus")
+                            .font(.system(size: 13, weight: .semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(SwiftUI.Color(editTheme.cardSurface)))
+                            .overlay(Capsule().strokeBorder(SwiftUI.Color(editTheme.accentBlue), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("toolbar.editor.custom.add")
+
                     ForEach(ToolbarButton.Category.allCases, id: \.self) { category in
                         categoryPill(category)
                     }

@@ -1,5 +1,7 @@
 import SwiftUI
 import UIKit
+import Citadel
+import NIOCore
 
 /// Full-screen terminal emulator view wrapping a Ghostty Metal surface.
 ///
@@ -28,6 +30,7 @@ struct TerminalView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let appearanceSettings = AppearanceSettings.shared
+    private let keyProfiles = KeyProfileStore.shared
     private let voiceSettings = VoicePromptSettings.shared
 
     // Font size state for pinch-to-zoom (initialized from settings)
@@ -35,6 +38,8 @@ struct TerminalView: View {
 
     // Toolbar edit sheet
     @State private var showToolbarEditor = false
+    // Key set the editor edits; frozen while the editor is open.
+    @State private var editingKeyProfileID: String?
     @State private var showTmuxPalette = false
     @State private var showVoiceComposer = false
     @State private var showFileUploader = false
@@ -117,6 +122,15 @@ struct TerminalView: View {
                 onClipboardNotice: presentClipboardNotice,
                 onSwapSession: canSwapSession ? onSwapSession : nil,
                 onUserInput: handleUserInput,
+                keyProfileButtons: activeKeyProfile.resolvedKeys,
+                keyProfileChip: KeyProfileChip(
+                    active: activeKeyProfile,
+                    pinnedID: keyProfiles.pinnedProfileID(for: currentServer?.id),
+                    profiles: keyProfiles.profiles
+                ),
+                onSelectKeyProfile: { profileID in
+                    keyProfiles.pin(profileID, for: currentServer?.id)
+                },
                 onSurfaceReady: { surfaceView in
                     managedSession?.surfaceView = surfaceView
                 }
@@ -185,6 +199,7 @@ struct TerminalView: View {
             }
             .onChange(of: showToolbarEditor) { _, isPresented in
                 if isPresented {
+                    editingKeyProfileID = activeKeyProfile.id
                     keyboardVisibleBeforeToolbarEditor = isKeyboardVisible
                 } else if keyboardVisibleBeforeToolbarEditor {
                     isKeyboardVisible = true
@@ -239,9 +254,11 @@ struct TerminalView: View {
     private var presentedTerminal: some View {
         observedTerminal
             .sheet(isPresented: $showToolbarEditor) {
-                ToolbarEditView(onSave: {
-                    // GhosttyTerminalView reloads toolbar buttons after dismissal.
-                })
+                ToolbarEditView(
+                    profileID: editingKeyProfileID ?? activeKeyProfile.id,
+                    serverName: serverName,
+                    herdrConfigLoader: loadHerdrConfig
+                )
             }
             .sheet(isPresented: $showTmuxPalette) {
                 TmuxCommandPaletteView { bytes in
@@ -555,6 +572,21 @@ struct TerminalView: View {
         case .fair: return Color(theme.accentYellow)
         case .poor: return Color(theme.accentRed)
         }
+    }
+
+    // MARK: - Key sets
+
+    private var activeKeyProfile: KeyProfile {
+        keyProfiles.resolve(title: managedSession?.terminalTitle, serverID: currentServer?.id)
+    }
+
+    /// Reads the connected server's Herdr config.toml (nil when it has none).
+    private func loadHerdrConfig() async throws -> String? {
+        let output = try await connectionVM.withVerifiedFileTransferClient { client in
+            let buffer = try await client.executeCommand(HerdrKeyImport.readConfigCommand)
+            return buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) ?? ""
+        }
+        return output.contains(HerdrKeyImport.noConfigMarker) ? nil : output
     }
 
     // MARK: - Auto-hiding header

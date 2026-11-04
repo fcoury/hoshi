@@ -17,6 +17,10 @@ struct GhosttyTerminalView: UIViewRepresentable {
     let onClipboardNotice: (TerminalClipboardNotice) -> Void
     var onSwapSession: (() -> Void)?
     var onUserInput: (() -> Void)?
+    /// Keys and chip for the active key set; nil keeps the accessory's current keys.
+    var keyProfileButtons: [ToolbarButton]?
+    var keyProfileChip: KeyProfileChip?
+    var onSelectKeyProfile: ((String?) -> Void)?
     var onSurfaceReady: ((GhosttyTerminalSurfaceView) -> Void)?
 
     func makeCoordinator() -> Coordinator {
@@ -101,6 +105,10 @@ struct GhosttyTerminalView: UIViewRepresentable {
         view.onUserKeystroke = { [weak coordinator] in
             coordinator?.onUserInput?()
         }
+        view.toolbarAccessory.onSelectProfile = onSelectKeyProfile
+        if let keyProfileButtons {
+            view.toolbarAccessory.apply(buttons: keyProfileButtons, chip: keyProfileChip)
+        }
 
         connectionVM.setDataCallback { [weak view] bytes in
             DispatchQueue.main.async {
@@ -155,6 +163,10 @@ struct GhosttyTerminalView: UIViewRepresentable {
         uiView.onUserKeystroke = { [weak coordinator] in
             coordinator?.onUserInput?()
         }
+        uiView.toolbarAccessory.onSelectProfile = onSelectKeyProfile
+        if let keyProfileButtons {
+            uiView.toolbarAccessory.apply(buttons: keyProfileButtons, chip: keyProfileChip)
+        }
 
         connectionVM.setDataCallback { [weak uiView] bytes in
             DispatchQueue.main.async {
@@ -184,6 +196,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
         uiView.onClipboardNotice = nil
         uiView.onKeyboardVisibilityChanged = nil
         uiView.onUserKeystroke = nil
+        uiView.toolbarAccessory.onSelectProfile = nil
         // A retained surface keeps receiving bytes while hidden, preserving its
         // real scrollback, cursor, selections, and alternate-screen state.
         if coordinator.managedSession?.surfaceView !== uiView {
