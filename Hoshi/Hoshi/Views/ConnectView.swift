@@ -81,7 +81,10 @@ struct ConnectView: View {
 
                 if let presentation = connectionVM.presentedError {
                     Section {
-                        ErrorPresentationView(presentation: presentation)
+                        ErrorPresentationView(presentation: presentation) {
+                            // Tapping Connect again now shows the new key's verification prompt.
+                            connectionVM.presentedError = nil
+                        }
                     }
                 }
             }

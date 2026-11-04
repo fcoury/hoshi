@@ -153,6 +153,25 @@ final class KnownHostsService: @unchecked Sendable {
         )
     }
 
+    /// Host key algorithms Hoshi can trust; used to forget a host without knowing its algorithm.
+    static let supportedAlgorithms = [
+        "ssh-ed25519",
+        "ecdsa-sha2-nistp256",
+        "ecdsa-sha2-nistp384",
+        "ecdsa-sha2-nistp521",
+        "ssh-rsa",
+        "rsa-sha2-256",
+        "rsa-sha2-512",
+    ]
+
+    /// Forgets every trusted key for an endpoint so the next connection asks the user
+    /// to verify the presented fingerprint again (trust on first use).
+    func forgetHostKeys(hostname: String, port: Int) throws {
+        for algorithm in Self.supportedAlgorithms {
+            try keychain.deleteKnownHostKey(hostname: hostname, port: port, algorithm: algorithm)
+        }
+    }
+
     func validator(hostname: String, port: Int) -> SSHHostKeyValidator {
         .custom(SSHKnownHostValidator(hostname: hostname, port: port, knownHosts: self))
     }

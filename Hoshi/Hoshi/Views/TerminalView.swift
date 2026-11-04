@@ -26,6 +26,9 @@ struct TerminalView: View {
     var onAlwaysUseSSH: (() throws -> Void)?
     var onOpenHerdr: ((HerdrAttachment) -> Void)?
     var onDismiss: (() -> Void)?
+    /// True when shown full-screen over the server list, which then can't present
+    /// host-key prompts (e.g. a reconnect that meets a new key).
+    var presentsHostKeyPrompts = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -89,6 +92,7 @@ struct TerminalView: View {
 
     var body: some View {
         alertedTerminal
+            .hostKeyTrustPrompt(enabled: presentsHostKeyPrompts && scenePhase == .active)
             .overlay {
                 if scenePhase != .active {
                     privacyCover
@@ -322,6 +326,17 @@ struct TerminalView: View {
                 connectionVM.presentedError?.title ?? "Connection Error",
                 isPresented: $connectionVM.showError
             ) {
+                if let change = connectionVM.presentedError?.hostKeyChange {
+                    Button("Forget Old Key and Verify Again", role: .destructive) {
+                        do {
+                            try change.forgetTrustedKey()
+                            HapticService.success()
+                            Task { await connectionVM.retryConnection() }
+                        } catch {
+                            connectionVM.presentConnectionError(error)
+                        }
+                    }
+                }
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(connectionVM.presentedError?.fullMessage ?? connectionVM.errorMessage ?? "The connection failed.")
@@ -915,6 +930,32 @@ struct TerminalView: View {
                 }
                 .accessibilityLabel("Open tmux command palette")
                 .keyboardShortcut("p", modifiers: [.command, .shift])
+
+                // Wide layouts must offer Herdr too, or blocked agents become invisible.
+                if connectionVM.detectedHerdr != nil {
+                    Button {
+                        showHerdrAgents = true
+                    } label: {
+                        Image(systemName: "square.stack.3d.up")
+                            .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                            .frame(minWidth: 44, minHeight: 44)
+                            .overlay(alignment: .topTrailing) {
+                                if connectionVM.herdrBlockedCount > 0 {
+                                    Circle()
+                                        .fill(.orange)
+                                        .frame(width: 9, height: 9)
+                                        .offset(x: -9, y: 9)
+                                        .accessibilityHidden(true)
+                                }
+                            }
+                    }
+                    .accessibilityLabel("Herdr agents")
+                    .accessibilityValue(connectionVM.herdrBlockedCount > 0
+                        ? "\(connectionVM.herdrBlockedCount) waiting"
+                        : "")
+                    .accessibilityIdentifier("terminal.herdr.open")
+                    .keyboardShortcut("a", modifiers: [.command, .shift])
+                }
             }
             .fixedSize(horizontal: true, vertical: false)
             .disabled(!connectionVM.canAcceptTerminalInput)

@@ -8,6 +8,7 @@ struct VoicePromptComposerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openURL) private var openURL
     @FocusState private var editorIsFocused: Bool
 
     @State private var controller: VoicePromptController
@@ -120,18 +121,39 @@ struct VoicePromptComposerView: View {
                 Text("Set Up Private Dictation")
                     .font(.headline)
 
-                if controller.microphoneAuthorization != .authorized {
+                // iOS only shows its permission prompt once; after a denial the
+                // request is a no-op, so send the user to Settings instead.
+                if controller.microphoneAuthorization == .notDetermined {
                     Button("Allow Microphone") {
                         Task { await controller.requestMicrophoneAuthorization() }
                     }
                     .buttonStyle(.bordered)
                 }
 
-                if controller.speechAuthorization != .authorized {
+                if controller.speechAuthorization == .notDetermined {
                     Button("Allow Speech Recognition") {
                         Task { await controller.requestSpeechAuthorization() }
                     }
                     .buttonStyle(.bordered)
+                }
+
+                if controller.microphoneAuthorization == .denied || controller.speechAuthorization == .denied {
+                    Text("Microphone or speech recognition access was turned off for Hoshi.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            openURL(url)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("voice.permissions.settings")
+                }
+
+                if controller.microphoneAuthorization == .restricted || controller.speechAuthorization == .restricted {
+                    Text("Dictation is restricted on this device, for example by Screen Time or a device profile.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
