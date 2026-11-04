@@ -184,6 +184,16 @@ struct SettingsView: View {
                 }
             }
 
+            Picker("Long Press", selection: Binding(
+                get: { settings.longPressAction },
+                set: { settings.longPressAction = $0 }
+            )) {
+                ForEach(TerminalLongPressAction.allCases) { action in
+                    Text(action.displayName).tag(action)
+                }
+            }
+            .accessibilityIdentifier("settings.long-press")
+
             Picker("Double Tap", selection: Binding(
                 get: { settings.doubleTapAction },
                 set: { settings.doubleTapAction = $0 }

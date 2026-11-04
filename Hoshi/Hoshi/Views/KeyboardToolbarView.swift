@@ -240,10 +240,25 @@ class KeyboardToolbarAccessoryView: UIView {
             activeModifiers.removeAll()
             updateContent()
         }
+        return apply(modifiers: activeModifiers, to: data)
+    }
 
-        let hasShift = activeModifiers.contains("shift")
-        let hasCtrl = activeModifiers.contains("ctrl")
-        let hasOpt = activeModifiers.contains("opt")
+    /// Takes the sticky modifiers for a gesture that sends many keys, so each key
+    /// gets them (e.g. Opt + arrow drag jumps word by word), not just the first.
+    func takeActiveModifiers() -> Set<String> {
+        let modifiers = activeModifiers
+        if !modifiers.isEmpty {
+            activeModifiers.removeAll()
+            updateContent()
+        }
+        return modifiers
+    }
+
+    func apply(modifiers: Set<String>, to data: ArraySlice<UInt8>) -> ArraySlice<UInt8> {
+        guard !modifiers.isEmpty else { return data }
+        let hasShift = modifiers.contains("shift")
+        let hasCtrl = modifiers.contains("ctrl")
+        let hasOpt = modifiers.contains("opt")
 
         // Path A — Escape sequences from toolbar buttons (arrows, function keys, etc.)
         if data.count > 1, data.first == 0x1B {

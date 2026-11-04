@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		00022D11F851BDF7B2E6A9E2 /* GhosttyRuntimeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A17CA7267266FF635755CD /* GhosttyRuntimeController.swift */; };
 		04119B6DCA7B159DED5322F0 /* ConnectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DAAFBD67A2073274FD71E7 /* ConnectionPolicy.swift */; };
+		0442D32A67F1BC183B4F8E7E /* ArrowPadOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E926499ECB0795A1B37BEDD3 /* ArrowPadOverlayView.swift */; };
 		04891F707B323D36FB701009 /* SauceCodeProNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = EE74F42FC3581FBD6835FEE6 /* SauceCodeProNerdFontMono-Regular.ttf */; };
 		064C00DA4CB553707EF8739B /* HerdrIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B82B7E9022DF81F3E5DDD245 /* HerdrIntegrationTests.swift */; };
 		06A11F7850D352D89F54D536 /* HerdrViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15CA71325EF6846BA2A426A5 /* HerdrViews.swift */; };
@@ -339,6 +340,7 @@
 		E2754427187BAEC4DF26A643 /* CaskaydiaCoveNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "CaskaydiaCoveNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
 		E2B9B11940723B9C53B4410C /* MoshBootstrapService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshBootstrapService.swift; sourceTree = "<group>"; };
 		E31F018D17922A0C005CF1D8 /* JetBrainsMonoNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
+		E926499ECB0795A1B37BEDD3 /* ArrowPadOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArrowPadOverlayView.swift; sourceTree = "<group>"; };
 		ECD6E3400C759BA2E5459CC7 /* MesloLGSNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MesloLGSNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
 		EDE3EFCBD24D8BADA1423CA2 /* FileUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileUploadService.swift; sourceTree = "<group>"; };
 		EE74F42FC3581FBD6835FEE6 /* SauceCodeProNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "SauceCodeProNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
@@ -627,6 +629,7 @@
 		F3DD80D98FDF6CF364C212FC /* Terminal */ = {
 			isa = PBXGroup;
 			children = (
+				E926499ECB0795A1B37BEDD3 /* ArrowPadOverlayView.swift */,
 				E1A17CA7267266FF635755CD /* GhosttyRuntimeController.swift */,
 				F434FC2C5E00789F32E7BF2D /* GhosttyTerminalView.swift */,
 				9FC5A0FB628B34BE815D797C /* GhosttyThemeAdapter.swift */,
@@ -823,6 +826,7 @@
 				0B67E53F5AF59AC6F006596A /* AppLockService.swift in Sources */,
 				2D0D57999EB5B078AC8748D3 /* AppRootView.swift in Sources */,
 				B6C1187C1ABC1ACC105F144B /* AppearanceSettings.swift in Sources */,
+				0442D32A67F1BC183B4F8E7E /* ArrowPadOverlayView.swift in Sources */,
 				B808A611369E149F6B0B8088 /* ColorSchemePreference.swift in Sources */,
 				3ADE4D5AB0F163B3CF8730A4 /* ConnectView.swift in Sources */,
 				E9992B8F2A238088E9E8947C /* ConnectionCoordinator.swift in Sources */,

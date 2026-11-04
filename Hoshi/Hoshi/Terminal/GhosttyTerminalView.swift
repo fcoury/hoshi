@@ -326,6 +326,14 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
     private var activeHandleDragOrigin: CGPoint?
     private var longPressStartPoint: CGPoint?
     private var longPressIsSelecting = false
+    // Long-press arrow joystick (Settings > Long Press > Arrow Keys)
+    private var arrowPad: ArrowPadOverlayView?
+    private var arrowJoystick = TerminalArrowJoystick()
+    private var arrowRepeater = TerminalArrowRepeater()
+    private var arrowOrigin: CGPoint?
+    private var arrowModifiers: Set<String> = []
+    private var arrowLastGear = 0
+    private var arrowDisplayLink: CADisplayLink?
     private var reopenEditMenuAfterDismissal = false
     private var editMenuInteraction: UIEditMenuInteraction?
     private var selectionStartHandle: TerminalSelectionHandleView?
@@ -1750,7 +1758,7 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
         updateSelectionAffordances()
     }
 
-    private func sendInputData(_ data: Data) {
+    private func sendInputData(_ data: Data, applyingToolbarModifiers: Bool = true) {
         guard !data.isEmpty else { return }
         onUserKeystroke?()
 
@@ -1764,7 +1772,9 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
             }
         }
 
-        let transformed = toolbarAccessory.applyModifiersIfNeeded(to: ArraySlice(data))
+        let transformed = applyingToolbarModifiers
+            ? toolbarAccessory.applyModifiersIfNeeded(to: ArraySlice(data))
+            : ArraySlice(data)
         if Self.inputTraceEnabled {
             print("[INPUT_TRACE] sendInputData direct bytes=\(Self.hexBytes(Data(transformed)))")
         }
@@ -2060,6 +2070,11 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
 
     // Long press + drag for mouse selection in terminal apps
     @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+        if arrowOrigin != nil || (gesture.state == .began && AppearanceSettings.shared.longPressAction == .arrowKeys) {
+            handleArrowJoystick(gesture)
+            return
+        }
+
         let pos = surfacePoint(fromViewPoint: gesture.location(in: self))
 
         switch gesture.state {
@@ -2074,6 +2089,77 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
         default:
             break
         }
+    }
+
+    // MARK: Arrow joystick
+
+    private func handleArrowJoystick(_ gesture: UILongPressGestureRecognizer) {
+        let location = gesture.location(in: self)
+        switch gesture.state {
+        case .began:
+            beginArrowJoystick(at: location)
+        case .changed:
+            updateArrowJoystick(at: location)
+        default:
+            endArrowJoystick()
+        }
+    }
+
+    private func beginArrowJoystick(at point: CGPoint) {
+        restoreInputFocus()
+        editMenuInteraction?.dismissMenu()
+        arrowOrigin = point
+        arrowJoystick.reset()
+        arrowRepeater.reset()
+        arrowLastGear = 0
+        // Sticky Ctrl/Opt/Shift apply to every key of this drag, then clear.
+        arrowModifiers = toolbarAccessory.takeActiveModifiers()
+
+        let pad = arrowPad ?? {
+            let pad = ArrowPadOverlayView()
+            addSubview(pad)
+            arrowPad = pad
+            return pad
+        }()
+        bringSubviewToFront(pad)
+        pad.show(at: point, in: bounds)
+        HapticService.mediumTap()
+
+        let link = CADisplayLink(target: self, selector: #selector(arrowJoystickTick))
+        link.add(to: .main, forMode: .common)
+        arrowDisplayLink = link
+    }
+
+    private func updateArrowJoystick(at point: CGPoint) {
+        guard let origin = arrowOrigin else { return }
+        let state = arrowJoystick.update(translation: CGPoint(x: point.x - origin.x, y: point.y - origin.y))
+        arrowPad?.render(state)
+        if state.gear > 1, state.gear != arrowLastGear {
+            HapticService.selection()
+        }
+        arrowLastGear = state.gear
+        fireArrowIfDue()
+    }
+
+    @objc private func arrowJoystickTick() {
+        fireArrowIfDue()
+    }
+
+    private func fireArrowIfDue() {
+        guard let direction = arrowRepeater.advance(arrowJoystick.state, now: CACurrentMediaTime()) else { return }
+        HapticService.lightTap()
+        let bytes = toolbarAccessory.apply(modifiers: arrowModifiers, to: ArraySlice(direction.bytes))
+        sendInputData(Data(bytes), applyingToolbarModifiers: false)
+    }
+
+    private func endArrowJoystick() {
+        arrowDisplayLink?.invalidate()
+        arrowDisplayLink = nil
+        arrowOrigin = nil
+        arrowModifiers = []
+        arrowJoystick.reset()
+        arrowRepeater.reset()
+        arrowPad?.hide()
     }
 
     func beginLongPressSelection(at point: CGPoint) {
