@@ -62,6 +62,9 @@ struct TerminalView: View {
     // Status dot pulse animation for connecting/reconnecting states
     @State private var statusDotPulsing = false
 
+    // Header collapses to a slim strip while typing to give rows back to the terminal.
+    @State private var isHeaderCollapsed = false
+
     // Server name from whichever session is active
     private var serverName: String {
         connectionVM.moshSession?.server.name
@@ -90,7 +93,15 @@ struct TerminalView: View {
 
     private var terminalContent: some View {
         VStack(spacing: 0) {
-            statusBar
+            Group {
+                if isHeaderCollapsed {
+                    compactStatusBar
+                        .transition(.opacity)
+                } else {
+                    statusBar
+                        .transition(.opacity)
+                }
+            }
 
             GhosttyTerminalView(
                 connectionVM: connectionVM,
@@ -105,6 +116,7 @@ struct TerminalView: View {
                 onClipboardRequest: enqueueClipboardRequest,
                 onClipboardNotice: presentClipboardNotice,
                 onSwapSession: canSwapSession ? onSwapSession : nil,
+                onUserInput: handleUserInput,
                 onSurfaceReady: { surfaceView in
                     managedSession?.surfaceView = surfaceView
                 }
@@ -114,6 +126,12 @@ struct TerminalView: View {
             .padding(.horizontal, Self.terminalHorizontalInset)
             .overlay(alignment: .top) {
                 terminalNoticeStack
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if managedSession?.isScrolledBack == true {
+                    jumpToBottomButton
+                        .transition(.scale(scale: 0.8).combined(with: .opacity))
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -129,6 +147,17 @@ struct TerminalView: View {
             .animation(reduceMotion ? nil : .spring(duration: 0.35), value: connectionVM.recoveryStatus)
             .animation(reduceMotion ? nil : .spring(duration: 0.35), value: connectionVM.transportFallbackNotice?.id)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: clipboardNotice?.id)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isHeaderCollapsed)
+            .animation(reduceMotion ? nil : .spring(duration: 0.25), value: managedSession?.isScrolledBack)
+            .onChange(of: isKeyboardVisible) { _, visible in
+                if !visible { expandHeader() }
+            }
+            .onChange(of: managedSession?.id) { _, _ in
+                expandHeader()
+            }
+            .onChange(of: appearanceSettings.autoHideTerminalHeader) { _, enabled in
+                if !enabled { expandHeader() }
+            }
             .onChange(of: fontSize) { _, newSize in
                 appearanceSettings.fontSize = newSize
             }
@@ -427,6 +456,10 @@ struct TerminalView: View {
         from oldState: ConnectionState,
         to newState: ConnectionState
     ) {
+        if newState != .connected {
+            expandHeader()
+        }
+
         switch newState {
         case .connected:
             HapticService.success()
@@ -450,6 +483,9 @@ struct TerminalView: View {
         to newStatus: ConnectionRecoveryStatus
     ) {
         guard oldStatus != newStatus else { return }
+        if newStatus != .idle {
+            expandHeader()
+        }
         if newStatus.blocksInput {
             cancelClipboardRequests()
         }
@@ -464,6 +500,145 @@ struct TerminalView: View {
         case .idle:
             break
         }
+    }
+
+    // MARK: - Header context
+
+    private var currentServer: Server? {
+        managedSession?.server
+            ?? connectionVM.moshSession?.server
+            ?? connectionVM.sshSession?.server
+    }
+
+    /// Foreground program or directory, e.g. "vim main.rs" or "~/code/hoshi".
+    private var contextSubtitle: String? {
+        guard connectionVM.connectionState == .connected, let managedSession else { return nil }
+        return TerminalHeaderContext.subtitle(
+            title: managedSession.terminalTitle,
+            workingDirectory: managedSession.workingDirectory,
+            username: currentServer?.username ?? "",
+            hostname: currentServer?.hostname ?? "",
+            serverName: serverName
+        )
+    }
+
+    private var visibleRoundTripTime: TimeInterval? {
+        guard isMosh,
+              connectionVM.connectionState == .connected,
+              connectionVM.recoveryStatus == .idle else { return nil }
+        return connectionVM.roundTripTime
+    }
+
+    @ViewBuilder
+    private var latencyIndicator: some View {
+        if let roundTripTime = visibleRoundTripTime {
+            let quality = ConnectionLatencyQuality(roundTripTime: roundTripTime)
+            HStack(spacing: 3) {
+                Image(systemName: "cellularbars", variableValue: quality.signalLevel)
+                    .font(.caption2)
+                    .foregroundStyle(latencyColor(quality))
+                Text(ConnectionLatencyQuality.displayText(for: roundTripTime))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                    .contentTransition(.numericText())
+            }
+            .fixedSize()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Latency \(ConnectionLatencyQuality.displayText(for: roundTripTime))")
+        }
+    }
+
+    private func latencyColor(_ quality: ConnectionLatencyQuality) -> Color {
+        let theme = appearanceSettings.currentTheme
+        switch quality {
+        case .good: return Color(theme.accentGreen)
+        case .fair: return Color(theme.accentYellow)
+        case .poor: return Color(theme.accentRed)
+        }
+    }
+
+    // MARK: - Auto-hiding header
+
+    private func handleUserInput() {
+        guard !isHeaderCollapsed,
+              appearanceSettings.autoHideTerminalHeader,
+              isKeyboardVisible,
+              connectionVM.canAcceptTerminalInput,
+              connectionVM.transportFallbackNotice == nil else { return }
+        isHeaderCollapsed = true
+    }
+
+    private func expandHeader() {
+        guard isHeaderCollapsed else { return }
+        isHeaderCollapsed = false
+    }
+
+    private var compactStatusBar: some View {
+        Button {
+            HapticService.lightTap()
+            expandHeader()
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 6, height: 6)
+                Text(serverName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color(appearanceSettings.currentTheme.foreground))
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                if let contextSubtitle {
+                    Text(contextSubtitle)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                }
+                Spacer(minLength: 8)
+                latencyIndicator
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 26)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .background(SwiftUI.Color(appearanceSettings.currentTheme.background))
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 8).onEnded { value in
+                if value.translation.height > 8 { expandHeader() }
+            }
+        )
+        .accessibilityLabel("\(serverName), \(connectionAccessibilityLabel)")
+        .accessibilityHint("Shows the full terminal header")
+        .accessibilityIdentifier("terminal.header.compact")
+    }
+
+    // MARK: - Scrollback
+
+    private var jumpToBottomButton: some View {
+        Button {
+            HapticService.lightTap()
+            managedSession?.surfaceView?.scrollToBottom()
+        } label: {
+            Image(systemName: "arrow.down.to.line")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color(appearanceSettings.currentTheme.foreground))
+                .frame(width: 40, height: 40)
+                .background(.ultraThinMaterial, in: .circle)
+                .overlay(
+                    Circle().strokeBorder(Color(appearanceSettings.currentTheme.separator), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
+        }
+        .buttonStyle(.plain)
+        .padding(.trailing, 14)
+        .padding(.bottom, 14)
+        .accessibilityLabel("Jump to bottom")
+        .accessibilityHint("Scrolls back to the latest terminal output")
+        .accessibilityIdentifier("terminal.scroll.bottom")
     }
 
     private var statusBar: some View {
@@ -571,12 +746,23 @@ struct TerminalView: View {
                         .accessibilityHidden(true)
                 }
 
+                latencyIndicator
+
                 if sessions.count > 1 {
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
                         .accessibilityHidden(true)
                 }
+            }
+
+            if !showsConnectionDetail, let contextSubtitle {
+                Text(contextSubtitle)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .transition(.opacity)
             }
 
             if showsConnectionDetail {

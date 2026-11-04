@@ -69,12 +69,16 @@ final class ConnectionViewModel {
     // a Combine subscription so SwiftUI sees changes.
     private(set) var currentSessionState: ConnectionState = .disconnected
     private(set) var currentRecoveryStatus: ConnectionRecoveryStatus = .idle
+    /// Smoothed transport round-trip time (Mosh only; SSH has no cheap probe).
+    private(set) var roundTripTime: TimeInterval?
 
     // Combine subscription that forwards session state changes
     @ObservationIgnored
     private var sessionStateCancellable: AnyCancellable?
     @ObservationIgnored
     private var recoveryStatusCancellable: AnyCancellable?
+    @ObservationIgnored
+    private var roundTripCancellable: AnyCancellable?
     @ObservationIgnored
     private var coordinator: ConnectionCoordinator?
     @ObservationIgnored
@@ -107,6 +111,9 @@ final class ConnectionViewModel {
         sessionStateCancellable = nil
         recoveryStatusCancellable?.cancel()
         recoveryStatusCancellable = nil
+        roundTripCancellable?.cancel()
+        roundTripCancellable = nil
+        roundTripTime = nil
 
         if showTmuxPicker {
             currentSessionState = .connecting
@@ -121,6 +128,10 @@ final class ConnectionViewModel {
             recoveryStatusCancellable = moshSession.$recoveryStatus
                 .sink { [weak self] status in
                     self?.currentRecoveryStatus = status
+                }
+            roundTripCancellable = moshSession.$roundTripTime
+                .sink { [weak self] roundTripTime in
+                    self?.roundTripTime = roundTripTime
                 }
         } else if let sshSession {
             currentSessionState = sshSession.connectionState

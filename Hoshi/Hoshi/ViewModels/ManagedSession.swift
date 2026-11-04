@@ -22,6 +22,11 @@ final class ManagedSession: Identifiable {
     var unreadAgentEventCount = 0
     var agentAttentionKind: AgentEventKind?
     var thumbnail: UIImage?
+    // Live terminal context reported by the remote shell (OSC 0/2 title, OSC 7 cwd).
+    var terminalTitle: String?
+    var workingDirectory: String?
+    // True while the viewport is scrolled up into history.
+    var isScrolledBack = false
     // Own the actual Ghostty surface so switching sessions never discards screen state.
     @ObservationIgnored
     var surfaceView: GhosttyTerminalSurfaceView?

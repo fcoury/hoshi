@@ -1572,3 +1572,73 @@ final class TerminalInteractionTests: XCTestCase {
         }
     }
 }
+
+final class TerminalHeaderContextTests: XCTestCase {
+    private func subtitle(title: String?, pwd: String? = nil) -> String? {
+        TerminalHeaderContext.subtitle(
+            title: title,
+            workingDirectory: pwd,
+            username: "fcoury",
+            hostname: "m5pro.local",
+            serverName: "m5pro"
+        )
+    }
+
+    func testProgramTitleWins() {
+        XCTAssertEqual(subtitle(title: "vim main.rs", pwd: "/Users/fcoury/code"), "vim main.rs")
+    }
+
+    func testStripsUserHostPrefix() {
+        XCTAssertEqual(subtitle(title: "fcoury@m5pro: ~/code/hoshi"), "~/code/hoshi")
+        XCTAssertEqual(subtitle(title: "fcoury@m5pro.local:~"), "~")
+    }
+
+    func testRedundantTitleFallsBackToWorkingDirectory() {
+        XCTAssertEqual(subtitle(title: "fcoury@m5pro", pwd: "/Users/fcoury/code/hoshi"), "~/code/hoshi")
+        XCTAssertEqual(subtitle(title: "m5pro", pwd: "/tmp"), "/tmp")
+        XCTAssertNil(subtitle(title: "  ", pwd: nil))
+    }
+
+    func testWorkingDirectoryReportParsing() {
+        XCTAssertEqual(TerminalHeaderContext.path(fromWorkingDirectoryReport: "file://m5pro/Users/fcoury/My%20Docs"), "/Users/fcoury/My Docs")
+        XCTAssertEqual(TerminalHeaderContext.path(fromWorkingDirectoryReport: "/var/log"), "/var/log")
+        XCTAssertNil(TerminalHeaderContext.path(fromWorkingDirectoryReport: ""))
+    }
+
+    func testHomeAbbreviation() {
+        XCTAssertEqual(TerminalHeaderContext.abbreviatePath("/home/fcoury/src", username: "fcoury"), "~/src")
+        XCTAssertEqual(TerminalHeaderContext.abbreviatePath("/home/fcoury2", username: "fcoury"), "/home/fcoury2")
+        XCTAssertEqual(TerminalHeaderContext.abbreviatePath("/root", username: "root"), "~")
+    }
+
+    func testScrollbackPosition() {
+        XCTAssertFalse(TerminalScrollbackPosition.isScrolledBack(total: 40, offset: 0, len: 40))
+        XCTAssertFalse(TerminalScrollbackPosition.isScrolledBack(total: 500, offset: 460, len: 40))
+        XCTAssertTrue(TerminalScrollbackPosition.isScrolledBack(total: 500, offset: 100, len: 40))
+    }
+
+    func testLatencyQualityAndText() {
+        XCTAssertEqual(ConnectionLatencyQuality(roundTripTime: 0.045), .good)
+        XCTAssertEqual(ConnectionLatencyQuality(roundTripTime: 0.2), .fair)
+        XCTAssertEqual(ConnectionLatencyQuality(roundTripTime: 0.6), .poor)
+        XCTAssertEqual(ConnectionLatencyQuality.displayText(for: 0.0424), "42ms")
+        XCTAssertEqual(ConnectionLatencyQuality.displayText(for: 1.25), "1.2s")
+    }
+
+    func testMoshRoundTripSampling() {
+        XCTAssertNil(MoshRoundTripEstimator.sample(now: 100, reply: 0xFFFF))
+        XCTAssertEqual(MoshRoundTripEstimator.sample(now: 1_050, reply: 1_000), 0.05)
+        // 16-bit clock wraparound.
+        XCTAssertEqual(MoshRoundTripEstimator.sample(now: 20, reply: 65_516), 0.04)
+        // Stale echo is ignored, matching mosh.
+        XCTAssertNil(MoshRoundTripEstimator.sample(now: 9_000, reply: 1_000))
+    }
+
+    func testMoshRoundTripSmoothing() {
+        var estimator = MoshRoundTripEstimator()
+        XCTAssertEqual(estimator.record(0.1), 0.1)
+        XCTAssertEqual(estimator.record(0.2), 0.1125, accuracy: 1e-9)
+        estimator.reset()
+        XCTAssertNil(estimator.smoothed)
+    }
+}

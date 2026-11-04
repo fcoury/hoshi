@@ -206,6 +206,18 @@ final class GhosttyRuntimeController: ObservableObject {
             GhosttyTerminalSurfaceView.updateTitle(for: surface, title: title)
             return true
 
+        case GHOSTTY_ACTION_PWD:
+            guard target.tag == GHOSTTY_TARGET_SURFACE,
+                  let surface = target.target.surface,
+                  let pwdPtr = action.action.pwd.pwd,
+                  let pwd = String(validatingUTF8: pwdPtr)
+            else {
+                return true
+            }
+
+            GhosttyTerminalSurfaceView.updateWorkingDirectory(for: surface, report: pwd)
+            return true
+
         case GHOSTTY_ACTION_SCROLLBAR:
             guard target.tag == GHOSTTY_TARGET_SURFACE,
                   let surface = target.target.surface

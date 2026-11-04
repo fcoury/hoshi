@@ -188,6 +188,11 @@ struct SettingsView: View {
                     Text(action.displayName).tag(action)
                 }
             }
+
+            Toggle("Compact Header While Typing", isOn: Binding(
+                get: { settings.autoHideTerminalHeader },
+                set: { settings.autoHideTerminalHeader = $0 }
+            ))
         }
     }
 
