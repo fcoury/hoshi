@@ -461,3 +461,148 @@ enum TerminalApplicationLifecycle {
         applicationState == .active
     }
 }
+
+// MARK: - System keyboard text input document
+
+/// The tiny document the terminal surface presents to the iOS text system.
+///
+/// A terminal has no locally editable text: every keystroke goes straight to
+/// the remote PTY. A view that only adopts `UIKeyInput` gets a single
+/// `deleteBackward()` per backspace press, though, because the system keyboard
+/// only auto-repeats delete for documents it can inspect through `UITextInput`.
+/// This document gives the keyboard a stable, non-empty context: one invisible
+/// placeholder before the caret (so there is always something to delete),
+/// followed by any IME composition in progress. Offsets are UTF-16 code units
+/// to match `NSRange`.
+struct TerminalTextInputDocument: Equatable {
+    /// A zero-width space: non-empty for the keyboard, but neither a letter
+    /// nor a Unicode White_Space character, so it cannot feed the double-space
+    /// period shortcut or autocapitalization. (Foundation's
+    /// `CharacterSet.whitespaces` does include it; the keyboard was verified
+    /// on device not to insert a period after two spaces.)
+    static let placeholder = "\u{200B}"
+    static let placeholderLength = (placeholder as NSString).length
+
+    private(set) var markedText = ""
+    /// Selection inside `markedText`, relative to its start.
+    private(set) var markedSelection = NSRange(location: 0, length: 0)
+
+    var text: String { Self.placeholder + markedText }
+    var length: Int { (text as NSString).length }
+    var hasMarkedText: Bool { !markedText.isEmpty }
+
+    /// The range of the composition in document offsets, or `nil` when idle.
+    var markedRange: NSRange? {
+        hasMarkedText
+            ? NSRange(location: Self.placeholderLength, length: (markedText as NSString).length)
+            : nil
+    }
+
+    /// The caret sits at the end of the document unless the IME has placed a
+    /// selection inside its composition.
+    var selectedRange: NSRange {
+        guard hasMarkedText else { return NSRange(location: length, length: 0) }
+        return NSRange(
+            location: Self.placeholderLength + markedSelection.location,
+            length: markedSelection.length
+        )
+    }
+
+    func text(in range: NSRange) -> String {
+        let clamped = clamp(range)
+        return (text as NSString).substring(with: clamped)
+    }
+
+    func clamp(_ range: NSRange) -> NSRange {
+        let location = min(max(0, range.location), length)
+        let end = min(max(location, range.location + range.length), length)
+        return NSRange(location: location, length: end - location)
+    }
+
+    /// Replaces the composition. An empty or `nil` string ends it without
+    /// committing anything.
+    mutating func setMarkedText(_ newText: String?, selectedRange: NSRange) {
+        markedText = newText ?? ""
+        let markedLength = (markedText as NSString).length
+        let location = min(max(0, selectedRange.location), markedLength)
+        let selectionLength = min(max(0, selectedRange.length), markedLength - location)
+        markedSelection = NSRange(location: location, length: selectionLength)
+    }
+
+    /// Ends the composition and returns the text that should be sent to the
+    /// terminal.
+    mutating func commitMarkedText() -> String {
+        let committed = markedText
+        markedText = ""
+        markedSelection = NSRange(location: 0, length: 0)
+        return committed
+    }
+
+    /// Deletes backward inside the composition, honoring the IME's selection:
+    /// a non-empty selection is removed, otherwise the composed character
+    /// before the caret is. Returns `false` when there is no composition,
+    /// meaning the delete belongs to the PTY. With the caret at the start of
+    /// the composition there is nothing local to delete, but the delete is
+    /// still consumed so it cannot reach remote text behind the preedit.
+    mutating func deleteBackwardInMarkedText() -> Bool {
+        guard hasMarkedText else { return false }
+        let marked = markedText as NSString
+        var deletion = markedSelection
+        if deletion.length == 0 {
+            guard deletion.location > 0 else { return true }
+            deletion = marked.rangeOfComposedCharacterSequence(at: deletion.location - 1)
+        }
+        replaceMarkedSubrange(deletion, with: "")
+        return true
+    }
+
+    /// Applies a text-system replacement that touches the composition.
+    /// `range` is in document offsets; the part of it inside the composition
+    /// is replaced and the caret lands after the inserted text. Returns
+    /// `false` when there is no composition or `range` does not touch it, in
+    /// which case the replacement is terminal input.
+    mutating func replaceInMarkedText(_ range: NSRange, with replacement: String) -> Bool {
+        guard let markedRange else { return false }
+        let requested = clamp(range)
+        let requestedEnd = requested.location + requested.length
+        let markedEnd = markedRange.location + markedRange.length
+        // Insertion points at either edge of the composition belong to it.
+        guard requestedEnd >= markedRange.location, requested.location <= markedEnd else { return false }
+
+        let location = max(requested.location, markedRange.location)
+        let end = min(max(requestedEnd, location), markedEnd)
+        replaceMarkedSubrange(
+            NSRange(location: location - markedRange.location, length: end - location),
+            with: replacement
+        )
+        return true
+    }
+
+    /// Replaces `range` (relative to the composition) and places the caret
+    /// after the replacement. Emptying the composition ends it.
+    private mutating func replaceMarkedSubrange(_ range: NSRange, with replacement: String) {
+        markedText = (markedText as NSString).replacingCharacters(in: range, with: replacement)
+        let caret = range.location + (replacement as NSString).length
+        markedSelection = hasMarkedText ? NSRange(location: caret, length: 0) : NSRange(location: 0, length: 0)
+    }
+}
+
+final class TerminalTextPosition: UITextPosition {
+    let offset: Int
+
+    init(_ offset: Int) {
+        self.offset = offset
+    }
+}
+
+final class TerminalTextRange: UITextRange {
+    let range: NSRange
+
+    init(_ range: NSRange) {
+        self.range = range
+    }
+
+    override var start: UITextPosition { TerminalTextPosition(range.location) }
+    override var end: UITextPosition { TerminalTextPosition(range.location + range.length) }
+    override var isEmpty: Bool { range.length == 0 }
+}
