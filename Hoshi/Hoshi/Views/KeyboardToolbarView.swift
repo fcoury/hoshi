@@ -45,6 +45,7 @@ class KeyboardToolbarAccessoryView: UIView {
     private(set) var pasteAvailable = TerminalPasteboard.shared.hasStrings
     private(set) var voicePromptAvailable = VoicePromptSettings.shared.isEnabled
     private var pasteboardObserver: NSObjectProtocol?
+    private var activationObserver: NSObjectProtocol?
 
     init(buttons: [ToolbarButton]? = nil) {
         self.buttons = buttons ?? ToolbarConfigurationService.shared.loadButtons()
@@ -59,11 +60,24 @@ class KeyboardToolbarAccessoryView: UIView {
         ) { [weak self] _ in
             self?.refreshPasteAvailability()
         }
+
+        // UIPasteboard.changedNotification only reports changes made inside
+        // Hoshi, so recheck after the user copies something in another app.
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshPasteAvailability()
+        }
     }
 
     deinit {
         if let pasteboardObserver {
             NotificationCenter.default.removeObserver(pasteboardObserver)
+        }
+        if let activationObserver {
+            NotificationCenter.default.removeObserver(activationObserver)
         }
     }
 

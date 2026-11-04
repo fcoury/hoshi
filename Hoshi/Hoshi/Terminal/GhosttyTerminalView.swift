@@ -264,8 +264,11 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
     private var lastSurfacePixelSize: CGSize = .zero
     private var lastContentScale: CGFloat = 0
     private var selectionModifiers: ghostty_input_mods_e = GHOSTTY_MODS_NONE
-    private var selectionAnchor: CGPoint?
-    private var selectionEndpoint: CGPoint?
+    private var selectionGeometry: TerminalSelectionGeometry?
+    /// The edge a handle drag is moving, captured when the drag begins. Drag
+    /// translations are applied to it so the selection edge tracks the handle
+    /// rather than the finger's offset from the stem.
+    private var activeHandleDragOrigin: CGPoint?
     private var longPressStartPoint: CGPoint?
     private var longPressIsSelecting = false
     private var reopenEditMenuAfterDismissal = false
@@ -431,6 +434,10 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         let twoFingerTap = UITapGestureRecognizer(target: self, action: #selector(handleTwoFingerTap(_:)))
         twoFingerTap.numberOfTouchesRequired = 2
         addGestureRecognizer(twoFingerTap)
+
+        for recognizer in [pinch, tap, doubleTap, pan, longPress, twoFingerPan, twoFingerTap] {
+            recognizer.delegate = self
+        }
 
     }
 
@@ -602,6 +609,7 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
             CATransaction.commit()
         }
         updateSurfaceSizeIfNeeded()
+        discardStaleSelectionAffordances()
         updateSelectionHandleFrames()
     }
 
@@ -1134,16 +1142,17 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         defer { ghostty_surface_free_text(surface, &selected) }
 
         let scale = max(1, window?.screen.scale ?? traitCollection.displayScale)
+        let size = ghostty_surface_size(surface)
         guard let geometry = TerminalSelectionGeometry(
             topLeft: CGPoint(x: selected.tl_px_x, y: selected.tl_px_y),
             bottomRight: CGPoint(x: selected.br_px_x, y: selected.br_px_y),
-            cellHeightPixels: CGFloat(ghostty_surface_size(surface).cell_height_px),
+            cellWidthPixels: CGFloat(size.cell_width_px),
+            cellHeightPixels: CGFloat(size.cell_height_px),
             displayScale: scale,
             renderOrigin: renderFrame.origin
         ) else { return nil }
 
-        selectionAnchor = geometry.startAnchor
-        selectionEndpoint = geometry.endAnchor
+        selectionGeometry = geometry
         return geometry.rect
     }
 
@@ -1156,16 +1165,16 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
             selectionEndHandle?.removeFromSuperview()
             selectionStartHandle = nil
             selectionEndHandle = nil
-            selectionAnchor = nil
-            selectionEndpoint = nil
+            selectionGeometry = nil
+            activeHandleDragOrigin = nil
             editMenuInteraction?.dismissMenu()
             return
         }
 
         if selectionStartHandle == nil {
             let handle = TerminalSelectionHandleView(isStart: true)
-            handle.onDrag = { [weak self] point in
-                self?.adjustSelectionHandle(isStart: true, to: point)
+            handle.onDrag = { [weak self] state, translation in
+                self?.dragSelectionHandle(isStart: true, state: state, translation: translation)
             }
             addSubview(handle)
             selectionStartHandle = handle
@@ -1173,8 +1182,8 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
 
         if selectionEndHandle == nil {
             let handle = TerminalSelectionHandleView(isStart: false)
-            handle.onDrag = { [weak self] point in
-                self?.adjustSelectionHandle(isStart: false, to: point)
+            handle.onDrag = { [weak self] state, translation in
+                self?.dragSelectionHandle(isStart: false, state: state, translation: translation)
             }
             addSubview(handle)
             selectionEndHandle = handle
@@ -1183,48 +1192,117 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         updateSelectionHandleFrames()
     }
 
+    /// Removes handles left behind when Ghostty drops the selection on its
+    /// own, for example when new output invalidates the selected rows.
+    private func discardStaleSelectionAffordances() {
+        guard selectionStartHandle != nil || selectionEndHandle != nil,
+              activeHandleDragOrigin == nil,
+              !hasSelection() else { return }
+        updateSelectionAffordances()
+    }
+
     private func updateSelectionHandleFrames() {
-        guard let rect = selectionRect(),
+        guard selectionRect() != nil,
+              let geometry = selectionGeometry,
               let startHandle = selectionStartHandle,
-              let endHandle = selectionEndHandle,
-              let anchor = selectionAnchor,
-              let endpoint = selectionEndpoint else {
+              let endHandle = selectionEndHandle else {
             return
         }
 
-        let handleSize = TerminalSelectionHandleView.handleSize
+        // Each handle's stem spans its end row; the knob extends beyond it.
+        let width = TerminalSelectionHandleView.handleSize.width
+        let knob = TerminalSelectionHandleView.knobDiameter
+        let height = geometry.cellSize.height + knob
         startHandle.frame = CGRect(
-            x: max(0, min(bounds.width - handleSize.width, anchor.x - handleSize.width / 2)),
-            y: max(0, min(bounds.height - handleSize.height, rect.minY - handleSize.height + 8)),
-            width: handleSize.width,
-            height: handleSize.height
+            x: max(0, min(bounds.width - width, geometry.startAnchor.x - width / 2)),
+            y: max(0, min(bounds.height - height, geometry.startAnchor.y - knob)),
+            width: width,
+            height: height
         )
         endHandle.frame = CGRect(
-            x: max(0, min(bounds.width - handleSize.width, endpoint.x - handleSize.width / 2)),
-            y: max(0, min(bounds.height - handleSize.height, rect.maxY - 8)),
-            width: handleSize.width,
-            height: handleSize.height
+            x: max(0, min(bounds.width - width, geometry.endAnchor.x - width / 2)),
+            y: max(0, min(bounds.height - height, geometry.endAnchor.y - geometry.cellSize.height)),
+            width: width,
+            height: height
         )
+        startHandle.setNeedsDisplay()
+        endHandle.setNeedsDisplay()
         bringSubviewToFront(startHandle)
         bringSubviewToFront(endHandle)
     }
 
-    private func adjustSelectionHandle(isStart: Bool, to point: CGPoint) {
-        guard let surface,
-              let fixedPoint = isStart ? selectionEndpoint : selectionAnchor else {
+    /// Re-anchors the selection while a handle is dragged.
+    ///
+    /// Ghostty treats repeated presses near the same point as double and triple
+    /// clicks, so the whole drag is a single synthesized press: it is pressed
+    /// at the opposite (fixed) end when the drag begins, follows the moving
+    /// edge, and is released when the drag ends.
+    func dragSelectionHandle(
+        isStart: Bool,
+        state: UIGestureRecognizer.State,
+        translation: CGPoint
+    ) {
+        guard let surface else { return }
+
+        switch state {
+        case .began:
+            guard selectionRect() != nil, let geometry = selectionGeometry else { return }
+            let fixedPoint = surfacePoint(fromViewPoint: isStart ? geometry.endPressPoint : geometry.startPressPoint)
+            // The moving edge sits on a cell boundary at mid-row height so
+            // Ghostty's 60% threshold keeps the boundary cell on the inside.
+            let movingEdge = isStart
+                ? CGPoint(x: geometry.startAnchor.x, y: geometry.startPressPoint.y)
+                : CGPoint(x: geometry.endAnchor.x, y: geometry.endPressPoint.y)
+            activeHandleDragOrigin = movingEdge
+            selectionModifiers = ghostty_surface_mouse_captured(surface) ? GHOSTTY_MODS_SHIFT : GHOSTTY_MODS_NONE
+
+            pressFreshClick(at: fixedPoint, cellSize: geometry.cellSize, modifiers: selectionModifiers)
+            let target = surfacePoint(fromViewPoint: movingEdge.offsetBy(translation))
+            ghostty_surface_mouse_pos(surface, target.x, target.y, selectionModifiers)
+
+        case .changed:
+            guard let origin = activeHandleDragOrigin else { return }
+            let target = surfacePoint(fromViewPoint: origin.offsetBy(translation))
+            ghostty_surface_mouse_pos(surface, target.x, target.y, selectionModifiers)
+
+        case .ended, .cancelled, .failed:
+            guard let origin = activeHandleDragOrigin else { return }
+            let target = surfacePoint(fromViewPoint: origin.offsetBy(translation))
+            ghostty_surface_mouse_pos(surface, target.x, target.y, selectionModifiers)
+            ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, selectionModifiers)
+            activeHandleDragOrigin = nil
+
+        default:
             return
         }
 
-        let start = surfacePoint(fromViewPoint: isStart ? point : fixedPoint)
-        let end = surfacePoint(fromViewPoint: isStart ? fixedPoint : point)
-        let modifiers = ghostty_surface_mouse_captured(surface) ? GHOSTTY_MODS_SHIFT : GHOSTTY_MODS_NONE
-
-        ghostty_surface_mouse_pos(surface, start.x, start.y, modifiers)
-        ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, modifiers)
-        ghostty_surface_mouse_pos(surface, end.x, end.y, modifiers)
-        ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, modifiers)
         updateSelectionAffordances()
         editMenuInteraction?.updateVisibleMenuPosition(animated: false)
+    }
+
+    /// Presses the left button at `point` (surface coordinates) as a new single
+    /// click, first clicking two cells away so Ghostty cannot count it as part
+    /// of a double or triple click with an earlier synthesized press.
+    private func pressFreshClick(at point: CGPoint, cellSize: CGSize, modifiers: ghostty_input_mods_e) {
+        guard let surface else { return }
+        let reset = TerminalClickSequence.resetPoint(
+            awayFrom: point,
+            cellSize: cellSize,
+            surfaceSize: renderFrame.size
+        )
+        ghostty_surface_mouse_pos(surface, reset.x, reset.y, modifiers)
+        ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, modifiers)
+        ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, modifiers)
+        ghostty_surface_mouse_pos(surface, point.x, point.y, modifiers)
+        ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, modifiers)
+    }
+
+    var currentCellSize: CGSize? {
+        guard let surface else { return nil }
+        let size = ghostty_surface_size(surface)
+        let scale = max(1, window?.screen.scale ?? traitCollection.displayScale)
+        guard size.cell_width_px > 0, size.cell_height_px > 0 else { return nil }
+        return CGSize(width: CGFloat(size.cell_width_px) / scale, height: CGFloat(size.cell_height_px) / scale)
     }
 
     static func updateTitle(for surface: ghostty_surface_t, title: String) {
@@ -1748,11 +1826,17 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         let modifiers = ghostty_surface_mouse_captured(surface) ? GHOSTTY_MODS_SHIFT : GHOSTTY_MODS_NONE
 
         let localPoint = surfacePoint(fromViewPoint: point)
-        ghostty_surface_mouse_pos(surface, localPoint.x, localPoint.y, modifiers)
-        for _ in 0..<2 {
+        if let cellSize = currentCellSize {
+            // A fresh first click guarantees the second press is counted as
+            // a double click (word) rather than a triple click (line).
+            pressFreshClick(at: localPoint, cellSize: cellSize, modifiers: modifiers)
+        } else {
+            ghostty_surface_mouse_pos(surface, localPoint.x, localPoint.y, modifiers)
             ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, modifiers)
-            ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, modifiers)
         }
+        ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, modifiers)
+        ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, modifiers)
+        ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, modifiers)
         updateSelectionAffordances()
         return hasSelection()
     }
@@ -1928,10 +2012,15 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
 
 private final class TerminalSelectionHandleView: UIView {
     static let handleSize = CGSize(width: 30, height: 36)
+    static let knobDiameter: CGFloat = 12
+    /// Extra touch slop around the visible handle, which can be shorter than a
+    /// comfortable touch target at small font sizes.
+    private static let touchSlop: CGFloat = 12
 
     private let isStart: Bool
     private let handleColor = UIColor.systemBlue
-    var onDrag: ((CGPoint) -> Void)?
+    /// Reports the drag state and its translation in the superview's space.
+    var onDrag: ((UIGestureRecognizer.State, CGPoint) -> Void)?
 
     init(isStart: Bool) {
         self.isStart = isStart
@@ -1954,22 +2043,43 @@ private final class TerminalSelectionHandleView: UIView {
         guard let context = UIGraphicsGetCurrentContext() else { return }
 
         context.setFillColor(handleColor.cgColor)
-        let lineX = rect.midX - 1
-        let circleDiameter: CGFloat = 12
-        let circleY = isStart ? 0 : rect.height - circleDiameter
+        let bounds = self.bounds
+        let lineX = bounds.midX - 1
+        let circleDiameter = Self.knobDiameter
+        let circleY = isStart ? 0 : bounds.height - circleDiameter
         let lineY = isStart ? circleDiameter - 1 : 0
-        context.fill(CGRect(x: lineX, y: lineY, width: 2, height: rect.height - circleDiameter + 1))
+        context.fill(CGRect(x: lineX, y: lineY, width: 2, height: bounds.height - circleDiameter + 1))
         context.fillEllipse(in: CGRect(
-            x: rect.midX - circleDiameter / 2,
+            x: bounds.midX - circleDiameter / 2,
             y: circleY,
             width: circleDiameter,
             height: circleDiameter
         ))
     }
 
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        bounds.insetBy(dx: -Self.touchSlop, dy: -Self.touchSlop).contains(point)
+    }
+
     @objc private func handleDrag(_ gesture: UIPanGestureRecognizer) {
-        guard let superview, gesture.state == .began || gesture.state == .changed else { return }
-        onDrag?(gesture.location(in: superview))
+        // Measure in the superview: this view moves with the selection while
+        // it is dragged, which would skew a translation measured in itself.
+        guard let superview else { return }
+        onDrag?(gesture.state, gesture.translation(in: superview))
+    }
+}
+
+extension GhosttyTerminalSurfaceView: UIGestureRecognizerDelegate {
+    /// Touches on a selection handle belong to that handle's drag, so the
+    /// terminal's scroll, tap and long-press gestures must not also act on them.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        !(touch.view is TerminalSelectionHandleView)
+    }
+}
+
+private extension CGPoint {
+    func offsetBy(_ delta: CGPoint) -> CGPoint {
+        CGPoint(x: x + delta.x, y: y + delta.y)
     }
 }
 

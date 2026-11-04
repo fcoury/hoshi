@@ -331,17 +331,38 @@ struct TerminalViewportGeometry: Equatable {
     }
 }
 
+/// View-space geometry of the current terminal selection.
+///
+/// Ghostty reports the selection's corners as the left edge of the first cell
+/// and the right edge of the last cell, but vertically at the text *baseline*
+/// of the first and last rows rather than at their top and bottom edges. This
+/// type snaps those baselines back onto row boundaries so handles and the edit
+/// menu line up with the highlighted cells.
 struct TerminalSelectionGeometry: Equatable {
+    /// Ghostty's default `window-padding-y` top inset, which Hoshi does not override.
+    static let defaultGridPaddingTop: CGFloat = 2
+
+    /// Left edge of the first selected cell, at the top of its row.
     let startAnchor: CGPoint
+    /// Right edge of the last selected cell, at the bottom of its row.
     let endAnchor: CGPoint
+    /// A point inside the first selected cell that Ghostty keeps selected when
+    /// it is used as the click origin of a right-to-left drag.
+    let startPressPoint: CGPoint
+    /// A point inside the last selected cell that Ghostty keeps selected when
+    /// it is used as the click origin of a left-to-right drag.
+    let endPressPoint: CGPoint
     let rect: CGRect
+    let cellSize: CGSize
 
     init?(
         topLeft: CGPoint,
         bottomRight: CGPoint,
+        cellWidthPixels: CGFloat,
         cellHeightPixels: CGFloat,
         displayScale: CGFloat,
-        renderOrigin: CGPoint
+        renderOrigin: CGPoint,
+        gridPaddingTop: CGFloat = TerminalSelectionGeometry.defaultGridPaddingTop
     ) {
         guard topLeft.x.isFinite,
               topLeft.y.isFinite,
@@ -351,6 +372,7 @@ struct TerminalSelectionGeometry: Equatable {
               topLeft.y >= 0,
               bottomRight.x >= 0,
               bottomRight.y >= 0,
+              cellWidthPixels > 0,
               cellHeightPixels > 0,
               displayScale > 0 else {
             return nil
@@ -358,24 +380,65 @@ struct TerminalSelectionGeometry: Equatable {
 
         // Ghostty's text viewport coordinates are already logical points.
         // Only the cell metrics remain in framebuffer pixels.
-        let startAnchor = CGPoint(
-            x: topLeft.x + renderOrigin.x,
-            y: topLeft.y + renderOrigin.y
-        )
-        let endAnchor = CGPoint(
-            x: bottomRight.x + renderOrigin.x,
-            y: bottomRight.y + renderOrigin.y
-        )
+        let cellWidth = cellWidthPixels / displayScale
         let cellHeight = cellHeightPixels / displayScale
+
+        // A baseline always sits strictly inside its row, so flooring the
+        // padding-relative baseline yields that row's index.
+        func rowIndex(forBaseline y: CGFloat) -> CGFloat {
+            max(0, ((y - gridPaddingTop) / cellHeight).rounded(.down))
+        }
+        let topRowTop = gridPaddingTop + rowIndex(forBaseline: topLeft.y) * cellHeight
+        let bottomRowBottom = gridPaddingTop + (rowIndex(forBaseline: bottomRight.y) + 1) * cellHeight
+
+        let startAnchor = CGPoint(x: topLeft.x + renderOrigin.x, y: topRowTop + renderOrigin.y)
+        let endAnchor = CGPoint(x: bottomRight.x + renderOrigin.x, y: bottomRowBottom + renderOrigin.y)
 
         self.startAnchor = startAnchor
         self.endAnchor = endAnchor
+        // Ghostty includes the clicked cell when the click lands on the far
+        // side of a 60% threshold relative to the drag direction, so press
+        // near the outer edge of each end cell.
+        self.startPressPoint = CGPoint(
+            x: startAnchor.x + cellWidth * 0.1,
+            y: startAnchor.y + cellHeight / 2
+        )
+        self.endPressPoint = CGPoint(
+            x: endAnchor.x - cellWidth * 0.1,
+            y: endAnchor.y - cellHeight / 2
+        )
+        self.cellSize = CGSize(width: cellWidth, height: cellHeight)
         self.rect = CGRect(
             x: min(startAnchor.x, endAnchor.x),
-            y: min(startAnchor.y, endAnchor.y),
+            y: startAnchor.y,
             width: max(1, abs(endAnchor.x - startAnchor.x)),
-            height: max(cellHeight, abs(endAnchor.y - startAnchor.y) + cellHeight)
+            height: max(cellHeight, endAnchor.y - startAnchor.y)
         )
+    }
+}
+
+/// Synthetic mouse presses that keep Ghostty's multi-click detection predictable.
+///
+/// Ghostty counts a press as a double or triple click when it lands within one
+/// cell width of the previous press inside its click-repeat interval. Gesture
+/// code that synthesizes presses at a remembered point would otherwise flip the
+/// selection between character, word and line granularity.
+enum TerminalClickSequence {
+    /// A point at least two cells away from `point`, inside a surface of `size`.
+    /// Pressing there first guarantees the next press at `point` starts a fresh
+    /// single click.
+    static func resetPoint(awayFrom point: CGPoint, cellSize: CGSize, surfaceSize: CGSize) -> CGPoint {
+        let horizontal = cellSize.width * 2
+        if point.x + horizontal <= surfaceSize.width {
+            return CGPoint(x: point.x + horizontal, y: point.y)
+        }
+        if point.x - horizontal >= 0 {
+            return CGPoint(x: point.x - horizontal, y: point.y)
+        }
+
+        let vertical = cellSize.height * 2
+        let y = point.y + vertical <= surfaceSize.height ? point.y + vertical : max(0, point.y - vertical)
+        return CGPoint(x: point.x, y: y)
     }
 }
 
