@@ -250,7 +250,8 @@ final class AgentEventCenter {
             hostname: hostname,
             tmuxSession: session?.tmuxSession ?? envelope.tmuxSession,
             origin: origin,
-            readAt: nil
+            readAt: nil,
+            herdrTarget: envelope.herdrTarget
         )
 
         events.insert(event, at: 0)

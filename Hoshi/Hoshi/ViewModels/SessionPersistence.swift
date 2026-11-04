@@ -9,6 +9,8 @@ struct PersistedSessionDescriptor: Codable, Equatable, Sendable {
     let tmuxSession: String?
     let createdAt: Date
     let lastAccessedAt: Date
+    /// Absent in descriptors saved before Herdr support.
+    var herdrAttachment: HerdrAttachment? = nil
 }
 
 final class SessionPersistenceStore {

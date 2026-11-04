@@ -22,6 +22,7 @@ struct TerminalView: View {
     var onSwapSession: (() -> Void)?
     var onSelectSession: ((UUID) -> Void)?
     var onAlwaysUseSSH: (() throws -> Void)?
+    var onOpenHerdr: ((HerdrAttachment) -> Void)?
     var onDismiss: (() -> Void)?
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -39,6 +40,8 @@ struct TerminalView: View {
     @State private var showFileUploader = false
     @State private var showFileBrowser = false
     @State private var showSessionPicker = false
+    @State private var showHerdrAgents = false
+    @State private var keyboardVisibleBeforeHerdrAgents = true
 
     // Keyboard visibility for explicit show/hide control
     @State private var isKeyboardVisible = true
@@ -188,6 +191,14 @@ struct TerminalView: View {
                     isKeyboardVisible = true
                 }
             }
+            .onChange(of: showHerdrAgents) { _, isPresented in
+                if isPresented {
+                    keyboardVisibleBeforeHerdrAgents = isKeyboardVisible
+                    isKeyboardVisible = false
+                } else {
+                    isKeyboardVisible = keyboardVisibleBeforeHerdrAgents
+                }
+            }
     }
 
     private var presentedTerminal: some View {
@@ -220,6 +231,14 @@ struct TerminalView: View {
                     await connectionVM.send(data)
                     return true
                 }
+            }
+            .sheet(isPresented: $showHerdrAgents) {
+                HerdrAgentsView(connectionVM: connectionVM, onOpenInNewSession: onOpenHerdr)
+            }
+            .sheet(item: $connectionVM.pendingHerdrReply) { target in
+                HerdrReplyView(connectionVM: connectionVM, target: target, onOpenInNewSession: onOpenHerdr)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showSessionPicker) {
                 TerminalSessionPickerView(
@@ -669,15 +688,41 @@ struct TerminalView: View {
                     Label("Tmux Commands", systemImage: "rectangle.split.3x1")
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
+
+                if connectionVM.detectedHerdr != nil {
+                    Button {
+                        showHerdrAgents = true
+                    } label: {
+                        let blocked = connectionVM.herdrBlockedCount
+                        Label(
+                            blocked > 0 ? "Herdr Agents (\(blocked) waiting)" : "Herdr Agents",
+                            systemImage: "square.stack.3d.up"
+                        )
+                    }
+                    .keyboardShortcut("a", modifiers: [.command, .shift])
+                }
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
                     .frame(minWidth: 44, minHeight: 44)
+                    .overlay(alignment: .topTrailing) {
+                        // Herdr agents waiting on an approval or question.
+                        if connectionVM.herdrBlockedCount > 0 {
+                            Circle()
+                                .fill(.orange)
+                                .frame(width: 9, height: 9)
+                                .offset(x: -9, y: 9)
+                                .accessibilityHidden(true)
+                        }
+                    }
             }
             .fixedSize(horizontal: true, vertical: false)
             .disabled(!connectionVM.canAcceptTerminalInput)
             .accessibilityLabel("Terminal tools")
-            .accessibilityHint("Opens file transfer, voice, and tmux actions")
+            .accessibilityValue(connectionVM.herdrBlockedCount > 0
+                ? "\(connectionVM.herdrBlockedCount) Herdr agents waiting"
+                : "")
+            .accessibilityHint("Opens file transfer, voice, tmux, and Herdr actions")
             .accessibilityIdentifier("terminal.tools.open")
         }
     }

@@ -138,7 +138,8 @@ final class SessionManager {
                     id: descriptor.id,
                     createdAt: descriptor.createdAt,
                     lastAccessedAt: descriptor.lastAccessedAt,
-                    tmuxSession: descriptor.tmuxSession
+                    tmuxSession: descriptor.tmuxSession,
+                    herdrAttachment: descriptor.herdrAttachment
                 )
                 configureAgentMonitoring(for: session)
                 return session
@@ -218,6 +219,9 @@ final class SessionManager {
         session.connectionVM.onTerminalNotification = { [weak self, weak session] notification in
             guard let self, let session else { return }
             self.agentEventCenter?.ingest(notification, from: session)
+        }
+        session.connectionVM.onHerdrInventoryChange = { [weak self] in
+            self?.agentEventCenter?.refreshLiveActivities()
         }
     }
 }

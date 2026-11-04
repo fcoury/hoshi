@@ -101,6 +101,14 @@ final class ConnectionCoordinator {
     private(set) var moshSession: MoshSession?
     private(set) var activeTransport: ConnectionTransport?
     private(set) var detectedTmuxSessions: [TmuxSessionInfo] = []
+    private(set) var tmuxAvailable = false
+    private(set) var detectedHerdr: HerdrInventory?
+    /// The Herdr view the transport was started with, if any.
+    private(set) var herdrAttachment: HerdrAttachment?
+    /// A Herdr target to open without showing the picker, used to restore a
+    /// session or open an agent in a new Hoshi session. Ignored when Herdr is
+    /// not found on the host.
+    var preferredHerdrAttachment: HerdrAttachment?
     private(set) var fallbackError: (any Error)?
     private var server: Server?
     private var password: String?
@@ -212,7 +220,45 @@ final class ConnectionCoordinator {
             command = TmuxDetectionService.newSessionCommand(sessionName: name)
         case .skip:
             command = nil
+        case .herdrSession(let name):
+            guard let herdr = detectedHerdr,
+                  let herdrCommand = HerdrCommand.openSession(name, executable: herdr.executable) else {
+                throw ConnectionCoordinatorError.transportFailed("That Herdr session name is not valid.")
+            }
+            command = herdrCommand
+        case .herdrAgent(let session, let paneID):
+            guard let herdr = detectedHerdr,
+                  let herdrCommand = HerdrCommand.attachAgent(
+                    paneID: paneID,
+                    session: session,
+                    executable: herdr.executable
+                  ) else {
+                throw ConnectionCoordinatorError.transportFailed("That Herdr agent can no longer be attached.")
+            }
+            command = herdrCommand
+        case .herdrMachine(let id, let paneID):
+            guard let herdr = detectedHerdr,
+                  let machine = herdr.machine(id: id),
+                  let herdrCommand = HerdrCommand.openMachine(machine, executable: herdr.executable) else {
+                throw ConnectionCoordinatorError.transportFailed(
+                    "That Herdr machine is no longer saved on this server."
+                )
+            }
+            // Show the chosen agent once the remote UI opens. Best effort: the
+            // machine UI still opens if the agent has gone.
+            if let paneID,
+               let focus = HerdrCommand.focusAgent(
+                paneID: paneID,
+                session: machine.session ?? "default",
+                machineID: id,
+                executable: herdr.executable
+               ) {
+                _ = try? await runRemoteCommand(HerdrCommand.captured(focus))
+            }
+            command = herdrCommand
         }
+
+        herdrAttachment = HerdrAttachment(choice: choice)
 
         do {
             return try await startTransport(command: command)
@@ -273,6 +319,28 @@ final class ConnectionCoordinator {
         return sessions
     }
 
+    /// Re-runs Herdr discovery. Keeps the previous inventory when the command
+    /// fails, and clears it only when Herdr is reported as not installed.
+    func refreshHerdr() async throws -> HerdrInventory? {
+        let output = try await runRemoteCommand(HerdrDiscovery.remoteCommand)
+        detectedHerdr = HerdrDiscovery.parse(output)
+        return detectedHerdr
+    }
+
+    /// Runs a non-interactive command over the verified bootstrap connection.
+    func runRemoteCommand(_ command: String) async throws -> String {
+        guard let client = sshSession?.client ?? moshSession?.bootstrapClient else {
+            throw ConnectionCoordinatorError.bootstrapUnavailable
+        }
+        return try await ConnectionDeadline.run(
+            timeout: timeouts.remoteCommand,
+            phase: .tmuxDiscovery
+        ) {
+            let buffer = try await client.executeCommand(command)
+            return buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) ?? ""
+        }
+    }
+
     func fallBackToSSH() async throws -> ConnectionCoordinatorOutcome {
         recordTransportFallback(ConnectionCoordinatorError.moshUnavailable)
         if let outcome = try await transitionToSSHFallback() {
@@ -289,6 +357,23 @@ final class ConnectionCoordinator {
         moshSession = nil
         activeTransport = nil
         detectedTmuxSessions = []
+        tmuxAvailable = false
+        detectedHerdr = nil
+        herdrAttachment = nil
+    }
+
+    /// An agent that no longer exists falls back to its session's full UI.
+    static func resolve(_ attachment: HerdrAttachment, in inventory: HerdrInventory) -> HerdrAttachment {
+        switch attachment {
+        case .agent(let session, let paneID)
+            where inventory.session(named: session)?.agent(paneID: paneID) == nil:
+            return .session(session)
+        case .machine(let id, .some(let paneID))
+            where inventory.sessions.first(where: { $0.machine?.id == id })?.agent(paneID: paneID) == nil:
+            return .machine(id: id, paneID: nil)
+        default:
+            return attachment
+        }
     }
 
     private func recordTransportFallback(_ error: any Error) {
@@ -348,7 +433,7 @@ final class ConnectionCoordinator {
         guard let server else { throw ConnectionCoordinatorError.bootstrapUnavailable }
         try checkCancellation()
 
-        if server.tmuxPolicy == .rawShell {
+        if server.tmuxPolicy == .rawShell, preferredHerdrAttachment == nil {
             return try await startTransport(command: nil)
         }
 
@@ -358,8 +443,8 @@ final class ConnectionCoordinator {
 
         onPhaseChanged?(.tmuxDiscovery)
         let tmuxService = TmuxDetectionService(client: client)
-        let available: Bool
-        let sessions: [TmuxSessionInfo]
+        var available = false
+        var sessions: [TmuxSessionInfo] = []
 
         do {
             available = try await ConnectionDeadline.run(
@@ -376,22 +461,40 @@ final class ConnectionCoordinator {
                 ) {
                     try await tmuxService.listSessions()
                 }
-            } else {
-                sessions = []
             }
         } catch is CancellationError {
             throw CancellationError()
         } catch {
             // A missing or inaccessible tmux server must not prevent a usable shell.
-            return try await startTransport(command: nil)
+            available = false
+            sessions = []
         }
 
-        guard available else {
-            return try await startTransport(command: nil)
+        // Herdr sits next to tmux. Its discovery is best effort for the same reason.
+        let herdr: HerdrInventory?
+        do {
+            herdr = HerdrDiscovery.parse(try await runRemoteCommand(HerdrDiscovery.remoteCommand))
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            herdr = nil
         }
 
+        tmuxAvailable = available
         detectedTmuxSessions = sessions
-        if server.tmuxPolicy == .autoAttachLast,
+        detectedHerdr = herdr
+
+        if let preferred = preferredHerdrAttachment, let herdr {
+            preferredHerdrAttachment = nil
+            return try await completeTmuxChoice(Self.resolve(preferred, in: herdr).choice)
+        }
+
+        guard available || herdr != nil else {
+            return try await startTransport(command: nil)
+        }
+
+        if available,
+           server.tmuxPolicy == .autoAttachLast,
            let savedSession = server.tmuxSession,
            sessions.contains(where: { $0.name == savedSession }) {
             return try await startTransport(

@@ -22,6 +22,8 @@ final class ConnectionViewModel {
         didSet { bindAgentEvents() }
     }
     var onTerminalNotification: (@MainActor (TerminalDesktopNotification) -> Void)?
+    /// Called when Herdr agent states change, for example to refresh Live Activities.
+    var onHerdrInventoryChange: (@MainActor () -> Void)?
 
     // Mosh-specific UI state
     var connectionPhase: String = ""
@@ -33,6 +35,25 @@ final class ConnectionViewModel {
         didSet { bindSessionState() }
     }
     var detectedTmuxSessions: [TmuxSessionInfo] = []
+    var tmuxAvailable = false
+
+    // Herdr state. Discovered while connecting and kept current by the monitor.
+    var detectedHerdr: HerdrInventory?
+    /// What this terminal shows from Herdr, if anything.
+    private(set) var herdrAttachment: HerdrAttachment?
+    /// Set before connecting to open a Herdr target directly.
+    @ObservationIgnored
+    var preferredHerdrAttachment: HerdrAttachment?
+
+    var herdrAttentionCount: Int { detectedHerdr?.attentionCount ?? 0 }
+    /// An agent whose reply card should open over this terminal.
+    var pendingHerdrReply: HerdrAgentTarget?
+    /// Agents waiting on an approval or question prompt.
+    var herdrBlockedCount: Int {
+        detectedHerdr?.runningSessions.reduce(0) { total, session in
+            total + session.agents.filter { $0.status == .blocked }.count
+        } ?? 0
+    }
 
     // Stashed credentials for fallback/install retry
     private var pendingServer: Server?
@@ -59,6 +80,11 @@ final class ConnectionViewModel {
     @ObservationIgnored
     private var connectionTask: Task<Void, Never>?
     private var connectionGeneration: UUID?
+    @ObservationIgnored
+    private var herdrMonitor: HerdrAgentMonitor?
+    /// A verified SSH client for Herdr polling once Mosh has closed its bootstrap.
+    @ObservationIgnored
+    private var auxiliaryClient: SSHClient?
 
     // The active session's connection state — suppress .connected until terminal is open
     var connectionState: ConnectionState {
@@ -165,7 +191,21 @@ final class ConnectionViewModel {
             return try await operation(client)
         }
 
-        guard let server = pendingServer ?? moshSession?.server else {
+        let client = try await makeVerifiedClient()
+        do {
+            let result = try await operation(client)
+            try? await client.close()
+            return result
+        } catch {
+            try? await client.close()
+            throw error
+        }
+    }
+
+    /// Opens a fresh SSH connection with the session's verified host key and
+    /// stored credentials.
+    private func makeVerifiedClient() async throws -> SSHClient {
+        guard let server = pendingServer ?? moshSession?.server ?? sshSession?.server else {
             throw FileUploadError.disconnected
         }
 
@@ -187,19 +227,168 @@ final class ConnectionViewModel {
             throw FileUploadError.missingCredentials
         }
 
-        let client = try await SSHConnectionService.connect(
+        return try await SSHConnectionService.connect(
             server: server,
             password: password,
             privateKeyTag: keyTag
         )
+    }
+
+    // MARK: - Herdr
+
+    /// Runs a non-interactive command on the host: over the SSH session, the
+    /// Mosh bootstrap, or a retained verified client once that has closed.
+    func runRemoteCommand(_ command: String) async throws -> String {
+        let client: SSHClient
+        if let sshClient = sshSession?.client {
+            client = sshClient
+        } else if let bootstrap = moshSession?.bootstrapClient {
+            client = bootstrap
+        } else if let auxiliaryClient {
+            client = auxiliaryClient
+        } else {
+            let created = try await makeVerifiedClient()
+            auxiliaryClient = created
+            client = created
+        }
 
         do {
-            let result = try await operation(client)
-            try? await client.close()
-            return result
+            let buffer = try await client.executeCommand(command)
+            return buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) ?? ""
         } catch {
-            try? await client.close()
+            if client === auxiliaryClient {
+                // Reconnect on the next call instead of reusing a dead channel.
+                auxiliaryClient = nil
+                try? await client.close()
+            }
             throw error
+        }
+    }
+
+    func refreshHerdr() async {
+        if let herdrMonitor {
+            await herdrMonitor.pollNow()
+            return
+        }
+        // Herdr was not found while connecting; look again in case it was
+        // installed or started since. Failures leave the terminal untouched.
+        guard let output = try? await runRemoteCommand(HerdrDiscovery.remoteCommand) else { return }
+        detectedHerdr = HerdrDiscovery.parse(output)
+        if canAcceptTerminalInput {
+            startHerdrMonitorIfNeeded()
+        }
+    }
+
+    func herdrAgent(for target: HerdrAgentTarget) -> HerdrAgent? {
+        detectedHerdr?.session(for: target)?.agent(paneID: target.paneID)
+    }
+
+    /// Whether focusing `target` switches what this terminal shows.
+    func canFocusHerdrInPlace(_ target: HerdrAgentTarget) -> Bool {
+        guard let herdrAttachment, let session = detectedHerdr?.session(for: target) else { return false }
+        return herdrAttachment.shows(session)
+    }
+
+    /// The agent's recent output, without styling.
+    func readHerdrAgent(_ target: HerdrAgentTarget, lines: Int = 60) async throws -> String {
+        let executable = try herdrExecutable()
+        guard let command = HerdrCommand.readAgent(
+            paneID: target.paneID,
+            session: target.session,
+            machineID: target.machineID,
+            executable: executable,
+            lines: lines
+        ) else { throw HerdrActionError.invalidTarget }
+        return try await runHerdrAction(command).output
+    }
+
+    func sendHerdrKeys(_ keys: [HerdrKey], to target: HerdrAgentTarget) async throws {
+        let executable = try herdrExecutable()
+        guard let command = HerdrCommand.sendKeys(
+            keys,
+            paneID: target.paneID,
+            session: target.session,
+            machineID: target.machineID,
+            executable: executable
+        ) else { throw HerdrActionError.invalidTarget }
+        _ = try await runHerdrAction(command)
+        await herdrMonitor?.pollNow()
+    }
+
+    func submitHerdrText(_ text: String, to target: HerdrAgentTarget) async throws {
+        let executable = try herdrExecutable()
+        let isBlocked = herdrAgent(for: target)?.status == .blocked
+        guard let command = HerdrCommand.submitText(
+            text,
+            toBlockedAgent: isBlocked,
+            paneID: target.paneID,
+            session: target.session,
+            machineID: target.machineID,
+            executable: executable
+        ) else { throw HerdrActionError.invalidText }
+        _ = try await runHerdrAction(command)
+        await herdrMonitor?.pollNow()
+    }
+
+    private func herdrExecutable() throws -> String {
+        guard let executable = detectedHerdr?.executable else { throw HerdrActionError.unavailable }
+        return executable
+    }
+
+    private func runHerdrAction(_ command: String) async throws -> HerdrCommand.Result {
+        let result = HerdrCommand.parseResult(try await runRemoteCommand(HerdrCommand.captured(command)))
+        guard result.succeeded else {
+            throw HerdrActionError.failed(result.errorMessage)
+        }
+        return result
+    }
+
+    /// Switches the Herdr UI shown in this terminal to `agent`. Herdr focus is
+    /// shared, so other clients attached to the same session follow along.
+    func focusHerdrAgent(_ target: HerdrAgentTarget) async throws {
+        guard let herdr = detectedHerdr,
+              let command = HerdrCommand.focusAgent(
+                paneID: target.paneID,
+                session: target.session,
+                machineID: target.machineID,
+                executable: herdr.executable
+              ) else {
+            throw HerdrActionError.invalidTarget
+        }
+        _ = try await runHerdrAction(command)
+        await herdrMonitor?.pollNow()
+    }
+
+    private func startHerdrMonitorIfNeeded() {
+        guard herdrMonitor == nil, let detectedHerdr else { return }
+        let server = pendingServer ?? sshSession?.server ?? moshSession?.server
+        let monitor = HerdrAgentMonitor(
+            hostname: server?.hostname,
+            hostKey: server.map { "\($0.username)@\($0.hostname):\($0.port)" },
+            runner: { [weak self] command in
+                guard let self else { throw CancellationError() }
+                return try await self.runRemoteCommand(command)
+            },
+            onEvent: { [weak self] event in
+                self?.onAgentEvent?(event)
+            },
+            onInventory: { [weak self] inventory in
+                guard let self else { return }
+                let changed = self.detectedHerdr != inventory
+                self.detectedHerdr = inventory
+                if changed { self.onHerdrInventoryChange?() }
+            }
+        )
+        herdrMonitor = monitor
+        monitor.start(baseline: detectedHerdr)
+    }
+
+    private func stopHerdrMonitor() async {
+        herdrMonitor?.stop()
+        herdrMonitor = nil
+        if let auxiliaryClient {
+            self.auxiliaryClient = nil
+            try? await auxiliaryClient.close()
         }
     }
 
@@ -294,6 +483,8 @@ final class ConnectionViewModel {
 
             guard case .connected = outcome else { return nil }
             pendingServer?.lastConnected = Date()
+            herdrAttachment = HerdrAttachment(choice: choice)
+            startHerdrMonitorIfNeeded()
 
             if case .attach(let session) = choice {
                 if pendingServer?.tmuxPolicy == .autoAttachLast {
@@ -317,7 +508,12 @@ final class ConnectionViewModel {
     func refreshTmuxSessions() async {
         guard let coordinator else { return }
         do {
-            detectedTmuxSessions = try await coordinator.refreshTmuxSessions()
+            if coordinator.tmuxAvailable {
+                detectedTmuxSessions = try await coordinator.refreshTmuxSessions()
+            }
+            if coordinator.detectedHerdr != nil {
+                detectedHerdr = try await coordinator.refreshHerdr()
+            }
         } catch {
             presentConnectionError(error, operation: .tmux)
         }
@@ -338,6 +534,7 @@ final class ConnectionViewModel {
         let coordinator = self.coordinator
         self.coordinator = nil
         Task { [weak self] in
+            await self?.stopHerdrMonitor()
             await coordinator?.cancel()
             self?.sshSession = nil
             self?.moshSession = nil
@@ -389,6 +586,7 @@ final class ConnectionViewModel {
         connectionGeneration = nil
         connectionTask?.cancel()
         connectionTask = nil
+        await stopHerdrMonitor()
         await coordinator?.cancel()
         coordinator = nil
         await moshSession?.disconnect()
@@ -423,10 +621,14 @@ final class ConnectionViewModel {
             await moshSession?.disconnect()
             await sshSession?.disconnect()
         }
+        await stopHerdrMonitor()
         moshSession = nil
         sshSession = nil
         showTmuxPicker = false
         detectedTmuxSessions = []
+        tmuxAvailable = false
+        detectedHerdr = nil
+        herdrAttachment = nil
         pendingServer = nil
         pendingPassword = nil
         pendingKeyTag = nil
@@ -552,6 +754,7 @@ final class ConnectionViewModel {
 
         while !Task.isCancelled, connectionGeneration == generation {
             let coordinator = ConnectionCoordinator()
+            coordinator.preferredHerdrAttachment = preferredHerdrAttachment
             self.coordinator = coordinator
             coordinator.onPhaseChanged = { [weak self] phase in
                 self?.connectionPhase = phase.statusText
@@ -622,6 +825,12 @@ final class ConnectionViewModel {
         }
     }
 
+    private func syncMultiplexerState() {
+        tmuxAvailable = coordinator?.tmuxAvailable ?? false
+        detectedHerdr = coordinator?.detectedHerdr
+        herdrAttachment = coordinator?.herdrAttachment
+    }
+
     private func adoptCoordinatorSessions(_ coordinator: ConnectionCoordinator) {
         sshSession = coordinator.sshSession
         moshSession = coordinator.moshSession
@@ -631,8 +840,11 @@ final class ConnectionViewModel {
         switch outcome {
         case .connected:
             showTmuxPicker = false
+            syncMultiplexerState()
+            startHerdrMonitorIfNeeded()
         case .awaitingTmuxChoice(let sessions):
             detectedTmuxSessions = sessions
+            syncMultiplexerState()
             showTmuxPicker = true
         case .moshInstallationRequired(let packageManager):
             detectedPackageManager = packageManager
@@ -677,5 +889,21 @@ final class ConnectionViewModel {
         presentedError = presentation
         errorMessage = presentation.explanation
         showError = true
+    }
+}
+
+enum HerdrActionError: LocalizedError, Equatable {
+    case unavailable
+    case invalidTarget
+    case invalidText
+    case failed(String?)
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable: "Herdr is not available on this server."
+        case .invalidTarget: "That Herdr agent can no longer be reached."
+        case .invalidText: "Enter a reply of up to 8 KB."
+        case .failed(let message): message.map { "Herdr: \($0)" } ?? "Herdr did not accept the request."
+        }
     }
 }

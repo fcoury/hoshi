@@ -25,6 +25,9 @@ final class SSHSession: ObservableObject {
 
     // Command to run inside the PTY after it opens (e.g. tmux attach)
     var initialCommand: String?
+    /// When the shell last wrote output; used to type `initialCommand` only
+    /// after the interactive shell has started and drawn its prompt.
+    private var lastShellOutputAt: ContinuousClock.Instant?
 
     // Raw data callback for feeding bytes directly to the terminal renderer
     var onDataReceived: TerminalDataCallback?
@@ -162,6 +165,7 @@ final class SSHSession: ObservableObject {
     }
 
     func processInboundOutput(_ data: Data) async {
+        lastShellOutputAt = .now
         let result = await agentEventDecoder.ingest(data)
         for event in result.events {
             onAgentEvent?(event)
@@ -394,6 +398,21 @@ final class SSHSession: ObservableObject {
 
     // MARK: - Private
 
+    /// Returns once the shell has produced output and then stayed quiet, or
+    /// after `limit` so a silent shell still receives the command.
+    private func waitForShellPrompt(
+        quiet: Duration = .milliseconds(300),
+        limit: Duration = .seconds(4)
+    ) async {
+        let deadline = ContinuousClock.now + limit
+        while ContinuousClock.now < deadline, !Task.isCancelled {
+            if let last = lastShellOutputAt, ContinuousClock.now - last >= quiet {
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+    }
+
     private func startTerminalSession() async throws {
         guard let client else { throw ConnectionCoordinatorError.bootstrapUnavailable }
         sessionEndedNormally = false
@@ -460,11 +479,17 @@ final class SSHSession: ObservableObject {
                                 )
                             }
 
-                            // Send initial command if set (e.g. tmux attach/new)
+                            // Send initial command if set (e.g. tmux attach/new). Shells such
+                            // as fish 4 query the terminal while starting and drop input typed
+                            // before their first prompt, so wait for the prompt to settle.
                             if let cmd = await MainActor.run(body: { self.initialCommand }) {
-                                var cmdBuffer = ByteBuffer()
-                                cmdBuffer.writeString(cmd + "\n")
-                                try? await outbound.write(cmdBuffer)
+                                await MainActor.run { self.lastShellOutputAt = nil }
+                                Task { [weak self] in
+                                    await self?.waitForShellPrompt()
+                                    var cmdBuffer = ByteBuffer()
+                                    cmdBuffer.writeString(cmd + "\n")
+                                    try? await outbound.write(cmdBuffer)
+                                }
                             }
 
                             // Read output from the remote terminal
