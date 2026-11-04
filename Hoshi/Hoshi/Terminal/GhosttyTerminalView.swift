@@ -1161,6 +1161,15 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         toolbarAccessory.setSelectionAvailable(selected)
 
         guard selected else {
+            // An active handle drag owns a synthesized press until it ends.
+            // Its moving edge can meet the fixed end, which briefly empties
+            // Ghostty's selection; tearing down here would drop the drag
+            // without releasing the button. Keep the handles so the drag can
+            // continue, and let the drag's end release and clean up.
+            if activeHandleDragOrigin != nil {
+                return
+            }
+
             selectionStartHandle?.removeFromSuperview()
             selectionEndHandle?.removeFromSuperview()
             selectionStartHandle = nil
@@ -1190,6 +1199,26 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
         }
 
         updateSelectionHandleFrames()
+    }
+
+    /// Selection handles' enlarged touch targets overlap on short selections,
+    /// and the end handle is frontmost. Route a touch that lands on both to
+    /// the handle whose visible knob is closer, so the start knob stays usable.
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard isUserInteractionEnabled, !isHidden, alpha > 0.01 else {
+            return super.hitTest(point, with: event)
+        }
+
+        let touchedHandles = [selectionStartHandle, selectionEndHandle]
+            .compactMap { $0 }
+            .filter { !$0.isHidden && $0.point(inside: convert(point, to: $0), with: event) }
+        guard touchedHandles.count > 1 else {
+            return super.hitTest(point, with: event)
+        }
+
+        return touchedHandles.min {
+            $0.knobCenter.squaredDistance(to: point) < $1.knobCenter.squaredDistance(to: point)
+        }
     }
 
     /// Removes handles left behind when Ghostty drops the selection on its
@@ -2022,6 +2051,12 @@ private final class TerminalSelectionHandleView: UIView {
     /// Reports the drag state and its translation in the superview's space.
     var onDrag: ((UIGestureRecognizer.State, CGPoint) -> Void)?
 
+    /// Center of the visible knob, in the superview's coordinate space.
+    var knobCenter: CGPoint {
+        let radius = Self.knobDiameter / 2
+        return CGPoint(x: frame.midX, y: isStart ? frame.minY + radius : frame.maxY - radius)
+    }
+
     init(isStart: Bool) {
         self.isStart = isStart
         super.init(frame: CGRect(origin: .zero, size: Self.handleSize))
@@ -2080,6 +2115,12 @@ extension GhosttyTerminalSurfaceView: UIGestureRecognizerDelegate {
 private extension CGPoint {
     func offsetBy(_ delta: CGPoint) -> CGPoint {
         CGPoint(x: x + delta.x, y: y + delta.y)
+    }
+
+    func squaredDistance(to other: CGPoint) -> CGFloat {
+        let dx = x - other.x
+        let dy = y - other.y
+        return dx * dx + dy * dy
     }
 }
 

@@ -916,6 +916,53 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertEqual(surface.readSelection(), "a gamma")
     }
 
+    func testHandleDragSurvivesMomentarilyEmptySelection() throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.writeRemoteOutput(Array("alpha beta gamma delta".utf8))
+        let cell = try XCTUnwrap(surface.currentCellSize)
+
+        XCTAssertTrue(surface.selectWord(at: CGPoint(x: cell.width * 2.5, y: cell.height / 2)))
+        XCTAssertEqual(surface.readSelection(), "alpha")
+
+        // Dragging the end handle back onto the fixed start empties Ghostty's
+        // selection mid-drag. The drag must keep its synthesized press so it
+        // can carry on and release the button when it ends.
+        surface.dragSelectionHandle(isStart: false, state: .began, translation: .zero)
+        surface.dragSelectionHandle(isStart: false, state: .changed, translation: CGPoint(x: -cell.width * 5, y: 0))
+        XCTAssertFalse(surface.hasSelection())
+        XCTAssertNotNil(selectionHandle(in: surface, label: "Selection end"))
+
+        surface.dragSelectionHandle(isStart: false, state: .changed, translation: CGPoint(x: cell.width * 3, y: 0))
+        surface.dragSelectionHandle(isStart: false, state: .ended, translation: CGPoint(x: cell.width * 3, y: 0))
+
+        XCTAssertEqual(surface.readSelection(), "alpha be")
+    }
+
+    func testOverlappingHandleTouchTargetsPreferTheNearestKnob() throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.writeRemoteOutput(Array("a bc".utf8))
+        let cell = try XCTUnwrap(surface.currentCellSize)
+
+        XCTAssertTrue(surface.selectWord(at: CGPoint(x: cell.width * 0.5, y: cell.height / 2)))
+        XCTAssertEqual(surface.readSelection(), "a")
+
+        let start = try XCTUnwrap(selectionHandle(in: surface, label: "Selection start"))
+        let end = try XCTUnwrap(selectionHandle(in: surface, label: "Selection end"))
+        let knob: CGFloat = 12 // TerminalSelectionHandleView.knobDiameter
+        let startKnob = CGPoint(x: start.frame.midX, y: start.frame.minY + knob / 2)
+        let endKnob = CGPoint(x: end.frame.midX, y: end.frame.maxY - knob / 2)
+
+        // A one-character selection puts both handles' touch targets on top of
+        // each other; each knob must still reach its own handle.
+        XCTAssertTrue(start.frame.intersects(end.frame))
+        XCTAssertTrue(surface.hitTest(startKnob, with: nil) === start)
+        XCTAssertTrue(surface.hitTest(endKnob, with: nil) === end)
+    }
+
+    private func selectionHandle(in surface: UIView, label: String) -> UIView? {
+        surface.subviews.first { $0.accessibilityLabel == label }
+    }
+
     func testNativeEditMenuOffersCopyPasteAndSelectAll() throws {
         let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
         surface.writeRemoteOutput(Array("native terminal edit menu".utf8))
