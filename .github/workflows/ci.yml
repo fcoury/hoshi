@@ -48,8 +48,40 @@ jobs:
       - name: Test self-hosted agent companion
         run: python3 scripts/test-hoshi-agent-companion.py
 
+      # GhosttyKit only changes when the vendored sources, the build scripts or
+      # the toolchain change, so a cold Zig build on every run is wasted time.
+      - name: Compute GhosttyKit cache key
+        id: ghosttykit-key
+        run: |
+          ghostty_sha="$(git rev-parse HEAD:vendor/ghostty)"
+          libxev_sha="$(git rev-parse HEAD:vendor/libxev)"
+          zig_version="$("$(brew --prefix zig@0.15)/bin/zig" version)"
+          xcode_build="$(xcodebuild -version | awk '/Build version/ { print $3 }')"
+          scripts_hash="$(
+            cat scripts/build-ghosttykit.sh scripts/ghostty-libtool.sh \
+              | shasum -a 256 | cut -c1-16
+          )"
+          echo "key=ghosttykit-v1-${RUNNER_OS}-${RUNNER_ARCH}-xcode${xcode_build}-zig${zig_version}-${ghostty_sha}-${libxev_sha}-${scripts_hash}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore cached GhosttyKit
+        id: ghosttykit-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: vendor/ghostty/macos/GhosttyKit.xcframework
+          key: ${{ steps.ghosttykit-key.outputs.key }}
+
       - name: Prepare GhosttyKit and regenerate the project
+        env:
+          HOSHI_GHOSTTYKIT_PREBUILT: ${{ steps.ghosttykit-cache.outputs.cache-hit == 'true' }}
         run: ./scripts/bootstrap.sh
+
+      # Save right after a fresh build so a later test failure still reuses it.
+      - name: Save GhosttyKit to the cache
+        if: steps.ghosttykit-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: vendor/ghostty/macos/GhosttyKit.xcframework
+          key: ${{ steps.ghosttykit-key.outputs.key }}
 
       - name: Build and run unit tests
         run: |
