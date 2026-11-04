@@ -236,14 +236,20 @@ final class AgentLiveActivityService: AgentLiveActivityManaging {
         }
 
         let hidden = !showsServerNames || isAppLockEnabled()
+        let agents = session.connectionVM.detectedHerdr?.runningSessions.flatMap(\.agents) ?? []
+        let location = session.herdrAttachment.map { "Herdr \($0.sessionName)" } ?? session.tmuxSession
         let state = AgentLiveActivityAttributes.ContentState(
             status: status(for: event),
             displayName: hidden ? "Coding Agent" : Self.safeDisplayText(session.serverName),
-            tmuxSession: hidden ? nil : session.tmuxSession.map(Self.safeDisplayText),
+            tmuxSession: hidden ? nil : location.map(Self.safeDisplayText),
             attentionCount: min(unread.count, 99),
             latestEventID: event?.id,
             updatedAt: event?.createdAt ?? session.createdAt,
-            detailsAreHidden: hidden
+            detailsAreHidden: hidden,
+            headline: hidden ? nil : event.map { Self.safeDisplayText($0.title) },
+            workingCount: min(agents.filter { $0.status == .working }.count, 99),
+            blockedCount: min(agents.filter { $0.status == .blocked }.count, 99),
+            doneCount: min(agents.filter { $0.status == .done }.count, 99)
         )
 
         if let activityID = activityIDs[session.id] {

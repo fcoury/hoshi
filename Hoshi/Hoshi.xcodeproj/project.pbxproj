@@ -26,6 +26,7 @@
 		1BDB27D50E388FB0BF2B5ED9 /* AgentInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B88762DDB3E3AFB6292E4A50 /* AgentInboxView.swift */; };
 		1C4F264585232B5664F22A6C /* GhosttyTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F434FC2C5E00789F32E7BF2D /* GhosttyTerminalView.swift */; };
 		1D5AD5D242776C5B8DF2EBE4 /* VoicePromptService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20A9F991093AAAF0B820E40 /* VoicePromptService.swift */; };
+		227E6E18550A060B6AFBD90F /* HerdrReplyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DC00E889FC8C84F0BCCB38E /* HerdrReplyView.swift */; };
 		2302287519D2121C10555F48 /* ConnectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 935710390BD542E213897400 /* ConnectionViewModel.swift */; };
 		23AF2EAE8F7FC17F54CFC285 /* JetBrainsMonoNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E31F018D17922A0C005CF1D8 /* JetBrainsMonoNerdFontMono-Italic.ttf */; };
 		2674EBF76DC02237EEECE271 /* IosevkaNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A80A6C5FDC7BE7A082E500A3 /* IosevkaNerdFontMono-BoldItalic.ttf */; };
@@ -272,6 +273,7 @@
 		848D6A3E0373C1F3C67951BA /* KnownHostsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsService.swift; sourceTree = "<group>"; };
 		881C5E9A75631AA85261C1E3 /* HackNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HackNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
 		89E70FBED6094022B4F5F8D4 /* MononokiNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MononokiNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
+		8DC00E889FC8C84F0BCCB38E /* HerdrReplyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrReplyView.swift; sourceTree = "<group>"; };
 		8EBCF88BEC5956AC0E157B37 /* Hoshi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Hoshi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		935710390BD542E213897400 /* ConnectionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionViewModel.swift; sourceTree = "<group>"; };
 		958FD6277EBAC3147453F610 /* JetBrainsMonoNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
@@ -511,6 +513,7 @@
 				6D0432E9957AC98AD4D63233 /* ErrorPresentationView.swift */,
 				FED1152F3552E3211B1A77BC /* FileUploadView.swift */,
 				9C0FA717B1413451034834BC /* FontPickerView.swift */,
+				8DC00E889FC8C84F0BCCB38E /* HerdrReplyView.swift */,
 				15CA71325EF6846BA2A426A5 /* HerdrViews.swift */,
 				3BE99C6A440F89020EFE0E55 /* KeyboardToolbarView.swift */,
 				9917D156528C1F234C6AE282 /* KeyGeneratorView.swift */,
@@ -822,6 +825,7 @@
 				949197A2CA73ECBA09B6427A /* HapticService.swift in Sources */,
 				855C4731646114168144F9F6 /* Herdr.swift in Sources */,
 				4FEE466B17B76250B24EF2BE /* HerdrAgentMonitor.swift in Sources */,
+				227E6E18550A060B6AFBD90F /* HerdrReplyView.swift in Sources */,
 				06A11F7850D352D89F54D536 /* HerdrViews.swift in Sources */,
 				5CF07FF1FE024A5759336ECC /* HoshiApp.swift in Sources */,
 				42EC5C294A912C3284C5864E /* KeyGeneratorView.swift in Sources */,

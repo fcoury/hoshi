@@ -46,6 +46,8 @@ struct AgentEventEnvelope: Codable, Equatable, Sendable {
     let serverID: UUID?
     let sessionID: UUID?
     let tmuxSession: String?
+    /// The Herdr agent this event is about, for replies and deep links.
+    let herdrTarget: HerdrAgentTarget?
 
     init(
         version: Int = supportedVersion,
@@ -57,7 +59,8 @@ struct AgentEventEnvelope: Codable, Equatable, Sendable {
         hostname: String? = nil,
         serverID: UUID? = nil,
         sessionID: UUID? = nil,
-        tmuxSession: String? = nil
+        tmuxSession: String? = nil,
+        herdrTarget: HerdrAgentTarget? = nil
     ) {
         self.version = version
         self.id = id
@@ -69,6 +72,7 @@ struct AgentEventEnvelope: Codable, Equatable, Sendable {
         self.serverID = serverID
         self.sessionID = sessionID
         self.tmuxSession = tmuxSession
+        self.herdrTarget = herdrTarget
     }
 
     var isValid: Bool {
@@ -81,6 +85,7 @@ struct AgentEventEnvelope: Codable, Equatable, Sendable {
             && (tmuxSession?.utf8.count ?? 0) <= 256
             && !(hostname?.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) ?? false)
             && !(tmuxSession?.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) ?? false)
+            && (herdrTarget?.isValid ?? true)
     }
 }
 
@@ -102,6 +107,8 @@ struct AgentInboxEvent: Codable, Identifiable, Equatable, Sendable {
     let tmuxSession: String?
     let origin: AgentEventOrigin
     var readAt: Date?
+    /// Absent in events saved before Herdr replies.
+    var herdrTarget: HerdrAgentTarget? = nil
 
     var isUnread: Bool { readAt == nil }
 }

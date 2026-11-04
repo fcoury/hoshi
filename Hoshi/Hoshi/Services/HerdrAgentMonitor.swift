@@ -74,7 +74,8 @@ enum HerdrAgentChangeDetector {
             title: String(title.prefix(200)),
             message: String(context.prefix(1_000)),
             timestamp: Date(),
-            hostname: hostname.map { String($0.prefix(255)) }
+            hostname: hostname.map { String($0.prefix(255)) },
+            herdrTarget: HerdrAgentTarget(session: session, paneID: agent.paneID)
         )
     }
 }

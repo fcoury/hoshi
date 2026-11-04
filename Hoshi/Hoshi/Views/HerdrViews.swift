@@ -71,14 +71,7 @@ struct HerdrAgentRow: View {
         .accessibilityValue(agent.status.label)
     }
 
-    private var statusColor: Color {
-        switch agent.status {
-        case .working: .blue
-        case .blocked: .orange
-        case .done: .green
-        case .idle, .unknown: .secondary
-        }
-    }
+    private var statusColor: Color { agent.status.tint }
 }
 
 /// In-session overview of Herdr agents on the connected host. Tapping an agent
@@ -90,6 +83,7 @@ struct HerdrAgentsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isWorking = false
     @State private var actionError: String?
+    @State private var replyTarget: HerdrAgentTarget?
 
     private var herdr: HerdrInventory? { connectionVM.detectedHerdr }
     private var attachment: HerdrAttachment? { connectionVM.herdrAttachment }
@@ -117,6 +111,14 @@ struct HerdrAgentsView: View {
             }
             .navigationTitle("Agents")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(item: $replyTarget) { target in
+                HerdrReplyView(
+                    connectionVM: connectionVM,
+                    target: target,
+                    onOpenInNewSession: onOpenInNewSession,
+                    isEmbedded: true
+                )
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -159,7 +161,18 @@ struct HerdrAgentsView: View {
             if !attentionAgents.isEmpty {
                 Section("Needs Input") {
                     ForEach(attentionAgents, id: \.agent.id) { item in
-                        agentButton(item.agent, session: item.session)
+                        Button {
+                            replyTarget = HerdrAgentTarget(session: item.session, paneID: item.agent.paneID)
+                        } label: {
+                            HStack {
+                                HerdrAgentRow(agent: item.agent)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        .tint(.primary)
+                        .accessibilityHint("Opens a reply card for this agent")
                     }
                 }
             }
@@ -200,6 +213,11 @@ struct HerdrAgentsView: View {
             ? "Shows this agent in the current terminal"
             : "Opens this agent in a new Hoshi session")
         .contextMenu {
+            Button {
+                replyTarget = HerdrAgentTarget(session: session, paneID: agent.paneID)
+            } label: {
+                Label("Reply…", systemImage: "text.bubble")
+            }
             if canFocusInPlace(session: session) {
                 Button {
                     Task { await select(agent, session: session) }

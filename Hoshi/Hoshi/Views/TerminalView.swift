@@ -235,6 +235,11 @@ struct TerminalView: View {
             .sheet(isPresented: $showHerdrAgents) {
                 HerdrAgentsView(connectionVM: connectionVM, onOpenInNewSession: onOpenHerdr)
             }
+            .sheet(item: $connectionVM.pendingHerdrReply) { target in
+                HerdrReplyView(connectionVM: connectionVM, target: target, onOpenInNewSession: onOpenHerdr)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
             .sheet(isPresented: $showSessionPicker) {
                 TerminalSessionPickerView(
                     sessions: sessions,

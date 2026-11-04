@@ -22,6 +22,8 @@ final class ConnectionViewModel {
         didSet { bindAgentEvents() }
     }
     var onTerminalNotification: (@MainActor (TerminalDesktopNotification) -> Void)?
+    /// Called when Herdr agent states change, for example to refresh Live Activities.
+    var onHerdrInventoryChange: (@MainActor () -> Void)?
 
     // Mosh-specific UI state
     var connectionPhase: String = ""
@@ -44,6 +46,8 @@ final class ConnectionViewModel {
     var preferredHerdrAttachment: HerdrAttachment?
 
     var herdrAttentionCount: Int { detectedHerdr?.attentionCount ?? 0 }
+    /// An agent whose reply card should open over this terminal.
+    var pendingHerdrReply: HerdrAgentTarget?
     /// Agents waiting on an approval or question prompt.
     var herdrBlockedCount: Int {
         detectedHerdr?.runningSessions.reduce(0) { total, session in
@@ -275,6 +279,61 @@ final class ConnectionViewModel {
         }
     }
 
+    func herdrAgent(for target: HerdrAgentTarget) -> HerdrAgent? {
+        detectedHerdr?.session(named: target.session)?.agent(paneID: target.paneID)
+    }
+
+    /// The agent's recent output, without styling.
+    func readHerdrAgent(_ target: HerdrAgentTarget, lines: Int = 60) async throws -> String {
+        let executable = try herdrExecutable()
+        guard let command = HerdrCommand.readAgent(
+            paneID: target.paneID,
+            session: target.session,
+            executable: executable,
+            lines: lines
+        ) else { throw HerdrActionError.invalidTarget }
+        return try await runHerdrAction(command).output
+    }
+
+    func sendHerdrKeys(_ keys: [HerdrKey], to target: HerdrAgentTarget) async throws {
+        let executable = try herdrExecutable()
+        guard let command = HerdrCommand.sendKeys(
+            keys,
+            paneID: target.paneID,
+            session: target.session,
+            executable: executable
+        ) else { throw HerdrActionError.invalidTarget }
+        _ = try await runHerdrAction(command)
+        await herdrMonitor?.pollNow()
+    }
+
+    func submitHerdrText(_ text: String, to target: HerdrAgentTarget) async throws {
+        let executable = try herdrExecutable()
+        let isBlocked = herdrAgent(for: target)?.status == .blocked
+        guard let command = HerdrCommand.submitText(
+            text,
+            toBlockedAgent: isBlocked,
+            paneID: target.paneID,
+            session: target.session,
+            executable: executable
+        ) else { throw HerdrActionError.invalidText }
+        _ = try await runHerdrAction(command)
+        await herdrMonitor?.pollNow()
+    }
+
+    private func herdrExecutable() throws -> String {
+        guard let executable = detectedHerdr?.executable else { throw HerdrActionError.unavailable }
+        return executable
+    }
+
+    private func runHerdrAction(_ command: String) async throws -> HerdrCommand.Result {
+        let result = HerdrCommand.parseResult(try await runRemoteCommand(HerdrCommand.captured(command)))
+        guard result.succeeded else {
+            throw HerdrActionError.failed(result.errorMessage)
+        }
+        return result
+    }
+
     /// Switches the Herdr UI shown in this terminal to `agent`. Herdr focus is
     /// shared, so other clients attached to the same session follow along.
     func focusHerdrAgent(_ agent: HerdrAgent, in session: String) async throws {
@@ -304,7 +363,10 @@ final class ConnectionViewModel {
                 self?.onAgentEvent?(event)
             },
             onInventory: { [weak self] inventory in
-                self?.detectedHerdr = inventory
+                guard let self else { return }
+                let changed = self.detectedHerdr != inventory
+                self.detectedHerdr = inventory
+                if changed { self.onHerdrInventoryChange?() }
             }
         )
         herdrMonitor = monitor
@@ -817,5 +879,21 @@ final class ConnectionViewModel {
         presentedError = presentation
         errorMessage = presentation.explanation
         showError = true
+    }
+}
+
+enum HerdrActionError: LocalizedError, Equatable {
+    case unavailable
+    case invalidTarget
+    case invalidText
+    case failed(String?)
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable: "Herdr is not available on this server."
+        case .invalidTarget: "That Herdr agent can no longer be reached."
+        case .invalidText: "Enter a reply of up to 8 KB."
+        case .failed(let message): message.map { "Herdr: \($0)" } ?? "Herdr did not accept the request."
+        }
     }
 }

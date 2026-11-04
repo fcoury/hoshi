@@ -399,6 +399,82 @@ enum HerdrDiscovery {
     }
 }
 
+/// Keys Hoshi may press in an agent. A closed set keeps replies predictable.
+enum HerdrKey: Equatable, Sendable {
+    case enter
+    case escape
+    case up
+    case down
+    case tab
+    case interrupt
+    case character(Character)
+
+    var token: String {
+        switch self {
+        case .enter: "enter"
+        case .escape: "esc"
+        case .up: "up"
+        case .down: "down"
+        case .tab: "tab"
+        case .interrupt: "ctrl+c"
+        case .character(let character): String(character)
+        }
+    }
+
+    /// Only digits and ASCII letters are allowed as single characters.
+    static func key(for value: Character) -> HerdrKey? {
+        guard value.isASCII, value.isLetter || value.isNumber else { return nil }
+        return HerdrKey.character(value)
+    }
+}
+
+/// A numbered choice detected in an agent's approval or question prompt.
+struct HerdrPromptOption: Identifiable, Equatable, Sendable {
+    let number: Int
+    let label: String
+    let isSelected: Bool
+
+    var id: Int { number }
+
+    /// Finds the numbered menu at the bottom of an agent's output, as drawn
+    /// by Claude Code (`❯ 1. Yes`) and Codex (`› 1. Yes, proceed (y)`).
+    static func parse(_ output: String) -> [HerdrPromptOption] {
+        let lines = output.components(separatedBy: .newlines).suffix(30)
+        var options: [HerdrPromptOption] = []
+        let pattern = #"^[\s│|]*([❯›>▶→])?\s*([1-9])[.)]\s+(.+?)[\s│|]*$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        for line in lines {
+            let range = NSRange(line.startIndex..., in: line)
+            guard let match = regex.firstMatch(in: line, range: range),
+                  let numberRange = Range(match.range(at: 2), in: line),
+                  let labelRange = Range(match.range(at: 3), in: line),
+                  let number = Int(line[numberRange]) else {
+                continue
+            }
+            if number == 1 { options.removeAll() }
+            guard number == options.count + 1 else { continue }
+            options.append(HerdrPromptOption(
+                number: number,
+                label: String(line[labelRange]).trimmingCharacters(in: .whitespaces),
+                isSelected: match.range(at: 1).location != NSNotFound
+            ))
+        }
+        return options.count >= 2 ? options : []
+    }
+}
+
+/// Identifies one agent for replies and deep links.
+struct HerdrAgentTarget: Codable, Hashable, Identifiable, Sendable {
+    let session: String
+    let paneID: String
+
+    var id: String { "\(session)/\(paneID)" }
+
+    var isValid: Bool {
+        HerdrCommand.isValidSessionName(session) && HerdrCommand.isValidIdentifier(paneID)
+    }
+}
+
 // MARK: - Terminal commands
 
 /// Commands Hoshi types or launches to enter Herdr. They use only single-quoted
@@ -425,6 +501,101 @@ enum HerdrCommand {
               isValidIdentifier(paneID),
               isSafeExecutablePath(executable) else { return nil }
         return "\(quote(executable)) --session \(quote(session)) agent focus \(quote(paneID))"
+    }
+
+    /// Recent output of an agent, without ANSI styling.
+    static func readAgent(paneID: String, session: String, executable: String, lines: Int = 60) -> String? {
+        guard isValidSessionName(session),
+              isValidIdentifier(paneID),
+              isSafeExecutablePath(executable) else { return nil }
+        let count = min(max(lines, 1), 400)
+        return "\(quote(executable)) --session \(quote(session)) agent read \(quote(paneID)) "
+            + "--source recent-unwrapped --lines \(count)"
+    }
+
+    /// Presses keys in an agent, for example to answer an approval prompt.
+    static func sendKeys(_ keys: [HerdrKey], paneID: String, session: String, executable: String) -> String? {
+        guard !keys.isEmpty,
+              isValidSessionName(session),
+              isValidIdentifier(paneID),
+              isSafeExecutablePath(executable) else { return nil }
+        let tokens = keys.map { quote($0.token) }.joined(separator: " ")
+        return "\(quote(executable)) --session \(quote(session)) agent send-keys \(quote(paneID)) \(tokens)"
+    }
+
+    /// Submits free text. A ready agent gets `agent prompt`; a blocked one is
+    /// answered with `pane run`, because Herdr refuses prompts while an
+    /// approval or question is showing.
+    ///
+    /// The text travels base64-encoded and is decoded by `sh`, so the user's
+    /// login shell (bash, zsh or fish) never interprets it.
+    static func submitText(
+        _ text: String,
+        toBlockedAgent isBlocked: Bool,
+        paneID: String,
+        session: String,
+        executable: String
+    ) -> String? {
+        let trimmed = text.trimmingCharacters(in: .newlines)
+        guard !trimmed.isEmpty,
+              trimmed.utf8.count <= 8_192,
+              isValidSessionName(session),
+              isValidIdentifier(paneID),
+              isSafeExecutablePath(executable) else { return nil }
+        // A newline would submit a blocked prompt early, so keep replies on one line.
+        let body = isBlocked
+            ? trimmed.components(separatedBy: .newlines).joined(separator: " ")
+            : trimmed
+        let payload = Data(body.utf8).base64EncodedString()
+        let action = isBlocked ? "pane run" : "agent prompt"
+        let script = #"T=$(printf %s "$4" | base64 -d) && exec "$1" --session "$2" "# + action + #" "$3" "$T""#
+        return "sh -c \(quote(script)) herdr \(quote(executable)) \(quote(session)) \(quote(paneID)) \(quote(payload))"
+    }
+
+    private static let exitMarker = "__HERDR_EXIT__"
+
+    /// Runs `command` in `sh` so its exit status and Herdr's error message
+    /// survive even when the SSH channel treats a non-zero exit as failure.
+    static func captured(_ command: String) -> String {
+        // The extra `echo` keeps the marker on its own line when the output
+        // does not end with a newline.
+        "sh -c \(quote(command + " 2>&1; s=$?; echo; echo \(exitMarker)$s"))"
+    }
+
+    struct Result: Equatable, Sendable {
+        let output: String
+        let succeeded: Bool
+        /// Herdr's own error message, when it printed one.
+        let errorMessage: String?
+    }
+
+    static func parseResult(_ raw: String) -> Result {
+        var lines = raw.components(separatedBy: "\n")
+        var status: Int?
+        if let index = lines.lastIndex(where: { $0.hasPrefix(exitMarker) }) {
+            status = Int(lines[index].dropFirst(exitMarker.count).trimmingCharacters(in: .whitespaces))
+            lines.removeSubrange(index...)
+            if lines.last == "" { lines.removeLast() }
+        }
+        let output = lines.joined(separator: "\n")
+
+        struct ErrorResponse: Decodable {
+            struct Body: Decodable { let code: String?; let message: String? }
+            let error: Body
+        }
+        let errorMessage = output.components(separatedBy: .newlines)
+            .lazy
+            .compactMap { line -> String? in
+                guard line.hasPrefix("{"), let data = line.data(using: .utf8),
+                      let response = try? JSONDecoder().decode(ErrorResponse.self, from: data) else { return nil }
+                return response.error.message ?? response.error.code
+            }
+            .first
+        return Result(
+            output: output,
+            succeeded: status == 0 && errorMessage == nil,
+            errorMessage: errorMessage
+        )
     }
 
     static func isValidSessionName(_ name: String) -> Bool {

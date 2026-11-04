@@ -289,4 +289,143 @@ final class HerdrIntegrationTests: XCTestCase {
         XCTAssertEqual(second.count, 1, "The second monitor takes over without replaying")
         b.stop()
     }
+
+    // MARK: - Replies
+
+    func testPromptOptionsParseClaudeAndCodexMenus() {
+        let claude = """
+         Do you want to make this edit to Herdr.swift?
+         ❯ 1. Yes
+           2. Yes, allow all edits during this session (shift+tab)
+           3. No, and tell Claude what to do differently (esc)
+        """
+        let options = HerdrPromptOption.parse(claude)
+        XCTAssertEqual(options.map(\.number), [1, 2, 3])
+        XCTAssertEqual(options.first?.label, "Yes")
+        XCTAssertEqual(options.map(\.isSelected), [true, false, false])
+
+        let codex = """
+        › 1. Yes, proceed (y)
+          2. Yes, and don't ask again for this command (p)
+          3. No, and tell Codex what to do differently (esc)
+          Press enter to confirm or esc to cancel
+        """
+        XCTAssertEqual(HerdrPromptOption.parse(codex).map(\.label).last, "No, and tell Codex what to do differently (esc)")
+    }
+
+    func testPromptOptionsIgnoreProseAndBrokenSequences() {
+        XCTAssertTrue(HerdrPromptOption.parse("Step 1. install\nthen run it").isEmpty)
+        XCTAssertTrue(HerdrPromptOption.parse("1. only one option").isEmpty)
+        XCTAssertTrue(HerdrPromptOption.parse("1. first\n3. skipped").isEmpty)
+        // A later menu replaces an earlier numbered list.
+        let output = "1. old\n2. list\nsome text\n❯ 1. Allow\n  2. Deny"
+        XCTAssertEqual(HerdrPromptOption.parse(output).map(\.label), ["Allow", "Deny"])
+    }
+
+    func testKeysAreLimitedToASafeSet() {
+        XCTAssertEqual(HerdrKey.key(for: "2"), .character("2"))
+        XCTAssertEqual(HerdrKey.key(for: "y"), .character("y"))
+        XCTAssertNil(HerdrKey.key(for: ";"))
+        XCTAssertNil(HerdrKey.key(for: "é"))
+        XCTAssertEqual(
+            HerdrCommand.sendKeys([.character("2"), .enter, .escape], paneID: "wP:p1", session: "default", executable: "/x/herdr"),
+            "'/x/herdr' --session 'default' agent send-keys 'wP:p1' '2' 'enter' 'esc'"
+        )
+        XCTAssertNil(HerdrCommand.sendKeys([], paneID: "wP:p1", session: "default", executable: "/x/herdr"))
+    }
+
+    func testSubmittedTextIsBase64AndRoutedByAgentState() throws {
+        let text = "it's \"fine\" $HOME `id`\nnext"
+        let prompt = try XCTUnwrap(HerdrCommand.submitText(
+            text, toBlockedAgent: false, paneID: "wP:p1", session: "default", executable: "/x/herdr"
+        ))
+        XCTAssertTrue(prompt.contains("agent prompt"))
+        XCTAssertTrue(prompt.contains(Data(text.utf8).base64EncodedString()))
+        XCTAssertFalse(prompt.contains("$HOME `id`"), "Raw text never appears in the command")
+
+        let blocked = try XCTUnwrap(HerdrCommand.submitText(
+            text, toBlockedAgent: true, paneID: "wP:p1", session: "default", executable: "/x/herdr"
+        ))
+        XCTAssertTrue(blocked.contains("pane run"))
+        XCTAssertTrue(blocked.contains(Data("it's \"fine\" $HOME `id` next".utf8).base64EncodedString()),
+                      "Blocked replies stay on one line")
+
+        XCTAssertNil(HerdrCommand.submitText("\n", toBlockedAgent: false, paneID: "p", session: "s", executable: "/x/herdr"))
+        XCTAssertNil(HerdrCommand.submitText(String(repeating: "a", count: 9_000), toBlockedAgent: false, paneID: "p", session: "s", executable: "/x/herdr"))
+    }
+
+    func testCapturedResultsReportExitStatusAndHerdrErrors() {
+        let ok = HerdrCommand.parseResult("line one\nline two\n\n__HERDR_EXIT__0\n")
+        XCTAssertTrue(ok.succeeded)
+        XCTAssertEqual(ok.output, "line one\nline two")
+
+        let failed = HerdrCommand.parseResult(
+            #"{"error":{"code":"agent_blocked","message":"agent is blocked"},"id":"x"}"# + "\n\n__HERDR_EXIT__1\n"
+        )
+        XCTAssertFalse(failed.succeeded)
+        XCTAssertEqual(failed.errorMessage, "agent is blocked")
+
+        XCTAssertFalse(HerdrCommand.parseResult("no marker").succeeded)
+        XCTAssertTrue(HerdrCommand.captured("'/x/herdr' agent list").hasPrefix("sh -c '"))
+    }
+
+    func testEventsCarryAValidatedHerdrTarget() {
+        let before = inventory([HerdrAgent(paneID: "wP:p1", agent: "claude", status: .working)])
+        let after = inventory([HerdrAgent(paneID: "wP:p1", agent: "claude", status: .blocked)])
+        let event = HerdrAgentChangeDetector.events(
+            previous: HerdrAgentChangeDetector.snapshot(of: before),
+            current: after,
+            hostname: nil
+        ).first
+        XCTAssertEqual(event?.herdrTarget, HerdrAgentTarget(session: "default", paneID: "wP:p1"))
+
+        let invalid = AgentEventEnvelope(
+            kind: .needsAttention,
+            title: "x",
+            herdrTarget: HerdrAgentTarget(session: "bad name", paneID: "p1")
+        )
+        XCTAssertFalse(invalid.isValid)
+    }
+
+    // MARK: - Live Activity content
+
+    func testLiveActivityStateDecodesPayloadsFromOlderBuilds() throws {
+        let json = """
+        {"status":"running","displayName":"mac","attentionCount":0,"updatedAt":0,"detailsAreHidden":false}
+        """
+        let state = try JSONDecoder().decode(AgentLiveActivityAttributes.ContentState.self, from: Data(json.utf8))
+        XCTAssertNil(state.headline)
+        XCTAssertEqual(state.workingCount, 0)
+        XCTAssertFalse(state.hasAgentCounts)
+        XCTAssertEqual(state.primaryText, "Connected")
+    }
+
+    func testLiveActivityTextRespectsPrivacyAndCounts() {
+        var state = AgentLiveActivityAttributes.ContentState(
+            status: .running,
+            displayName: "m5pro",
+            tmuxSession: "Herdr default",
+            attentionCount: 0,
+            latestEventID: nil,
+            updatedAt: Date(),
+            detailsAreHidden: false,
+            headline: nil,
+            workingCount: 2
+        )
+        XCTAssertEqual(state.primaryText, "2 agents working")
+        XCTAssertEqual(state.secondaryText, "m5pro · Herdr default")
+        XCTAssertEqual(state.actionTitle, "Open")
+
+        state.blockedCount = 1
+        XCTAssertEqual(state.displayStatus, .needsAttention, "A waiting agent outranks running")
+        XCTAssertEqual(state.primaryText, "Agent needs input")
+        XCTAssertEqual(state.actionTitle, "Reply")
+
+        state.headline = "Claude needs input"
+        XCTAssertEqual(state.primaryText, "Claude needs input")
+
+        state.detailsAreHidden = true
+        XCTAssertEqual(state.primaryText, "Agent needs input", "Headlines stay hidden when details are private")
+        XCTAssertNil(state.secondaryText)
+    }
 }

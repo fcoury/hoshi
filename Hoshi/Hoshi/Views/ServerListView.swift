@@ -763,6 +763,7 @@ struct ServerListView: View {
         if let sessionID = event.sessionID,
            sessionManager.sessions.contains(where: { $0.id == sessionID }) {
             sessionManager.switchTo(sessionID: sessionID)
+            presentHerdrReply(for: event.id, in: sessionID)
             return
         }
 
@@ -785,6 +786,9 @@ struct ServerListView: View {
             }
             if sessionManager.sessions.contains(where: { $0.id == sessionID }) {
                 sessionManager.switchTo(sessionID: sessionID)
+                if let eventID {
+                    presentHerdrReply(for: eventID, in: sessionID)
+                }
             } else {
                 showAgentInbox = true
             }
@@ -798,6 +802,14 @@ struct ServerListView: View {
                 showAgentInbox = true
             }
         }
+    }
+
+    /// Opens the reply card when an event came from a Herdr agent.
+    private func presentHerdrReply(for eventID: UUID, in sessionID: UUID) {
+        guard let target = agentEvents.events.first(where: { $0.id == eventID })?.herdrTarget,
+              let session = sessionManager.sessions.first(where: { $0.id == sessionID }),
+              session.connectionVM.detectedHerdr != nil else { return }
+        session.connectionVM.pendingHerdrReply = target
     }
 }
 

@@ -220,6 +220,9 @@ final class SessionManager {
             guard let self, let session else { return }
             self.agentEventCenter?.ingest(notification, from: session)
         }
+        session.connectionVM.onHerdrInventoryChange = { [weak self] in
+            self?.agentEventCenter?.refreshLiveActivities()
+        }
     }
 }
 
