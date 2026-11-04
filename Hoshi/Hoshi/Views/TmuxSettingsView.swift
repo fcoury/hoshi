@@ -4,6 +4,7 @@ struct TmuxSettingsView: View {
     @State private var editingCommand: TmuxCommand?
     @State private var customPrefix = ""
     @State private var presentedError: ErrorPresentation?
+    @FocusState private var customPrefixFocused: Bool
 
     private let configuration = TmuxConfigurationService.shared
 
@@ -24,7 +25,12 @@ struct TmuxSettingsView: View {
                         .font(.body.monospaced())
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                        .focused($customPrefixFocused)
                         .onSubmit(saveCustomPrefix)
+                        // Save when leaving the field too; Return alone lost edits on Back.
+                        .onChange(of: customPrefixFocused) { _, focused in
+                            if !focused { saveCustomPrefixIfChanged() }
+                        }
                 }
             } header: {
                 Text("tmux Prefix")
@@ -75,6 +81,7 @@ struct TmuxSettingsView: View {
         .onAppear {
             customPrefix = configuration.prefix
         }
+        .onDisappear(perform: saveCustomPrefixIfChanged)
         .sheet(item: $editingCommand) { command in
             TmuxCommandEditorView(command: command)
         }
@@ -101,6 +108,13 @@ struct TmuxSettingsView: View {
         } catch {
             presentedError = ErrorPresentation.classify(error, context: ErrorContext(operation: .tmux))
         }
+    }
+
+    private func saveCustomPrefixIfChanged() {
+        guard prefixSelection == "custom",
+              customPrefix != configuration.prefix,
+              !customPrefix.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        saveCustomPrefix()
     }
 
     private func saveCustomPrefix() {

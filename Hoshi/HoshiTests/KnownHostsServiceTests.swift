@@ -101,6 +101,39 @@ final class KnownHostsServiceTests: XCTestCase {
         XCTAssertEqual(try knownHosts.status(for: identity), .unknown)
     }
 
+    func testForgettingHostKeysClearsEveryAlgorithmForThatPortOnly() throws {
+        let ed25519 = makeIdentity()
+        let ecdsa = makeIdentity(algorithm: "ecdsa-sha2-nistp256")
+        let otherPort = makeIdentity(port: port + 1)
+        try knownHosts.trust(ed25519)
+        try knownHosts.trust(ecdsa)
+        try knownHosts.trust(otherPort)
+
+        try knownHosts.forgetHostKeys(hostname: hostname, port: port)
+
+        XCTAssertEqual(try knownHosts.status(for: ed25519), .unknown)
+        XCTAssertEqual(try knownHosts.status(for: ecdsa), .unknown)
+        XCTAssertEqual(try knownHosts.status(for: otherPort), .trusted)
+    }
+
+    func testHostKeyChangeIsFoundDirectlyAndInsideFallbackErrors() {
+        let changed = SSHHostKeyTrustError.changed(
+            hostname: hostname,
+            port: port,
+            expectedFingerprint: "SHA256:old",
+            presentedFingerprint: "SHA256:new"
+        )
+
+        let direct = HostKeyChange(in: changed)
+        XCTAssertEqual(direct?.endpoint, "\(hostname):\(port)")
+        XCTAssertEqual(direct?.presentedFingerprint, "SHA256:new")
+
+        let wrapped = ConnectionFallbackError(moshError: URLError(.timedOut), sshError: changed)
+        XCTAssertEqual(HostKeyChange(in: wrapped), direct)
+        XCTAssertEqual(ErrorPresentation.classify(wrapped).hostKeyChange, direct)
+        XCTAssertNil(HostKeyChange(in: SSHHostKeyTrustError.declined(hostname: hostname, port: port)))
+    }
+
     func testValidatorRejectsUnknownHostBeforeUserTrust() throws {
         let hostKey = try makeHostKey()
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)

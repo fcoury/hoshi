@@ -209,6 +209,8 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
     let recoverySuggestion: String?
     let diagnostics: ErrorDiagnostics
     let context: ErrorContext
+    /// Set when the failure is a changed SSH host key, so the UI can offer to re-verify.
+    var hostKeyChange: HostKeyChange?
 
     init(
         title: String,
@@ -350,13 +352,15 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
             )
         }
 
-        return ErrorPresentation(
+        var presentation = ErrorPresentation(
             title: result.title,
             explanation: result.explanation,
             recoverySuggestion: result.recovery,
             error: error,
             context: context
         )
+        presentation.hostKeyChange = HostKeyChange(in: error)
+        return presentation
     }
 
     static func sshTransportPreferenceSaveFailure(
@@ -1024,6 +1028,45 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
 }
 
 /// Preserves both transport failures instead of replacing the first failure with the fallback failure.
+/// A trusted SSH host key that no longer matches what the server presents.
+struct HostKeyChange: Equatable, Sendable {
+    let hostname: String
+    let port: Int
+    let expectedFingerprint: String
+    let presentedFingerprint: String
+
+    /// Finds a host key change directly or inside a Mosh/SSH fallback failure.
+    init?(in error: any Error) {
+        if case .changed(let hostname, let port, let expected, let presented) = error as? SSHHostKeyTrustError {
+            self.hostname = hostname
+            self.port = port
+            self.expectedFingerprint = expected
+            self.presentedFingerprint = presented
+            return
+        }
+        if let fallback = error as? ConnectionFallbackError {
+            if let change = HostKeyChange(in: fallback.sshError) ?? HostKeyChange(in: fallback.moshError) {
+                self = change
+                return
+            }
+        }
+        return nil
+    }
+
+    var endpoint: String { "\(hostname):\(port)" }
+
+    static func confirmationMessage(_ change: HostKeyChange) -> String {
+        "Only do this if you know why the key changed, such as a server reinstall. "
+            + "You'll be asked to verify the new key on the next connection.\n\n"
+            + "Old: \(change.expectedFingerprint)\nNew: \(change.presentedFingerprint)"
+    }
+
+    /// Removes the stale key; the next connection shows the normal verification prompt.
+    func forgetTrustedKey(using knownHosts: KnownHostsService = .shared) throws {
+        try knownHosts.forgetHostKeys(hostname: hostname, port: port)
+    }
+}
+
 struct ConnectionFallbackError: Error {
     let moshError: any Error
     let sshError: any Error

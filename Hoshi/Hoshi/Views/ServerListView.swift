@@ -23,6 +23,11 @@ struct ServerListView: View {
     @State private var quickLaunching = false
     @State private var connectingSession: ManagedSession?
     @State private var quickLaunchError: ErrorPresentation?
+    @State private var quickLaunchFailedServer: Server?
+    // Saved-credential launch paused on the mosh-server install offer.
+    @State private var moshInstallSession: ManagedSession?
+    // Picker session still waiting for a choice; a swipe-down dismissal cancels it.
+    @State private var unresolvedTmuxPickerSession: ManagedSession?
     @State private var showMaxSessionsAlert = false
     @State private var splitViewVisibility = NavigationSplitViewVisibility.all
 
@@ -66,8 +71,9 @@ struct ServerListView: View {
                     ConnectView(server: server, connectionVM: session.connectionVM)
                 }
             }
-            .sheet(item: $sessionManager.tmuxPickerSession) { session in
+            .sheet(item: $sessionManager.tmuxPickerSession, onDismiss: cancelUnresolvedTmuxPicker) { session in
                 tmuxPicker(for: session)
+                    .onAppear { unresolvedTmuxPickerSession = session }
             }
             .fullScreenCover(item: Binding<ManagedSession?>(
                 get: { usesSplitView ? nil : sessionManager.activeSession },
@@ -107,6 +113,19 @@ struct ServerListView: View {
             } message: { _ in
                 Text("The remote connection will be closed. tmux sessions remain available on the server.")
             }
+            .alert("Mosh Server Not Found", isPresented: Binding(
+                get: { moshInstallSession != nil },
+                set: { _ in }
+            ), presenting: moshInstallSession) { _ in
+                Button("Install") { resolveMoshInstall(install: true) }
+                Button("Use SSH Instead", role: .cancel) { resolveMoshInstall(install: false) }
+            } message: { session in
+                if let pm = session.connectionVM.detectedPackageManager {
+                    Text("mosh-server was not found on \(session.serverName). Install it using \(pm.rawValue)?")
+                } else {
+                    Text("mosh-server was not found on \(session.serverName). Would you like to install it?")
+                }
+            }
             .alert("Session Limit Reached", isPresented: $showMaxSessionsAlert) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -116,6 +135,11 @@ struct ServerListView: View {
                 get: { quickLaunchError != nil },
                 set: { if !$0 { quickLaunchError = nil } }
             )) {
+                if let change = quickLaunchError?.hostKeyChange, let server = quickLaunchFailedServer {
+                    Button("Forget Old Key and Verify Again", role: .destructive) {
+                        forgetHostKeyAndRetry(change, server: server)
+                    }
+                }
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(quickLaunchError?.fullMessage ?? "")
@@ -155,7 +179,8 @@ struct ServerListView: View {
                         .ignoresSafeArea()
                 }
             }
-            .hostKeyTrustPrompt(enabled: selectedServer == nil)
+            // A full-screen terminal covers this view and shows its own prompt instead.
+            .hostKeyTrustPrompt(enabled: selectedServer == nil && (usesSplitView || sessionManager.activeSession == nil))
     }
 
     @ViewBuilder
@@ -486,6 +511,17 @@ struct ServerListView: View {
         }
     }
 
+    /// Swiping the picker away is a cancel: without this the SSH connection would
+    /// sit open waiting for a tmux choice and linger in Active Sessions.
+    private func cancelUnresolvedTmuxPicker() {
+        guard let session = unresolvedTmuxPickerSession else { return }
+        unresolvedTmuxPickerSession = nil
+        Task {
+            _ = await session.connectionVM.completeTmuxChoice(.cancel)
+            await sessionManager.closeSession(id: session.id)
+        }
+    }
+
     private func tmuxPicker(for session: ManagedSession) -> some View {
         TmuxSessionPickerView(
             sessions: session.connectionVM.detectedTmuxSessions,
@@ -495,6 +531,7 @@ struct ServerListView: View {
                 Task { await session.connectionVM.refreshTmuxSessions() }
             }
         ) { choice in
+            unresolvedTmuxPickerSession = nil
             Task {
                 let tmuxName = await session.connectionVM.completeTmuxChoice(choice)
                 if case .cancel = choice {
@@ -535,7 +572,8 @@ struct ServerListView: View {
                 let server = servers.first(where: { $0.id == session.serverID }) ?? session.server
                 launchSession(for: server, herdr: attachment)
             },
-            onDismiss: { sessionManager.returnToServerList() }
+            onDismiss: { sessionManager.returnToServerList() },
+            presentsHostKeyPrompts: !usesSplitView
         )
     }
 
@@ -628,27 +666,63 @@ struct ServerListView: View {
             quickLaunching = true
             Task {
                 await session.connectionVM.quickLaunch(server: connectionServer)
-                quickLaunching = false
-
-                if session.connectionVM.showTmuxPicker {
-                    session.connectionVM.showTmuxPicker = false
-                    sessionManager.tmuxPickerSession = session
-                    connectingSession = nil
-                } else if session.connectionVM.connectionState == .connected {
-                    recordSuccessfulConnection(session)
-                    sessionManager.switchTo(sessionID: session.id)
-                    connectingSession = nil
-                } else {
-                    quickLaunchError = session.connectionVM.presentedError ?? ErrorPresentation.classify(
-                        ErrorMessageFailure(message: "Unable to connect to \(connectionServer.name)."),
-                        context: .connection(server: connectionServer)
-                    )
-                    await sessionManager.closeSession(id: session.id)
-                    connectingSession = nil
-                }
+                await finishQuickLaunch(session, server: connectionServer)
             }
         } else {
             selectedServer = connectionServer
+        }
+    }
+
+    /// Routes a finished saved-credential launch: tmux choice, terminal, install offer, or error.
+    private func finishQuickLaunch(_ session: ManagedSession, server connectionServer: Server) async {
+        quickLaunching = false
+
+        if session.connectionVM.showMoshInstallOffer {
+            // The offer lives on the view model; keep the session open until the user decides.
+            session.connectionVM.showMoshInstallOffer = false
+            moshInstallSession = session
+        } else if session.connectionVM.showTmuxPicker {
+            session.connectionVM.showTmuxPicker = false
+            sessionManager.tmuxPickerSession = session
+            connectingSession = nil
+        } else if session.connectionVM.connectionState == .connected {
+            recordSuccessfulConnection(session)
+            sessionManager.switchTo(sessionID: session.id)
+            connectingSession = nil
+        } else {
+            quickLaunchFailedServer = connectionServer
+            quickLaunchError = session.connectionVM.presentedError ?? ErrorPresentation.classify(
+                ErrorMessageFailure(message: "Unable to connect to \(connectionServer.name)."),
+                context: .connection(server: connectionServer)
+            )
+            await sessionManager.closeSession(id: session.id)
+            connectingSession = nil
+        }
+    }
+
+    /// Drops the stale trusted key and reconnects, which shows the new key's verification prompt.
+    private func forgetHostKeyAndRetry(_ change: HostKeyChange, server: Server) {
+        do {
+            try change.forgetTrustedKey()
+            HapticService.success()
+            quickLaunchError = nil
+            launchSession(for: server)
+        } catch {
+            quickLaunchError = ErrorPresentation.classify(error, context: .connection(server: server))
+        }
+    }
+
+    private func resolveMoshInstall(install: Bool) {
+        guard let session = moshInstallSession else { return }
+        moshInstallSession = nil
+        quickLaunching = true
+        Task {
+            if install {
+                await session.connectionVM.installMoshServer()
+            } else {
+                await session.connectionVM.declineMoshInstall()
+            }
+            await finishQuickLaunch(session, server: session.server)
         }
     }
 
