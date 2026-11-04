@@ -160,6 +160,19 @@ struct SettingsView: View {
     private var keyboardSection: some View {
         Section("Keyboard & Gestures") {
             NavigationLink {
+                KeySetsSettingsView()
+            } label: {
+                HStack {
+                    Text("Key Sets")
+                    Spacer()
+                    Text(KeyProfileStore.shared.autoSwitch ? "Automatic" : "Manual")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityIdentifier("settings.keysets")
+
+            NavigationLink {
                 TmuxSettingsView()
             } label: {
                 HStack {
@@ -188,6 +201,11 @@ struct SettingsView: View {
                     Text(action.displayName).tag(action)
                 }
             }
+
+            Toggle("Compact Header While Typing", isOn: Binding(
+                get: { settings.autoHideTerminalHeader },
+                set: { settings.autoHideTerminalHeader = $0 }
+            ))
         }
     }
 

@@ -606,3 +606,122 @@ final class TerminalTextRange: UITextRange {
     override var end: UITextPosition { TerminalTextPosition(range.location + range.length) }
     override var isEmpty: Bool { range.length == 0 }
 }
+
+// MARK: - Header context
+
+/// Builds the short "what is running here" text shown next to the server name.
+///
+/// Shells and TUIs report context two ways: the window title (OSC 0/2, e.g.
+/// `vim main.rs` or `fcoury@m5pro: ~/code`) and the working directory (OSC 7).
+/// The title wins because it usually names the foreground program; prefixes that
+/// only repeat the user and host already shown in the header are stripped.
+enum TerminalHeaderContext {
+    static func subtitle(
+        title: String?,
+        workingDirectory: String?,
+        username: String,
+        hostname: String,
+        serverName: String
+    ) -> String? {
+        if let title = cleanedTitle(title, username: username, hostname: hostname, serverName: serverName) {
+            return title
+        }
+        guard let workingDirectory, !workingDirectory.isEmpty else { return nil }
+        return abbreviatePath(workingDirectory, username: username)
+    }
+
+    static func cleanedTitle(
+        _ title: String?,
+        username: String,
+        hostname: String,
+        serverName: String
+    ) -> String? {
+        guard var text = title?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return nil
+        }
+
+        let hosts = Set([hostname, serverName, shortHost(hostname)].filter { !$0.isEmpty })
+        // Strip "user@host:" / "user@host" style prefixes, longest host first so
+        // "m5pro.local" is not half-matched as "m5pro".
+        let prefixes = hosts.sorted { $0.count > $1.count }.map { "\(username)@\($0)" }
+        if let prefix = prefixes.first(where: { text.hasPrefix($0) }) {
+            text = String(text.dropFirst(prefix.count))
+                .trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: ":-—")))
+        }
+
+        guard !text.isEmpty,
+              !hosts.contains(text),
+              text != username else {
+            return nil
+        }
+        return text
+    }
+
+    /// Converts an OSC 7 report (`file://host/path` or a bare path) to a display path.
+    static func path(fromWorkingDirectoryReport report: String) -> String? {
+        let trimmed = report.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.hasPrefix("file://"), let url = URL(string: trimmed) {
+            let path = url.path
+            return path.isEmpty ? "/" : path
+        }
+        return trimmed
+    }
+
+    static func abbreviatePath(_ path: String, username: String) -> String {
+        let homes = username == "root" ? ["/root"] : ["/Users/\(username)", "/home/\(username)"]
+        for home in homes {
+            if path == home { return "~" }
+            if path.hasPrefix(home + "/") { return "~" + path.dropFirst(home.count) }
+        }
+        return path
+    }
+
+    private static func shortHost(_ hostname: String) -> String {
+        hostname.split(separator: ".").first.map(String.init) ?? hostname
+    }
+}
+
+// MARK: - Scrollback position
+
+enum TerminalScrollbackPosition {
+    /// True when the viewport is above the live bottom of the screen.
+    static func isScrolledBack(total: UInt64, offset: UInt64, len: UInt64) -> Bool {
+        guard total > len else { return false }
+        return offset + len < total
+    }
+}
+
+// MARK: - Connection latency
+
+/// Round-trip time quality buckets for the Mosh latency indicator.
+enum ConnectionLatencyQuality: Equatable {
+    case good
+    case fair
+    case poor
+
+    init(roundTripTime: TimeInterval) {
+        switch roundTripTime {
+        case ..<0.12: self = .good
+        case ..<0.3: self = .fair
+        default: self = .poor
+        }
+    }
+
+    /// Fill level for the variable-value `cellularbars` symbol.
+    var signalLevel: Double {
+        switch self {
+        case .good: 1
+        case .fair: 0.6
+        case .poor: 0.3
+        }
+    }
+
+    static func displayText(for roundTripTime: TimeInterval) -> String {
+        let milliseconds = Int((roundTripTime * 1_000).rounded())
+        if milliseconds >= 1_000 {
+            return String(format: "%.1fs", roundTripTime)
+        }
+        return "\(milliseconds)ms"
+    }
+}

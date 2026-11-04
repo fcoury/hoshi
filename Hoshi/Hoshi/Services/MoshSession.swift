@@ -16,6 +16,9 @@ final class MoshSession: ObservableObject {
     @Published var connectionState: ConnectionState = .disconnected
     @Published var recoveryStatus: ConnectionRecoveryStatus = .idle
     @Published var outputBuffer: String = ""
+    /// Smoothed SSP round-trip time; nil until the server echoes a timestamp.
+    @Published private(set) var roundTripTime: TimeInterval?
+    private var roundTripEstimator = MoshRoundTripEstimator()
     private var bufferedTerminalOutput = Data()
     private let agentEventDecoder = AgentEventStreamDecoder()
 
@@ -349,6 +352,7 @@ final class MoshSession: ObservableObject {
 
         networkMonitor.stop()
         protocolEngine = nil
+        resetRoundTripTime()
         bufferedTerminalOutput.removeAll()
         consecutiveDatagramFailures = 0
         debugSendInstructionCount = 0
@@ -369,6 +373,7 @@ final class MoshSession: ObservableObject {
 
         // Set up crypto
         protocolEngine = try MoshProtocolEngine(key: info.sessionKey)
+        resetRoundTripTime()
 
         // Create UDP connection
         let udp = makeUDPConnection(info.serverIP, info.udpPort)
@@ -521,6 +526,19 @@ final class MoshSession: ObservableObject {
         }
     }
 
+    private func recordRoundTripSample(_ sample: TimeInterval?) {
+        guard let sample else { return }
+        let smoothed = roundTripEstimator.record(sample)
+        // Publish only meaningful moves so the header doesn't re-render per packet.
+        if let current = roundTripTime, abs(current - smoothed) < 0.005 { return }
+        roundTripTime = smoothed
+    }
+
+    private func resetRoundTripTime() {
+        roundTripEstimator.reset()
+        roundTripTime = nil
+    }
+
     // Decrypt, reassemble, and decode a received datagram
     private func processDatagram(_ datagram: Data) async {
         guard let protocolEngine else { return }
@@ -532,6 +550,7 @@ final class MoshSession: ObservableObject {
                 return
             }
             debugDecryptSuccessCount += 1
+            recordRoundTripSample(decoded.roundTripSample)
             let instruction = decoded.instruction
             debugInstructionDecodeCount += 1
 

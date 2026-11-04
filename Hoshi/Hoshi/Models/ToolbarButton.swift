@@ -7,6 +7,44 @@ struct ToolbarButton: Codable, Identifiable, Equatable, Hashable {
     let label: String       // Display text on the button
     let bytes: [UInt8]      // Raw bytes sent to the terminal session
     let category: Category  // For grouping in the palette
+    /// SF Symbol for user-defined keys; built-ins resolve theirs from `id`.
+    var symbol: String? = nil
+    /// Source binding for user-defined keys (see `KeyChord`); `bytes` is re-derived
+    /// from it whenever the owning key set's prefix changes.
+    var chord: String? = nil
+    /// Herdr action name for keys from the Herdr palette; the key set supplies the chord.
+    var herdrAction: String? = nil
+
+    /// User-defined chord key (editable in the custom key sheet).
+    var isCustom: Bool { chord != nil && herdrAction == nil }
+
+    static let customIDPrefix = "custom-"
+
+    static func custom(label: String, chord: String, symbol: String? = nil, id: String? = nil) -> ToolbarButton {
+        ToolbarButton(
+            id: id ?? customIDPrefix + UUID().uuidString,
+            label: label,
+            bytes: [],
+            category: .combo,
+            symbol: symbol,
+            chord: chord
+        )
+    }
+
+    /// Returns a copy whose bytes are encoded from `chord` with the given prefix.
+    /// Built-in keys and chords that fail to encode are returned unchanged.
+    func resolved(prefix: String?) -> ToolbarButton {
+        guard let chord, let encoded = try? KeyChord.encode(chord, prefix: prefix) else { return self }
+        return ToolbarButton(
+            id: id,
+            label: label,
+            bytes: encoded,
+            category: category,
+            symbol: symbol,
+            chord: chord,
+            herdrAction: herdrAction
+        )
+    }
 
     enum Category: String, Codable, CaseIterable {
         case modifier   // Ctrl, Alt, etc.
@@ -18,6 +56,7 @@ struct ToolbarButton: Codable, Identifiable, Equatable, Hashable {
         case transfer   // Secure SSH/SFTP file and image upload
         case voice      // On-device voice prompt composition
         case combo      // Ctrl+C, Ctrl+B, Ctrl+D, etc.
+        case herdr      // Herdr actions (Herdr key set only)
     }
 }
 
@@ -143,6 +182,24 @@ extension ToolbarButton {
 
     static let voiceActions: [ToolbarButton] = [voicePrompt]
 
+    /// SF Symbol rendered instead of `label` for keys whose text glyph reads poorly
+    /// at toolbar size. `nil` means the key renders its text label.
+    var symbolName: String? {
+        if let symbol { return symbol }
+        return switch id {
+        case "arrow-up": "arrowtriangle.up.fill"
+        case "arrow-down": "arrowtriangle.down.fill"
+        case "arrow-left": "arrowtriangle.left.fill"
+        case "arrow-right": "arrowtriangle.right.fill"
+        case "swipe-all": "dpad"
+        case "swipe-horiz": "arrow.left.and.right"
+        case "swipe-vert": "arrow.up.and.down"
+        case "upload-file": "paperclip"
+        case "voice-prompt": "mic.fill"
+        default: nil
+        }
+    }
+
     var accessibilityLabel: String {
         switch id {
         case "esc": "Escape"
@@ -170,7 +227,7 @@ extension ToolbarButton {
         case "ctrl-u": "Control U, clear line"
         case "upload-file": "Upload a file or photo securely"
         case "voice-prompt": "Compose on-device voice prompt"
-        default: label
+        default: chord.map { "\(label), \(KeyChord.displayString($0))" } ?? label
         }
     }
 

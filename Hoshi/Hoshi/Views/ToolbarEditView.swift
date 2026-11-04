@@ -5,23 +5,79 @@ import SwiftUI
 struct ToolbarEditView: View {
     @Environment(\.dismiss) private var dismiss
 
+    @State private var profile: KeyProfile
     @State private var currentButtons: [ToolbarButton]
     @State private var selectedCategory: ToolbarButton.Category = .modifier
     @State private var showResetAlert = false
     @State private var draggingButton: ToolbarButton?
+    @State private var customKeyDraft: CustomKeyDraft?
+    @State private var showKeySetSettings = false
+    @State private var isImportingHerdr = false
+    @State private var herdrImportMessage: String?
+    @State private var herdrImportFailed = false
+
+    private let serverName: String?
+    private let herdrConfigLoader: (() async throws -> String?)?
 
     // Callback to refresh the toolbar after saving
     var onSave: (() -> Void)?
 
-    init(onSave: (() -> Void)? = nil) {
-        let buttons = ToolbarConfigurationService.shared.loadButtons()
-        _currentButtons = State(initialValue: buttons)
+    /// - Parameters:
+    ///   - profileID: Key set to edit; defaults to the Shell toolbar.
+    ///   - serverName: Connected server, used to label the Herdr import action.
+    ///   - herdrConfigLoader: Reads the server's Herdr config.toml; nil when not connected.
+    init(
+        profileID: String = KeyProfile.shellID,
+        serverName: String? = nil,
+        herdrConfigLoader: (() async throws -> String?)? = nil,
+        onSave: (() -> Void)? = nil
+    ) {
+        let store = KeyProfileStore.shared
+        let profile = store.profile(id: profileID) ?? store.shell
+        _profile = State(initialValue: profile)
+        _currentButtons = State(initialValue: profile.keys)
+        _selectedCategory = State(initialValue: profile.id == KeyProfile.herdrID ? .herdr : .modifier)
+        self.serverName = serverName
+        self.herdrConfigLoader = herdrConfigLoader
         self.onSave = onSave
+    }
+
+    private func save() {
+        var updated = profile
+        updated.keys = currentButtons
+        KeyProfileStore.shared.update(updated)
     }
 
     // All buttons for the selected category, with already-added ones dimmed
     private var categoryButtons: [ToolbarButton] {
-        ToolbarButton.allAvailable.filter { $0.category == selectedCategory }
+        if selectedCategory == .herdr {
+            return HerdrKeyImport.catalog.map(HerdrKeyImport.button(for:))
+        }
+        return ToolbarButton.allAvailable.filter { $0.category == selectedCategory }
+    }
+
+    private var isHerdrProfile: Bool { profile.id == KeyProfile.herdrID }
+
+    /// The Herdr tab only makes sense where Herdr's prefix and bindings apply.
+    private var visibleCategories: [ToolbarButton.Category] {
+        let others = ToolbarButton.Category.allCases.filter { $0 != .herdr }
+        return isHerdrProfile ? [.herdr] + others : others
+    }
+
+    /// Current edits as a key set, for binding lookups and the live preview.
+    private var draftProfile: KeyProfile {
+        var draft = profile
+        draft.keys = currentButtons
+        return draft
+    }
+
+    private func herdrBinding(_ button: ToolbarButton) -> String? {
+        guard let action = button.herdrAction else { return nil }
+        return HerdrKeyImport.binding(for: action, bindings: profile.herdrBindings, prefix: profile.prefix)
+    }
+
+    private func isUnbound(_ button: ToolbarButton) -> Bool {
+        button.herdrAction != nil && herdrBinding(button) == nil
     }
 
     private var currentIDs: Set<String> {
@@ -40,6 +96,7 @@ struct ToolbarEditView: View {
         case .transfer:   return "Files"
         case .voice:      return "Voice"
         case .combo:      return "Cmb"
+        case .herdr:      return "Herdr"
         }
     }
 
@@ -55,29 +112,58 @@ struct ToolbarEditView: View {
                 availableKeysSection
             }
             .background(SwiftUI.Color(AppearanceSettings.shared.currentTheme.chromeBackground))
-            .navigationTitle("Edit Toolbar")
+            .navigationTitle(profile.isShell ? "Edit Toolbar" : "\(profile.name) Keys")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if !profile.isShell {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            showKeySetSettings = true
+                        } label: {
+                            Label("Key Set Settings", systemImage: "gearshape")
+                        }
+                        .accessibilityIdentifier("toolbar.editor.keyset.settings")
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
-                        ToolbarConfigurationService.shared.saveButtons(currentButtons)
+                        save()
                         onSave?()
                         dismiss()
                     }
                     .fontWeight(.semibold)
                 }
             }
-            .alert("Reset Toolbar?", isPresented: $showResetAlert) {
+            .alert(profile.isShell ? "Reset Toolbar?" : "Reset \(profile.name) Keys?", isPresented: $showResetAlert) {
                 Button("Cancel", role: .cancel) {}
                 Button("Reset", role: .destructive) {
                     HapticService.warning()
                     withAnimation {
-                        ToolbarConfigurationService.shared.resetToDefaults()
-                        currentButtons = ToolbarButton.defaultButtons
+                        KeyProfileStore.shared.reset(id: profile.id)
+                        if let restored = KeyProfileStore.shared.profile(id: profile.id) {
+                            profile = restored
+                            currentButtons = restored.keys
+                        }
                     }
                 }
             } message: {
-                Text("This will restore the default toolbar layout.")
+                Text(profile.isShell
+                    ? "This will restore the default toolbar layout."
+                    : "This restores the built-in keys, prefix and title words for \(profile.name).")
+            }
+            .sheet(item: $customKeyDraft) { draft in
+                CustomKeyEditorSheet(draft: draft, prefix: profile.prefix) { button in
+                    withAnimation {
+                        if let index = currentButtons.firstIndex(where: { $0.id == button.id }) {
+                            currentButtons[index] = button
+                        } else {
+                            currentButtons.append(button)
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showKeySetSettings) {
+                KeySetSettingsSheet(profile: $profile)
             }
         }
     }
@@ -93,14 +179,15 @@ struct ToolbarEditView: View {
                 .padding(.horizontal, 16)
 
             KeyboardToolbarContent(
-                buttons: currentButtons,
+                buttons: draftProfile.resolvedKeys,
                 activeModifiers: [],
                 selectionAvailable: true,
                 pasteAvailable: true,
                 voicePromptAvailable: true,
                 onButtonTap: { _ in },
                 onSwipeArrow: { _ in },
-                onEditTap: {}
+                onEditTap: {},
+                onDismissKeyboard: {}
             )
             .allowsHitTesting(false)
             .accessibilityHidden(true)
@@ -146,7 +233,7 @@ struct ToolbarEditView: View {
                 }
             }
 
-            Text("Long-press & drag to reorder")
+            Text("Long-press & drag to reorder · tap a custom key to edit it")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, 16)
@@ -159,7 +246,12 @@ struct ToolbarEditView: View {
     // A single chip in the "Your Toolbar" row with an x badge
     private func toolbarChip(_ button: ToolbarButton) -> some View {
         ZStack(alignment: .topTrailing) {
-            Text(button.label)
+            ToolbarKeyGlyph(button: button)
+                .opacity(isUnbound(button) ? 0.45 : 1)
+                .onTapGesture {
+                    guard button.isCustom else { return }
+                    customKeyDraft = CustomKeyDraft(editing: button)
+                }
                 .font(.system(size: 14, weight: .medium, design: .monospaced))
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
@@ -202,7 +294,20 @@ struct ToolbarEditView: View {
             // Pill-shaped category tabs
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(ToolbarButton.Category.allCases, id: \.self) { category in
+                    Button {
+                        customKeyDraft = CustomKeyDraft()
+                    } label: {
+                        Label("Custom", systemImage: "plus")
+                            .font(.system(size: 13, weight: .semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(SwiftUI.Color(editTheme.cardSurface)))
+                            .overlay(Capsule().strokeBorder(SwiftUI.Color(editTheme.accentBlue), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("toolbar.editor.custom.add")
+
+                    ForEach(visibleCategories, id: \.self) { category in
                         categoryPill(category)
                     }
                 }
@@ -211,31 +316,53 @@ struct ToolbarEditView: View {
 
             // Grid of buttons for selected category
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 70))], spacing: 10) {
+                if selectedCategory == .herdr {
+                    herdrImportHeader
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 4)
+                }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: selectedCategory == .herdr ? 96 : 70))], spacing: 10) {
                     ForEach(categoryButtons) { button in
                         let alreadyAdded = currentIDs.contains(button.id)
+                        let unbound = isUnbound(button)
                         Button {
                             guard !alreadyAdded else { return }
                             withAnimation {
                                 currentButtons.append(button)
                             }
                         } label: {
-                            Text(button.label)
-                                .font(.system(size: 13, weight: .medium, design: .monospaced))
-                                .foregroundStyle(.primary)
-                                .frame(minWidth: 50, minHeight: 36)
-                                .padding(.horizontal, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(SwiftUI.Color(editTheme.cardSurface))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .strokeBorder(SwiftUI.Color(editTheme.separator), lineWidth: 0.5)
-                                )
-                                .opacity(alreadyAdded ? 0.4 : 1.0)
+                            VStack(spacing: 2) {
+                                ToolbarKeyGlyph(button: button)
+                                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                if button.herdrAction != nil {
+                                    Text(herdrBinding(button).map(KeyChord.displayString) ?? "unbound")
+                                        .font(.system(size: 9, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.7)
+                                }
+                            }
+                            .foregroundStyle(.primary)
+                            .frame(minWidth: 50, minHeight: 36)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, button.herdrAction != nil ? 4 : 0)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(SwiftUI.Color(editTheme.cardSurface))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(SwiftUI.Color(editTheme.separator), lineWidth: 0.5)
+                            )
+                            .opacity(alreadyAdded ? 0.4 : (unbound ? 0.55 : 1.0))
                         }
+                        .buttonStyle(.plain)
                         .disabled(alreadyAdded)
+                        .accessibilityLabel(button.herdrAction != nil
+                            ? "\(button.label), \(herdrBinding(button).map(KeyChord.displayString) ?? "unbound")"
+                            : button.accessibilityLabel)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -255,6 +382,82 @@ struct ToolbarEditView: View {
             .padding(.bottom, 8)
         }
         .padding(.top, 12)
+    }
+
+    // MARK: - Herdr bindings
+
+    private var herdrStatusText: String {
+        if let source = profile.herdrBindingsSource, let date = profile.herdrImportedAt {
+            let when = date.formatted(.relative(presentation: .named))
+            return "Bindings from \(source) · \(when) · prefix \(KeyChord.displayString(profile.prefix ?? HerdrKeyImport.defaultPrefix))"
+        }
+        if profile.herdrBindings != nil {
+            return "Imported bindings · prefix \(KeyChord.displayString(profile.prefix ?? HerdrKeyImport.defaultPrefix))"
+        }
+        return "Herdr default bindings · prefix \(KeyChord.displayString(profile.prefix ?? HerdrKeyImport.defaultPrefix))"
+    }
+
+    private var herdrImportHeader: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(herdrStatusText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                Spacer(minLength: 4)
+                if isImportingHerdr {
+                    ProgressView().controlSize(.small)
+                } else if herdrConfigLoader != nil {
+                    Button(profile.herdrBindings == nil ? "Import" : "Re-import") {
+                        Task { await importHerdrBindings() }
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("toolbar.editor.herdr.import")
+                }
+            }
+            if let herdrImportMessage {
+                Text(herdrImportMessage)
+                    .font(.caption2)
+                    .foregroundStyle(herdrImportFailed ? .orange : .secondary)
+            } else if herdrConfigLoader == nil {
+                Text("Open this editor from a connected terminal to import config.toml.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    /// Refreshes the prefix and bindings from the server; the chosen keys stay as they are.
+    private func importHerdrBindings() async {
+        guard let herdrConfigLoader else { return }
+        isImportingHerdr = true
+        defer { isImportingHerdr = false }
+        do {
+            let config = try await herdrConfigLoader()
+            let result = HerdrKeyImport.importConfig(config)
+            withAnimation {
+                profile.prefix = result.prefix
+                profile.herdrBindings = result.bindings
+                profile.herdrBindingsSource = serverName
+                profile.herdrImportedAt = Date()
+            }
+            // Persist now so the import survives dismissing the editor without Done.
+            KeyProfileStore.shared.updateHerdrBindings(
+                prefix: result.prefix,
+                bindings: result.bindings,
+                source: serverName
+            )
+            herdrImportFailed = false
+            herdrImportMessage = config == nil
+                ? "No config.toml on the server — using Herdr's defaults."
+                : "Imported prefix \(KeyChord.displayString(result.prefix)) and \(result.configuredActionCount) customized actions."
+            HapticService.success()
+        } catch {
+            herdrImportFailed = true
+            herdrImportMessage = "Couldn't read config.toml: \(error.localizedDescription)"
+            HapticService.error()
+        }
     }
 
     // Pill-shaped category tab

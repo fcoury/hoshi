@@ -39,6 +39,14 @@ class KeyboardToolbarAccessoryView: UIView {
     // Callback to open the verified SSH/SFTP file transfer sheet.
     var onFileUpload: (() -> Void)?
 
+    // Callback to dismiss the software keyboard from the toolbar.
+    var onDismissKeyboard: (() -> Void)?
+
+    // Callback when the user picks a key set (nil = automatic).
+    var onSelectProfile: ((String?) -> Void)?
+
+    private(set) var profileChip: KeyProfileChip?
+
     // Current button layout
     private(set) var buttons: [ToolbarButton]
     private(set) var selectionAvailable = false
@@ -48,7 +56,7 @@ class KeyboardToolbarAccessoryView: UIView {
     private var activationObserver: NSObjectProtocol?
 
     init(buttons: [ToolbarButton]? = nil) {
-        self.buttons = buttons ?? ToolbarConfigurationService.shared.loadButtons()
+        self.buttons = buttons ?? KeyProfileStore.shared.shell.resolvedKeys
         super.init(frame: CGRect(x: 0, y: 0, width: 0, height: Self.preferredHeight))
         autoresizingMask = .flexibleWidth
         setupHostingController()
@@ -86,15 +94,20 @@ class KeyboardToolbarAccessoryView: UIView {
     }
 
     // Reload buttons from persistence (after edit)
+    /// Key sets are pushed through `apply(profile:chip:)`; this only refreshes
+    /// clipboard state after the editor closes.
     func reloadButtons() {
-        let updatedButtons = ToolbarConfigurationService.shared.loadButtons()
-        guard updatedButtons != buttons else {
-            refreshPasteAvailability()
-            return
-        }
+        refreshPasteAvailability()
+    }
 
-        buttons = updatedButtons
-        activeModifiers.formIntersection(Set(updatedButtons.map(\.id)))
+    /// Shows the given key set's keys and the chip describing the selection.
+    func apply(buttons updatedButtons: [ToolbarButton], chip: KeyProfileChip?) {
+        guard updatedButtons != buttons || chip != profileChip else { return }
+        if updatedButtons != buttons {
+            buttons = updatedButtons
+            activeModifiers.formIntersection(Set(updatedButtons.map(\.id)))
+        }
+        profileChip = chip
         updateContent()
     }
 
@@ -161,6 +174,15 @@ class KeyboardToolbarAccessoryView: UIView {
             },
             onEditTap: { [weak self] in
                 self?.onEditTap?()
+            },
+            onDismissKeyboard: { [weak self] in
+                HapticService.lightTap()
+                self?.onDismissKeyboard?()
+            },
+            profileChip: profileChip,
+            onSelectProfile: { [weak self] profileID in
+                HapticService.selection()
+                self?.onSelectProfile?(profileID)
             }
         )
     }
@@ -294,7 +316,78 @@ class KeyboardToolbarAccessoryView: UIView {
 
 // MARK: - SwiftUI content for the toolbar
 
+/// What the toolbar shows about the active key set and its alternatives.
+struct KeyProfileChip: Equatable {
+    struct Option: Equatable, Identifiable {
+        let id: String
+        let name: String
+        let symbol: String
+    }
+
+    let activeID: String
+    let activeName: String
+    let activeSymbol: String
+    /// Non-nil when the user pinned a set for this server.
+    let pinnedID: String?
+    let options: [Option]
+
+    init(active: KeyProfile, pinnedID: String?, profiles: [KeyProfile]) {
+        self.activeID = active.id
+        self.activeName = active.name
+        self.activeSymbol = active.symbol
+        self.pinnedID = pinnedID
+        self.options = profiles.map { Option(id: $0.id, name: $0.name, symbol: $0.symbol) }
+    }
+}
+
+/// Renders a toolbar key's face: an SF Symbol when one is defined, otherwise its text label.
+struct ToolbarKeyGlyph: View {
+    let button: ToolbarButton
+
+    var body: some View {
+        if let symbol = button.symbolName {
+            Image(systemName: symbol)
+                .imageScale(.small)
+        } else {
+            Text(button.label)
+        }
+    }
+}
+
+/// Shared key styling so tap keys, swipe keys and pinned controls read as one set.
+private struct ToolbarKeyFace: ViewModifier {
+    let isHighlighted: Bool
+    var isEnabled: Bool = true
+
+    private var theme: TerminalTheme { AppearanceSettings.shared.currentTheme }
+
+    func body(content: Content) -> some View {
+        content
+            .font(.system(size: 13, weight: .medium, design: .monospaced))
+            .foregroundStyle(isHighlighted
+                ? SwiftUI.Color(theme.background)
+                : SwiftUI.Color(theme.foreground))
+            .opacity(isEnabled ? 1 : 0.4)
+            .frame(minWidth: KeyboardToolbarContent.keyMinWidth,
+                   minHeight: KeyboardToolbarAccessoryView.buttonVisualHeight)
+            .padding(.horizontal, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isHighlighted
+                        ? SwiftUI.Color(theme.foreground)
+                        : SwiftUI.Color(theme.cardSurface))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(SwiftUI.Color(theme.separator), lineWidth: 0.5)
+            )
+    }
+}
+
 struct KeyboardToolbarContent: View {
+    /// Uniform minimum key width so single-glyph keys line up into an even grid.
+    static let keyMinWidth: CGFloat = 40
+
     let buttons: [ToolbarButton]
     let activeModifiers: Set<String>
     let selectionAvailable: Bool
@@ -303,18 +396,18 @@ struct KeyboardToolbarContent: View {
     let onButtonTap: (ToolbarButton) -> Void
     let onSwipeArrow: ([UInt8]) -> Void
     let onEditTap: () -> Void
+    let onDismissKeyboard: () -> Void
+    var profileChip: KeyProfileChip? = nil
+    var onSelectProfile: (String?) -> Void = { _ in }
 
-    // Arrow key bytes for swipe gestures
-    private static let arrowUp:    [UInt8] = [0x1B, 0x5B, 0x41]
-    private static let arrowDown:  [UInt8] = [0x1B, 0x5B, 0x42]
-    private static let arrowRight: [UInt8] = [0x1B, 0x5B, 0x43]
-    private static let arrowLeft:  [UInt8] = [0x1B, 0x5B, 0x44]
+    private var theme: TerminalTheme { AppearanceSettings.shared.currentTheme }
 
     var body: some View {
         HStack(spacing: 0) {
-            // Scrollable button row
+            // Scrollable button row. The trailing fade signals more keys
+            // instead of clipping the last visible key mid-glyph.
             ScrollView(.horizontal) {
-                HStack(spacing: 5) {
+                HStack(spacing: 6) {
                     ForEach(buttons) { button in
                         if ToolbarButton.swipeButtonIDs.contains(button.id) {
                             swipeButton(button)
@@ -323,28 +416,82 @@ struct KeyboardToolbarContent: View {
                         }
                     }
                 }
-                .padding(.horizontal, 6)
+                .padding(.leading, 8)
+                .padding(.trailing, 16)
             }
             .scrollIndicators(.hidden)
+            .mask(
+                HStack(spacing: 0) {
+                    SwiftUI.Color.black
+                    LinearGradient(
+                        colors: [.black, .black.opacity(0)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: 20)
+                }
+            )
 
-            // Edit button (gear icon) pinned to trailing edge
-            Divider()
-                .frame(height: 20)
-                .padding(.horizontal, 2)
-
-            Button(action: onEditTap) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .frame(width: KeyboardToolbarAccessoryView.buttonVisualHeight,
-                           height: KeyboardToolbarAccessoryView.buttonVisualHeight)
-            }
-            .frame(width: 44, height: 44)
-            .contentShape(.rect)
-            .accessibilityLabel("Customize keyboard toolbar")
+            hideKeyboardControl
+                .padding(.trailing, 4)
         }
         .frame(height: KeyboardToolbarAccessoryView.preferredHeight)
-        .background(SwiftUI.Color(AppearanceSettings.shared.currentTheme.chromeSurface))
+        .background(SwiftUI.Color(theme.background))
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(SwiftUI.Color(theme.separator))
+                .frame(height: 0.5)
+        }
+    }
+
+    /// Long-press menu shared by every key: switch key sets or edit the active one.
+    @ViewBuilder
+    private var keySetMenuItems: some View {
+        if let chip = profileChip {
+            Section("Key Set: \(chip.activeName)\(chip.pinnedID == nil ? " (Automatic)" : "")") {
+                Button {
+                    onSelectProfile(nil)
+                } label: {
+                    if chip.pinnedID == nil {
+                        Label("Automatic", systemImage: "checkmark")
+                    } else {
+                        Label("Automatic", systemImage: "wand.and.stars")
+                    }
+                }
+                ForEach(chip.options) { option in
+                    Button {
+                        onSelectProfile(option.id)
+                    } label: {
+                        Label(option.name, systemImage: chip.pinnedID == option.id ? "checkmark" : option.symbol)
+                    }
+                }
+            }
+            Button {
+                onEditTap()
+            } label: {
+                Label("Edit \(chip.activeName) Keys…", systemImage: "slider.horizontal.3")
+            }
+        }
+    }
+
+    /// Tap hides the keyboard; holding opens the toolbar editor.
+    private var hideKeyboardControl: some View {
+        Image(systemName: "keyboard.chevron.compact.down")
+            .font(.system(size: 15, weight: .regular))
+            .foregroundStyle(SwiftUI.Color(theme.secondaryForeground))
+            .frame(width: 40, height: KeyboardToolbarAccessoryView.preferredHeight)
+            .contentShape(.rect)
+            .onTapGesture(perform: onDismissKeyboard)
+            .onLongPressGesture(minimumDuration: 0.45) {
+                HapticService.mediumTap()
+                onEditTap()
+            }
+            .accessibilityElement()
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel("Hide keyboard")
+            .accessibilityHint("Hold to customize the toolbar")
+            .accessibilityAction(named: "Customize toolbar", onEditTap)
+            .accessibilityIdentifier("terminal.toolbar.hide-keyboard")
     }
 
     @ViewBuilder
@@ -361,36 +508,13 @@ struct KeyboardToolbarContent: View {
         Button {
             onButtonTap(button)
         } label: {
-            Group {
-                if button.id == ToolbarButton.voicePrompt.id {
-                    Image(systemName: "mic.fill")
-                } else if button.id == ToolbarButton.uploadFile.id {
-                    Image(systemName: "paperclip")
-                } else {
-                    Text(button.label)
-                }
-            }
-                .font(.system(size: 13, weight: .medium, design: .monospaced))
-                .foregroundStyle(isHighlighted
-                    ? SwiftUI.Color(AppearanceSettings.shared.currentTheme.background)
-                    : SwiftUI.Color(AppearanceSettings.shared.currentTheme.foreground))
-                .frame(minWidth: KeyboardToolbarAccessoryView.buttonVisualHeight,
-                       minHeight: KeyboardToolbarAccessoryView.buttonVisualHeight)
-                .padding(.horizontal, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(isHighlighted
-                            ? SwiftUI.Color(AppearanceSettings.shared.currentTheme.foreground)
-                            : SwiftUI.Color(AppearanceSettings.shared.currentTheme.cardSurface))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 5)
-                        .strokeBorder(SwiftUI.Color(AppearanceSettings.shared.currentTheme.separator), lineWidth: 0.5)
-                )
+            ToolbarKeyGlyph(button: button)
+                .modifier(ToolbarKeyFace(isHighlighted: isHighlighted, isEnabled: isEnabled))
                 // Scale bounce on modifier toggle
                 .scaleEffect(isHighlighted ? 1.06 : 1.0)
                 .animation(.spring(duration: 0.15, bounce: 0.4), value: isHighlighted)
         }
+        .buttonStyle(.plain)
         .frame(minHeight: 44)
         .contentShape(.rect)
         .disabled(!isEnabled)
@@ -398,24 +522,25 @@ struct KeyboardToolbarContent: View {
         .accessibilityValue(isModifier ? (isHighlighted ? "Active" : "Inactive") : "")
         .accessibilityHint(isModifier ? "Applies to the next key" : "")
         .accessibilityIdentifier(button.id == ToolbarButton.voicePrompt.id ? "terminal.toolbar.voice" : "terminal.toolbar.\(button.id)")
+        .contextMenu { keySetMenuItems }
     }
 
     // Swipe button — drag to send arrow keys, with accumulated distance tracking
     @ViewBuilder
     private func swipeButton(_ button: ToolbarButton) -> some View {
         SwipeArrowButton(
-            label: button.label,
-            buttonID: button.id,
+            button: button,
             onArrow: onSwipeArrow
         )
+        // No long-press menu here: hold-then-drag is how the swipe keys are used.
     }
 }
 
 // MARK: - Swipe arrow button with drag gesture
 
 private struct SwipeArrowButton: View {
-    let label: String
-    let buttonID: String
+    let button: ToolbarButton
+    private var buttonID: String { button.id }
     let onArrow: ([UInt8]) -> Void
 
     // Track accumulated drag distance to fire arrow keys at intervals
@@ -435,22 +560,8 @@ private struct SwipeArrowButton: View {
     private var allowVertical: Bool { buttonID != "swipe-horiz" }
 
     var body: some View {
-        Text(label)
-            .font(.system(size: 13, weight: .medium, design: .monospaced))
-            .foregroundStyle(isDragging
-                ? SwiftUI.Color(AppearanceSettings.shared.currentTheme.background)
-                : SwiftUI.Color(AppearanceSettings.shared.currentTheme.foreground))
-            .frame(width: 44, height: KeyboardToolbarAccessoryView.buttonVisualHeight)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(isDragging
-                        ? SwiftUI.Color(AppearanceSettings.shared.currentTheme.foreground)
-                        : SwiftUI.Color(AppearanceSettings.shared.currentTheme.cardSurface))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 5)
-                    .strokeBorder(SwiftUI.Color(AppearanceSettings.shared.currentTheme.separator), lineWidth: 0.5)
-            )
+        ToolbarKeyGlyph(button: button)
+            .modifier(ToolbarKeyFace(isHighlighted: isDragging))
             .frame(minHeight: 44)
             .contentShape(.rect)
             .gesture(
@@ -494,6 +605,6 @@ private struct SwipeArrowButton: View {
                         lastStepY = 0
                     }
             )
-            .accessibilityLabel(ToolbarButton.allAvailable.first(where: { $0.id == buttonID })?.accessibilityLabel ?? label)
+            .accessibilityLabel(button.accessibilityLabel)
     }
 }

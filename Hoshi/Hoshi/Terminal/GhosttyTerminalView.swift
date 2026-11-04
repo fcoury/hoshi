@@ -16,6 +16,11 @@ struct GhosttyTerminalView: UIViewRepresentable {
     let onClipboardRequest: (TerminalClipboardRequest) -> Void
     let onClipboardNotice: (TerminalClipboardNotice) -> Void
     var onSwapSession: (() -> Void)?
+    var onUserInput: (() -> Void)?
+    /// Keys and chip for the active key set; nil keeps the accessory's current keys.
+    var keyProfileButtons: [ToolbarButton]?
+    var keyProfileChip: KeyProfileChip?
+    var onSelectKeyProfile: ((String?) -> Void)?
     var onSurfaceReady: ((GhosttyTerminalSurfaceView) -> Void)?
 
     func makeCoordinator() -> Coordinator {
@@ -28,8 +33,31 @@ struct GhosttyTerminalView: UIViewRepresentable {
             managedSession: managedSession,
             onClipboardRequest: onClipboardRequest,
             onClipboardNotice: onClipboardNotice,
-            onSwapSession: onSwapSession
+            onSwapSession: onSwapSession,
+            onUserInput: onUserInput
         )
+    }
+
+    /// Routes live shell context into the owning session so it survives while
+    /// the session is backgrounded and its SwiftUI view is torn down.
+    private func bindSessionContext(_ view: GhosttyTerminalSurfaceView) {
+        guard let managedSession else { return }
+        view.onTitleChanged = { [weak managedSession] title in
+            managedSession?.terminalTitle = title
+        }
+        view.onWorkingDirectoryChanged = { [weak managedSession] path in
+            managedSession?.workingDirectory = path
+        }
+        view.onScrollbackPositionChanged = { [weak managedSession] scrolledBack in
+            managedSession?.isScrolledBack = scrolledBack
+        }
+        // Deferred: this runs inside a SwiftUI view update.
+        let scrolledBack = view.isScrolledBack
+        if managedSession.isScrolledBack != scrolledBack {
+            DispatchQueue.main.async { [weak managedSession] in
+                managedSession?.isScrolledBack = scrolledBack
+            }
+        }
     }
 
     func makeUIView(context: Context) -> GhosttyTerminalSurfaceView {
@@ -73,6 +101,14 @@ struct GhosttyTerminalView: UIViewRepresentable {
             coordinator?.updateKeyboardVisibility(visible)
         }
         view.toolbarAccessory.setVoicePromptAvailable(voicePromptsEnabled)
+        bindSessionContext(view)
+        view.onUserKeystroke = { [weak coordinator] in
+            coordinator?.onUserInput?()
+        }
+        view.toolbarAccessory.onSelectProfile = onSelectKeyProfile
+        if let keyProfileButtons {
+            view.toolbarAccessory.apply(buttons: keyProfileButtons, chip: keyProfileChip)
+        }
 
         connectionVM.setDataCallback { [weak view] bytes in
             DispatchQueue.main.async {
@@ -121,7 +157,16 @@ struct GhosttyTerminalView: UIViewRepresentable {
         coordinator.onClipboardRequest = onClipboardRequest
         coordinator.onClipboardNotice = onClipboardNotice
         coordinator.onSwapSession = onSwapSession
+        coordinator.onUserInput = onUserInput
         uiView.toolbarAccessory.setVoicePromptAvailable(voicePromptsEnabled)
+        bindSessionContext(uiView)
+        uiView.onUserKeystroke = { [weak coordinator] in
+            coordinator?.onUserInput?()
+        }
+        uiView.toolbarAccessory.onSelectProfile = onSelectKeyProfile
+        if let keyProfileButtons {
+            uiView.toolbarAccessory.apply(buttons: keyProfileButtons, chip: keyProfileChip)
+        }
 
         connectionVM.setDataCallback { [weak uiView] bytes in
             DispatchQueue.main.async {
@@ -150,6 +195,8 @@ struct GhosttyTerminalView: UIViewRepresentable {
         uiView.onClipboardRequest = nil
         uiView.onClipboardNotice = nil
         uiView.onKeyboardVisibilityChanged = nil
+        uiView.onUserKeystroke = nil
+        uiView.toolbarAccessory.onSelectProfile = nil
         // A retained surface keeps receiving bytes while hidden, preserving its
         // real scrollback, cursor, selections, and alternate-screen state.
         if coordinator.managedSession?.surfaceView !== uiView {
@@ -176,6 +223,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
         var onClipboardRequest: (TerminalClipboardRequest) -> Void
         var onClipboardNotice: (TerminalClipboardNotice) -> Void
         var onSwapSession: (() -> Void)?
+        var onUserInput: (() -> Void)?
         var wasEditingToolbar = false
 
         init(
@@ -187,7 +235,8 @@ struct GhosttyTerminalView: UIViewRepresentable {
             managedSession: ManagedSession?,
             onClipboardRequest: @escaping (TerminalClipboardRequest) -> Void,
             onClipboardNotice: @escaping (TerminalClipboardNotice) -> Void,
-            onSwapSession: (() -> Void)?
+            onSwapSession: (() -> Void)?,
+            onUserInput: (() -> Void)?
         ) {
             self.connectionVM = connectionVM
             self.showToolbarEditorBinding = showToolbarEditorBinding
@@ -198,6 +247,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
             self.onClipboardRequest = onClipboardRequest
             self.onClipboardNotice = onClipboardNotice
             self.onSwapSession = onSwapSession
+            self.onUserInput = onUserInput
         }
 
         func updateKeyboardVisibility(_ visible: Bool) {
@@ -299,6 +349,12 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
         }
     }
     var onTitleChanged: ((String) -> Void)?
+    var onWorkingDirectoryChanged: ((String) -> Void)?
+    var onScrollbackPositionChanged: ((Bool) -> Void)?
+    /// Fires only for user-originated input (keys, toolbar, IME commits), never
+    /// for terminal-generated replies such as focus or cursor-position reports.
+    var onUserKeystroke: (() -> Void)?
+    private(set) var isScrolledBack = false
     var onEditTap: (() -> Void)? {
         didSet {
             toolbarAccessory.onEditTap = onEditTap
@@ -357,6 +413,13 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
 
         toolbarAccessory.onButtonTap = { [weak self] bytes in
             self?.sendInputData(Data(bytes))
+        }
+        toolbarAccessory.onDismissKeyboard = { [weak self] in
+            guard let self else { return }
+            self.setKeyboardVisible(false)
+            // Report directly too: with a hardware keyboard attached only the
+            // accessory bar is on screen, so no keyboard-hide notification fires.
+            self.onKeyboardVisibilityChanged?(false)
         }
         toolbarAccessory.onClipboardAction = { [weak self] action in
             guard let self else { return }
@@ -1366,6 +1429,30 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
         }
     }
 
+    static func updateWorkingDirectory(for surface: ghostty_surface_t, report: String) {
+        guard let path = TerminalHeaderContext.path(fromWorkingDirectoryReport: report) else { return }
+        let ptr = UnsafeRawPointer(surface)
+
+        registryLock.lock()
+        let view = surfaceRegistry[ptr]?.view
+        registryLock.unlock()
+
+        guard let view else { return }
+        DispatchQueue.main.async {
+            view.onWorkingDirectoryChanged?(path)
+        }
+    }
+
+    /// Returns the viewport to the live bottom of the terminal.
+    func scrollToBottom() {
+        guard let surface else { return }
+        let action = "scroll_to_bottom"
+        action.withCString { cAction in
+            _ = ghostty_surface_binding_action(surface, cAction, UInt(action.utf8.count))
+        }
+        pendingPanScrollLines = 0
+    }
+
     static func deliverDesktopNotification(
         _ notification: TerminalDesktopNotification,
         for surface: ghostty_surface_t
@@ -1437,6 +1524,12 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
 
     // Position and show the scrollbar thumb based on Ghostty's scrollback state
     private func updateScrollbarIndicator(total: UInt64, offset: UInt64, len: UInt64) {
+        let scrolledBack = TerminalScrollbackPosition.isScrolledBack(total: total, offset: offset, len: len)
+        if scrolledBack != isScrolledBack {
+            isScrolledBack = scrolledBack
+            onScrollbackPositionChanged?(scrolledBack)
+        }
+
         // All content fits on screen — hide the scrollbar
         guard total > len else {
             hideScrollbar()
@@ -1651,6 +1744,7 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
 
     private func sendInputData(_ data: Data) {
         guard !data.isEmpty else { return }
+        onUserKeystroke?()
 
         clearSelectionForInput()
 

@@ -18,6 +18,7 @@ final class AppearanceSettings {
         static let scrollMultiplier = "com.hoshi.appearance.scrollMultiplier"
         static let doubleTapAction = "com.hoshi.terminal.doubleTapAction"
         static let twoFingerTapAction = "com.hoshi.terminal.twoFingerTapAction"
+        static let autoHideTerminalHeader = "com.hoshi.terminal.autoHideHeader"
     }
 
     var themeID: String {
@@ -56,6 +57,11 @@ final class AppearanceSettings {
         didSet { defaults.set(twoFingerTapAction.rawValue, forKey: Key.twoFingerTapAction) }
     }
 
+    /// Collapse the terminal header to a slim strip while typing.
+    var autoHideTerminalHeader: Bool {
+        didSet { defaults.set(autoHideTerminalHeader, forKey: Key.autoHideTerminalHeader) }
+    }
+
     // Resolved theme object from the current themeID
     var currentTheme: TerminalTheme {
         TerminalTheme.theme(for: themeID)
@@ -87,6 +93,8 @@ final class AppearanceSettings {
         } else {
             self.cursorStyle = .block
         }
+
+        self.autoHideTerminalHeader = defaults.object(forKey: Key.autoHideTerminalHeader) as? Bool ?? true
 
         let savedOpacity = defaults.object(forKey: Key.backgroundOpacity) as? Double
         self.backgroundOpacity = savedOpacity ?? 1.0
