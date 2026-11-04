@@ -38,7 +38,12 @@ final class KeyProfileStore {
     /// Built-ins in canonical order, preferring saved versions; Shell seeds from legacy storage.
     private static func merge(saved: [KeyProfile]) -> [KeyProfile] {
         KeyProfile.builtInOrder.compactMap { id in
-            if let stored = saved.first(where: { $0.id == id }) { return stored }
+            if var stored = saved.first(where: { $0.id == id }) {
+                if id == KeyProfile.herdrID {
+                    stored.keys = HerdrKeyImport.migrateLegacyKeys(stored.keys)
+                }
+                return stored
+            }
             if id == KeyProfile.shellID {
                 var shell = KeyProfile.shell
                 shell.keys = ToolbarConfigurationService.shared.loadButtons()
@@ -64,6 +69,16 @@ final class KeyProfileStore {
             ToolbarConfigurationService.shared.saveButtons(profile.keys.filter { !$0.isCustom })
         }
         persist()
+    }
+
+    /// Saves imported Herdr bindings without touching the chosen keys.
+    func updateHerdrBindings(prefix: String, bindings: [String: [String]], source: String?, importedAt: Date = Date()) {
+        guard var herdr = profile(id: KeyProfile.herdrID) else { return }
+        herdr.prefix = prefix
+        herdr.herdrBindings = bindings
+        herdr.herdrBindingsSource = source
+        herdr.herdrImportedAt = importedAt
+        update(herdr)
     }
 
     func reset(id: String) {

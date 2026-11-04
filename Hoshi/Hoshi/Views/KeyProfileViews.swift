@@ -209,15 +209,9 @@ struct CustomKeyEditorSheet: View {
 struct KeySetSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var profile: KeyProfile
-    @Binding var currentButtons: [ToolbarButton]
-    let serverName: String?
-    let herdrConfigLoader: (() async throws -> String?)?
 
     @State private var patternsText = ""
     @State private var prefixText = ""
-    @State private var isImporting = false
-    @State private var importMessage: String?
-    @State private var importFailed = false
 
     private var hasPrefix: Bool {
         profile.prefix != nil || profile.id == KeyProfile.herdrID || profile.id == KeyProfile.tmuxID
@@ -245,7 +239,7 @@ struct KeySetSettingsSheet: View {
                 } header: {
                     Text("Switch Automatically When Title Contains")
                 } footer: {
-                    Text("Comma-separated words matched against the terminal title. Pin a key set for a server from the toolbar's key set menu.")
+                    Text("Comma-separated words matched against the terminal title. Long-press any toolbar key to pin a key set for a server.")
                 }
 
                 if hasPrefix {
@@ -263,12 +257,10 @@ struct KeySetSettingsSheet: View {
                     } header: {
                         Text("Prefix")
                     } footer: {
-                        Text("Keys that start with “prefix” send this first.")
+                        Text(profile.id == KeyProfile.herdrID
+                            ? "Keys that start with “prefix” send this first. Importing config.toml sets it from the server."
+                            : "Keys that start with “prefix” send this first.")
                     }
-                }
-
-                if profile.id == KeyProfile.herdrID {
-                    herdrImportSection
                 }
             }
             .navigationTitle("\(profile.name) Settings")
@@ -290,61 +282,6 @@ struct KeySetSettingsSheet: View {
                 patternsText = profile.matchPatterns.joined(separator: ", ")
                 prefixText = profile.prefix ?? ""
             }
-        }
-    }
-
-    private var herdrImportSection: some View {
-        Section {
-            Button {
-                Task { await importHerdrKeys() }
-            } label: {
-                HStack {
-                    Label(
-                        serverName.map { "Import from \($0)" } ?? "Import from Server",
-                        systemImage: "square.and.arrow.down"
-                    )
-                    if isImporting {
-                        Spacer()
-                        ProgressView()
-                    }
-                }
-            }
-            .disabled(herdrConfigLoader == nil || isImporting)
-            .accessibilityIdentifier("keyset.herdr.import")
-
-            if let importMessage {
-                Text(importMessage)
-                    .font(.caption)
-                    .foregroundStyle(importFailed ? .orange : .secondary)
-            }
-        } header: {
-            Text("Herdr Keybindings")
-        } footer: {
-            Text(herdrConfigLoader == nil
-                ? "Open this editor from a connected terminal to import ~/.config/herdr/config.toml."
-                : "Reads ~/.config/herdr/config.toml and replaces this key set's prefix and Herdr keys.")
-        }
-    }
-
-    private func importHerdrKeys() async {
-        guard let herdrConfigLoader else { return }
-        isImporting = true
-        defer { isImporting = false }
-        do {
-            let config = try await herdrConfigLoader()
-            let result = HerdrKeyImport.profileKeys(fromConfig: config)
-            prefixText = result.prefix
-            profile.prefix = result.prefix
-            withAnimation { currentButtons = result.keys }
-            importFailed = false
-            importMessage = config == nil
-                ? "No config.toml found — using Herdr's default keys."
-                : "Imported prefix \(KeyChord.displayString(result.prefix)) and \(result.keys.filter(\.isCustom).count - 2) Herdr keys."
-            HapticService.success()
-        } catch {
-            importFailed = true
-            importMessage = "Couldn't read the config: \(error.localizedDescription)"
-            HapticService.error()
         }
     }
 

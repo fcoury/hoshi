@@ -1743,32 +1743,102 @@ final class HerdrKeyImportTests: XCTestCase {
         XCTAssertNil(keys["resume_agents_on_restore"])
     }
 
-    func testImportUsesConfiguredPrefixAndBindings() throws {
-        let result = HerdrKeyImport.profileKeys(fromConfig: sampleConfig)
-        XCTAssertEqual(result.prefix, "ctrl+s")
+    private func herdrProfile(config: String?) -> KeyProfile {
+        let result = HerdrKeyImport.importConfig(config)
+        var profile = KeyProfile.herdr
+        profile.prefix = result.prefix
+        profile.herdrBindings = result.bindings
+        return profile
+    }
 
-        func key(_ action: String) -> ToolbarButton? {
-            result.keys.first { $0.id == "custom-herdr-\(action)" }?.resolved(prefix: result.prefix)
-        }
-        XCTAssertEqual(key("workspace_picker")?.bytes, [0x13, 0x62])
-        XCTAssertEqual(key("split_vertical")?.bytes, [0x13, 0x64])
-        XCTAssertEqual(key("toggle_sidebar")?.bytes, [0x13, 0x42])
-        XCTAssertEqual(key("previous_workspace")?.bytes, [0x13] + Array("\u{1B}[D".utf8))
-        XCTAssertEqual(key("next_agent")?.bytes, [0x13] + Array("\u{1B}[B".utf8))
+    private func resolvedBytes(_ action: String, in profile: KeyProfile) -> [UInt8]? {
+        guard let catalogAction = HerdrKeyImport.action(named: action) else { return nil }
+        return profile.resolve(HerdrKeyImport.button(for: catalogAction))?.bytes
+    }
+
+    func testImportUsesConfiguredPrefixAndBindings() {
+        let profile = herdrProfile(config: sampleConfig)
+        XCTAssertEqual(profile.prefix, "ctrl+s")
+        XCTAssertEqual(resolvedBytes("workspace_picker", in: profile), [0x13, 0x62])
+        XCTAssertEqual(resolvedBytes("split_vertical", in: profile), [0x13, 0x64])
+        XCTAssertEqual(resolvedBytes("toggle_sidebar", in: profile), [0x13, 0x42])
+        XCTAssertEqual(resolvedBytes("previous_workspace", in: profile), [0x13] + Array("\u{1B}[D".utf8))
+        XCTAssertEqual(resolvedBytes("next_agent", in: profile), [0x13] + Array("\u{1B}[B".utf8))
+        XCTAssertEqual(resolvedBytes("last_pane", in: profile), [0x13, 0x3B])
         // Explicitly unbound in config.
-        XCTAssertNil(key("close_pane"))
-        // Unset in config, falls back to Herdr's default.
-        XCTAssertEqual(key("zoom")?.bytes, [0x13, 0x7A])
+        XCTAssertNil(resolvedBytes("close_pane", in: profile))
+        // Unset in config, falls back to Herdr's default with the imported prefix.
+        XCTAssertEqual(resolvedBytes("zoom", in: profile), [0x13, 0x7A])
         // Unbound by default and not configured.
-        XCTAssertNil(key("previous_agent"))
+        XCTAssertNil(resolvedBytes("previous_agent", in: profile))
     }
 
     func testDefaultsWithoutConfig() {
-        let result = HerdrKeyImport.profileKeys(fromConfig: nil)
+        let result = HerdrKeyImport.importConfig(nil)
         XCTAssertEqual(result.prefix, "ctrl+b")
-        XCTAssertEqual(result.importedActionCount, 0)
-        let split = result.keys.first { $0.id == "custom-herdr-split_horizontal" }?.resolved(prefix: result.prefix)
-        XCTAssertEqual(split?.bytes, [0x02, 0x2D])
+        XCTAssertEqual(result.configuredActionCount, 0)
+        XCTAssertEqual(resolvedBytes("split_horizontal", in: herdrProfile(config: nil)), [0x02, 0x2D])
+    }
+
+    func testUnboundActionsAreHiddenFromToolbar() {
+        let profile = herdrProfile(config: sampleConfig)
+        let ids = Set(profile.resolvedKeys.map(\.id))
+        XCTAssertTrue(ids.contains("herdr-split_vertical"))
+        XCTAssertFalse(ids.contains("herdr-close_pane"))
+        XCTAssertFalse(ids.contains("herdr-previous_agent"))
+    }
+
+    func testReimportKeepsSelectionAndOrder() {
+        var profile = herdrProfile(config: sampleConfig)
+        let customOrder = [
+            HerdrKeyImport.button(for: HerdrKeyImport.action(named: "zoom")!),
+            .esc,
+            HerdrKeyImport.button(for: HerdrKeyImport.action(named: "new_workspace")!),
+        ]
+        profile.keys = customOrder
+
+        let remapped = sampleConfig.replacingOccurrences(of: "prefix = \"ctrl+s\"", with: "prefix = \"ctrl+a\"")
+        let result = HerdrKeyImport.importConfig(remapped)
+        profile.prefix = result.prefix
+        profile.herdrBindings = result.bindings
+
+        XCTAssertEqual(profile.keys.map(\.id), customOrder.map(\.id))
+        XCTAssertEqual(profile.resolvedKeys.first?.bytes, [0x01, 0x7A])
+        XCTAssertEqual(profile.resolvedKeys.last?.bytes, [0x01, 0x4E])
+    }
+
+    func testZoomHonorsLegacyFullscreenName() {
+        let profile = herdrProfile(config: "[keys]\nprefix = \"ctrl+b\"\nfullscreen = \"prefix+f\"\n")
+        XCTAssertEqual(resolvedBytes("zoom", in: profile), [0x02, 0x66])
+    }
+
+    func testMigratesLegacyCopiedChordKeys() {
+        let legacy: [ToolbarButton] = [
+            .esc,
+            .custom(label: "Split |", chord: "prefix+d", id: "custom-herdr-split_vertical"),
+            .custom(label: "Pfx", chord: "prefix", id: "custom-herdr-prefix"),
+        ]
+        let migrated = HerdrKeyImport.migrateLegacyKeys(legacy)
+        XCTAssertEqual(migrated.map(\.id), ["esc", "herdr-split_vertical", "custom-herdr-prefix"])
+        XCTAssertEqual(migrated[1].herdrAction, "split_vertical")
+        XCTAssertNil(migrated[2].herdrAction)
+    }
+
+    func testReadConfigCommandIsShellIndependent() {
+        // fish and other non-POSIX login shells reject ${VAR:-default}; the script must run under sh.
+        XCTAssertTrue(HerdrKeyImport.readConfigCommand.hasPrefix("sh -c '"))
+        XCTAssertTrue(HerdrKeyImport.readConfigCommand.hasSuffix("'"))
+        let script = HerdrKeyImport.readConfigCommand.dropFirst("sh -c '".count).dropLast()
+        XCTAssertFalse(script.contains("'"), "single quotes would break the sh -c wrapper")
+    }
+
+    func testCatalogDefaultsEncode() {
+        for action in HerdrKeyImport.catalog {
+            for binding in action.defaults {
+                XCTAssertTrue(KeyChord.isValid(binding, prefix: "ctrl+b"), "\(action.name): \(binding)")
+            }
+        }
+        XCTAssertEqual(Set(HerdrKeyImport.catalog.map(\.name)).count, HerdrKeyImport.catalog.count)
     }
 }
 
@@ -1829,6 +1899,24 @@ final class KeyProfileTests: XCTestCase {
 
         reloaded.pin(nil, for: serverID)
         XCTAssertEqual(reloaded.resolve(title: "zsh", serverID: serverID).id, KeyProfile.shellID)
+    }
+
+    func testStoreImportUpdatesBindingsOnly() throws {
+        let suiteName = "KeyProfileTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = KeyProfileStore(defaults: defaults)
+        var herdr = try XCTUnwrap(store.profile(id: KeyProfile.herdrID))
+        herdr.keys = [HerdrKeyImport.button(for: HerdrKeyImport.action(named: "split_vertical")!)]
+        store.update(herdr)
+
+        store.updateHerdrBindings(prefix: "ctrl+s", bindings: ["split_vertical": ["prefix+d"]], source: "m5pro")
+
+        let reloaded = try XCTUnwrap(KeyProfileStore(defaults: defaults).profile(id: KeyProfile.herdrID))
+        XCTAssertEqual(reloaded.keys.map(\.id), ["herdr-split_vertical"])
+        XCTAssertEqual(reloaded.herdrBindingsSource, "m5pro")
+        XCTAssertEqual(reloaded.resolvedKeys.first?.bytes, [0x13, 0x64])
     }
 
     func testCustomButtonsRoundTripThroughCodable() throws {

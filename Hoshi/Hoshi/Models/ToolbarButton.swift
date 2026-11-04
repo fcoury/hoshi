@@ -12,8 +12,11 @@ struct ToolbarButton: Codable, Identifiable, Equatable, Hashable {
     /// Source binding for user-defined keys (see `KeyChord`); `bytes` is re-derived
     /// from it whenever the owning key set's prefix changes.
     var chord: String? = nil
+    /// Herdr action name for keys from the Herdr palette; the key set supplies the chord.
+    var herdrAction: String? = nil
 
-    var isCustom: Bool { chord != nil }
+    /// User-defined chord key (editable in the custom key sheet).
+    var isCustom: Bool { chord != nil && herdrAction == nil }
 
     static let customIDPrefix = "custom-"
 
@@ -32,7 +35,15 @@ struct ToolbarButton: Codable, Identifiable, Equatable, Hashable {
     /// Built-in keys and chords that fail to encode are returned unchanged.
     func resolved(prefix: String?) -> ToolbarButton {
         guard let chord, let encoded = try? KeyChord.encode(chord, prefix: prefix) else { return self }
-        return ToolbarButton(id: id, label: label, bytes: encoded, category: category, symbol: symbol, chord: chord)
+        return ToolbarButton(
+            id: id,
+            label: label,
+            bytes: encoded,
+            category: category,
+            symbol: symbol,
+            chord: chord,
+            herdrAction: herdrAction
+        )
     }
 
     enum Category: String, Codable, CaseIterable {
@@ -45,6 +56,7 @@ struct ToolbarButton: Codable, Identifiable, Equatable, Hashable {
         case transfer   // Secure SSH/SFTP file and image upload
         case voice      // On-device voice prompt composition
         case combo      // Ctrl+C, Ctrl+B, Ctrl+D, etc.
+        case herdr      // Herdr actions (Herdr key set only)
     }
 }
 
