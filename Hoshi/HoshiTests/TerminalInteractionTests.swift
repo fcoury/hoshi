@@ -266,17 +266,93 @@ final class TerminalInteractionTests: XCTestCase {
     }
 
     func testSelectionGeometryDoesNotScaleGhosttyPointCoordinatesTwice() throws {
+        // Ghostty reports a single-row selection at its text baseline (y: 480),
+        // which lies inside row 28 of a 17pt grid with 2pt top padding.
         let geometry = try XCTUnwrap(TerminalSelectionGeometry(
             topLeft: CGPoint(x: 20, y: 480),
             bottomRight: CGPoint(x: 140, y: 480),
+            cellWidthPixels: 24,
             cellHeightPixels: 51,
             displayScale: 3,
             renderOrigin: CGPoint(x: 3, y: 2)
         ))
 
-        XCTAssertEqual(geometry.startAnchor, CGPoint(x: 23, y: 482))
-        XCTAssertEqual(geometry.endAnchor, CGPoint(x: 143, y: 482))
-        XCTAssertEqual(geometry.rect, CGRect(x: 23, y: 482, width: 120, height: 17))
+        XCTAssertEqual(geometry.startAnchor, CGPoint(x: 23, y: 480))
+        XCTAssertEqual(geometry.endAnchor, CGPoint(x: 143, y: 497))
+        XCTAssertEqual(geometry.rect, CGRect(x: 23, y: 480, width: 120, height: 17))
+        XCTAssertEqual(geometry.cellSize, CGSize(width: 8, height: 17))
+    }
+
+    func testSelectionGeometrySnapsBaselinesToRowEdgesAcrossRows() throws {
+        // Rows are 17pt tall below 2pt of padding; each baseline sits 13pt
+        // into its row. The selection covers rows 0 through 2.
+        let geometry = try XCTUnwrap(TerminalSelectionGeometry(
+            topLeft: CGPoint(x: 18, y: 15),
+            bottomRight: CGPoint(x: 50, y: 49),
+            cellWidthPixels: 24,
+            cellHeightPixels: 51,
+            displayScale: 3,
+            renderOrigin: .zero
+        ))
+
+        XCTAssertEqual(geometry.startAnchor, CGPoint(x: 18, y: 2))
+        XCTAssertEqual(geometry.endAnchor, CGPoint(x: 50, y: 53))
+        XCTAssertEqual(geometry.rect.minY, 2)
+        XCTAssertEqual(geometry.rect.height, 51)
+    }
+
+    func testSelectionPressPointsStayInsideTheirEndCells() throws {
+        let geometry = try XCTUnwrap(TerminalSelectionGeometry(
+            topLeft: CGPoint(x: 18, y: 15),
+            bottomRight: CGPoint(x: 50, y: 49),
+            cellWidthPixels: 24,
+            cellHeightPixels: 51,
+            displayScale: 3,
+            renderOrigin: .zero
+        ))
+
+        // The first cell spans x 18..<26 on row 0 (y 2..<19) and the last cell
+        // spans x 42..<50 on row 2 (y 36..<53). Ghostty keeps the clicked cell
+        // only when the press lands on the outer side of its 60% threshold.
+        XCTAssertEqual(geometry.startPressPoint.x, 18.8, accuracy: 0.0001)
+        XCTAssertEqual(geometry.startPressPoint.y, 10.5, accuracy: 0.0001)
+        XCTAssertEqual(geometry.endPressPoint.x, 49.2, accuracy: 0.0001)
+        XCTAssertEqual(geometry.endPressPoint.y, 44.5, accuracy: 0.0001)
+    }
+
+    func testSelectionGeometryRejectsMissingCellMetrics() {
+        XCTAssertNil(TerminalSelectionGeometry(
+            topLeft: CGPoint(x: 0, y: 15),
+            bottomRight: CGPoint(x: 8, y: 15),
+            cellWidthPixels: 0,
+            cellHeightPixels: 51,
+            displayScale: 3,
+            renderOrigin: .zero
+        ))
+    }
+
+    func testClickResetPointIsTwoCellsAwayInsideTheSurface() {
+        let cell = CGSize(width: 8, height: 17)
+        let surface = CGSize(width: 100, height: 100)
+
+        XCTAssertEqual(
+            TerminalClickSequence.resetPoint(awayFrom: CGPoint(x: 10, y: 10), cellSize: cell, surfaceSize: surface),
+            CGPoint(x: 26, y: 10)
+        )
+        XCTAssertEqual(
+            TerminalClickSequence.resetPoint(awayFrom: CGPoint(x: 95, y: 10), cellSize: cell, surfaceSize: surface),
+            CGPoint(x: 79, y: 10)
+        )
+    }
+
+    func testClickResetPointFallsBackToVerticalOffsetOnNarrowSurfaces() {
+        let reset = TerminalClickSequence.resetPoint(
+            awayFrom: CGPoint(x: 5, y: 5),
+            cellSize: CGSize(width: 8, height: 17),
+            surfaceSize: CGSize(width: 10, height: 100)
+        )
+
+        XCTAssertEqual(reset, CGPoint(x: 5, y: 39))
     }
 
     func testKeyboardShowingReducesRowsAndHidingRestoresThem() throws {
@@ -803,6 +879,88 @@ final class TerminalInteractionTests: XCTestCase {
 
         XCTAssertTrue(surface.hasSelection())
         XCTAssertFalse(surface.readSelection()?.isEmpty ?? true)
+    }
+
+    func testDraggingSelectionHandleKeepsCharacterGranularity() throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.writeRemoteOutput(Array("alpha beta gamma delta".utf8))
+        let cell = try XCTUnwrap(surface.currentCellSize)
+
+        XCTAssertTrue(surface.selectWord(at: CGPoint(x: cell.width * 2.5, y: cell.height / 2)))
+        XCTAssertEqual(surface.readSelection(), "alpha")
+
+        // Rapid drag updates used to synthesize a press per update, which
+        // Ghostty counted as double and triple clicks (word and line selection).
+        surface.dragSelectionHandle(isStart: false, state: .began, translation: .zero)
+        for step in 1...5 {
+            let translation = CGPoint(x: cell.width * CGFloat(step) / 2, y: 0)
+            surface.dragSelectionHandle(isStart: false, state: .changed, translation: translation)
+        }
+        surface.dragSelectionHandle(isStart: false, state: .ended, translation: CGPoint(x: cell.width * 3, y: 0))
+
+        XCTAssertEqual(surface.readSelection(), "alpha be")
+    }
+
+    func testDraggingStartHandleKeepsTheSelectionEnd() throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.writeRemoteOutput(Array("alpha beta gamma delta".utf8))
+        let cell = try XCTUnwrap(surface.currentCellSize)
+
+        XCTAssertTrue(surface.selectWord(at: CGPoint(x: cell.width * 13.5, y: cell.height / 2)))
+        XCTAssertEqual(surface.readSelection(), "gamma")
+
+        surface.dragSelectionHandle(isStart: true, state: .began, translation: .zero)
+        surface.dragSelectionHandle(isStart: true, state: .changed, translation: CGPoint(x: -cell.width, y: 0))
+        surface.dragSelectionHandle(isStart: true, state: .ended, translation: CGPoint(x: -cell.width * 2, y: 0))
+
+        XCTAssertEqual(surface.readSelection(), "a gamma")
+    }
+
+    func testHandleDragSurvivesMomentarilyEmptySelection() throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.writeRemoteOutput(Array("alpha beta gamma delta".utf8))
+        let cell = try XCTUnwrap(surface.currentCellSize)
+
+        XCTAssertTrue(surface.selectWord(at: CGPoint(x: cell.width * 2.5, y: cell.height / 2)))
+        XCTAssertEqual(surface.readSelection(), "alpha")
+
+        // Dragging the end handle back onto the fixed start empties Ghostty's
+        // selection mid-drag. The drag must keep its synthesized press so it
+        // can carry on and release the button when it ends.
+        surface.dragSelectionHandle(isStart: false, state: .began, translation: .zero)
+        surface.dragSelectionHandle(isStart: false, state: .changed, translation: CGPoint(x: -cell.width * 5, y: 0))
+        XCTAssertFalse(surface.hasSelection())
+        XCTAssertNotNil(selectionHandle(in: surface, label: "Selection end"))
+
+        surface.dragSelectionHandle(isStart: false, state: .changed, translation: CGPoint(x: cell.width * 3, y: 0))
+        surface.dragSelectionHandle(isStart: false, state: .ended, translation: CGPoint(x: cell.width * 3, y: 0))
+
+        XCTAssertEqual(surface.readSelection(), "alpha be")
+    }
+
+    func testOverlappingHandleTouchTargetsPreferTheNearestKnob() throws {
+        let surface = try makeLiveSurface(size: CGSize(width: 390, height: 400))
+        surface.writeRemoteOutput(Array("a bc".utf8))
+        let cell = try XCTUnwrap(surface.currentCellSize)
+
+        XCTAssertTrue(surface.selectWord(at: CGPoint(x: cell.width * 0.5, y: cell.height / 2)))
+        XCTAssertEqual(surface.readSelection(), "a")
+
+        let start = try XCTUnwrap(selectionHandle(in: surface, label: "Selection start"))
+        let end = try XCTUnwrap(selectionHandle(in: surface, label: "Selection end"))
+        let knob: CGFloat = 12 // TerminalSelectionHandleView.knobDiameter
+        let startKnob = CGPoint(x: start.frame.midX, y: start.frame.minY + knob / 2)
+        let endKnob = CGPoint(x: end.frame.midX, y: end.frame.maxY - knob / 2)
+
+        // A one-character selection puts both handles' touch targets on top of
+        // each other; each knob must still reach its own handle.
+        XCTAssertTrue(start.frame.intersects(end.frame))
+        XCTAssertTrue(surface.hitTest(startKnob, with: nil) === start)
+        XCTAssertTrue(surface.hitTest(endKnob, with: nil) === end)
+    }
+
+    private func selectionHandle(in surface: UIView, label: String) -> UIView? {
+        surface.subviews.first { $0.accessibilityLabel == label }
     }
 
     func testNativeEditMenuOffersCopyPasteAndSelectAll() throws {
