@@ -110,12 +110,18 @@ struct TerminalView: View {
                 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Breathing room so glyphs don't touch the screen edge.
+            .padding(.horizontal, Self.terminalHorizontalInset)
             .overlay(alignment: .top) {
                 terminalNoticeStack
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // Header, terminal and toolbar share one surface: no tonal bands.
+        .background(SwiftUI.Color(appearanceSettings.currentTheme.background))
     }
+
+    private static let terminalHorizontalInset: CGFloat = 6
 
     private var animatedTerminal: some View {
         terminalContent
@@ -461,7 +467,21 @@ struct TerminalView: View {
     }
 
     private var statusBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 2) {
+            // Minimize — return to server list while keeping the connection alive.
+            Button {
+                onDismiss?()
+            } label: {
+                Image(systemName: "chevron.backward")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .accessibilityLabel("Servers")
+            .accessibilityHint("Returns to the server list and keeps this terminal session running")
+            .accessibilityIdentifier("terminal.minimize")
+            .keyboardShortcut("w", modifiers: .command)
+
             Button(action: presentSessionPicker) {
                 HStack(spacing: 8) {
                     statusIndicator
@@ -479,34 +499,42 @@ struct TerminalView: View {
 
             supplementalStatusActions
 
-            Button {
-                isKeyboardVisible.toggle()
-            } label: {
-                Image(systemName: isKeyboardVisible ? "keyboard.chevron.compact.down" : "keyboard")
-                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
-                    .frame(minWidth: 44, minHeight: 44)
+            // The toolbar carries the hide-keyboard key while the keyboard is up,
+            // so the header only needs a way to bring it back.
+            if !isKeyboardVisible {
+                Button {
+                    isKeyboardVisible = true
+                } label: {
+                    Image(systemName: "keyboard")
+                        .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("Show keyboard")
+                .accessibilityHint("Shows the terminal software keyboard")
+                .accessibilityIdentifier("terminal.keyboard.toggle")
+                .transition(.opacity)
             }
-            .accessibilityLabel(isKeyboardVisible ? "Hide keyboard" : "Show keyboard")
-            .accessibilityHint("Toggles the terminal software keyboard")
-            .accessibilityIdentifier("terminal.keyboard.toggle")
-            .keyboardShortcut("k", modifiers: [.command, .shift])
-
-            // Minimize — return to server list while keeping the connection alive.
-            Button {
-                onDismiss?()
-            } label: {
-                Image(systemName: "rectangle.compress.vertical")
-                    .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
-                    .frame(minWidth: 44, minHeight: 44)
-            }
-            .accessibilityLabel("Return to servers")
-            .accessibilityHint("Keeps this terminal session running")
-            .keyboardShortcut("w", modifiers: .command)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(SwiftUI.Color(appearanceSettings.currentTheme.chromeSurface))
+        // Hidden shortcut keeps Cmd-Shift-K toggling in both directions.
+        .background {
+            Button("") { isKeyboardVisible.toggle() }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
+        .padding(.leading, 2)
+        .padding(.trailing, 6)
+        .padding(.vertical, 2)
+        .background(SwiftUI.Color(appearanceSettings.currentTheme.background))
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isKeyboardVisible)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: showsConnectionDetail)
         .simultaneousGesture(headerPullGesture)
+    }
+
+    /// Once connected, the dot already says "connected"; spell the state out only
+    /// while it is changing or broken.
+    private var showsConnectionDetail: Bool {
+        connectionVM.connectionState != .connected
     }
 
     private var statusIndicator: some View {
@@ -524,8 +552,8 @@ struct TerminalView: View {
     }
 
     private var sessionIdentity: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 5) {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 6) {
                 Text(serverName)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color(appearanceSettings.currentTheme.foreground))
@@ -537,25 +565,35 @@ struct TerminalView: View {
                         .foregroundStyle(transportColor)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
-                        .padding(.horizontal, 4)
+                        .padding(.horizontal, 5)
                         .padding(.vertical, 2)
                         .background(transportColor.opacity(0.15), in: .rect(cornerRadius: 4))
                         .accessibilityHidden(true)
                 }
-            }
 
-            HStack(spacing: 4) {
-                Text(connectionVM.connectionState.conciseLabel)
-                    .foregroundStyle(statusColor)
-                if !serverDetail.isEmpty {
-                    Text("·")
-                    Text(serverDetail)
-                        .truncationMode(.middle)
+                if sessions.count > 1 {
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                        .accessibilityHidden(true)
                 }
             }
-            .font(.caption.monospaced())
-            .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
-            .lineLimit(1)
+
+            if showsConnectionDetail {
+                HStack(spacing: 4) {
+                    Text(connectionVM.connectionState.conciseLabel)
+                        .foregroundStyle(statusColor)
+                    if !serverDetail.isEmpty {
+                        Text("·")
+                        Text(serverDetail)
+                            .truncationMode(.middle)
+                    }
+                }
+                .font(.caption.monospaced())
+                .foregroundStyle(Color(appearanceSettings.currentTheme.secondaryForeground))
+                .lineLimit(1)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
     }
 

@@ -358,6 +358,13 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
         toolbarAccessory.onButtonTap = { [weak self] bytes in
             self?.sendInputData(Data(bytes))
         }
+        toolbarAccessory.onDismissKeyboard = { [weak self] in
+            guard let self else { return }
+            self.setKeyboardVisible(false)
+            // Report directly too: with a hardware keyboard attached only the
+            // accessory bar is on screen, so no keyboard-hide notification fires.
+            self.onKeyboardVisibilityChanged?(false)
+        }
         toolbarAccessory.onClipboardAction = { [weak self] action in
             guard let self else { return }
             switch action {

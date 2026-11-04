@@ -100,7 +100,8 @@ struct ToolbarEditView: View {
                 voicePromptAvailable: true,
                 onButtonTap: { _ in },
                 onSwipeArrow: { _ in },
-                onEditTap: {}
+                onEditTap: {},
+                onDismissKeyboard: {}
             )
             .allowsHitTesting(false)
             .accessibilityHidden(true)
@@ -159,7 +160,7 @@ struct ToolbarEditView: View {
     // A single chip in the "Your Toolbar" row with an x badge
     private func toolbarChip(_ button: ToolbarButton) -> some View {
         ZStack(alignment: .topTrailing) {
-            Text(button.label)
+            ToolbarKeyGlyph(button: button)
                 .font(.system(size: 14, weight: .medium, design: .monospaced))
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
@@ -220,7 +221,7 @@ struct ToolbarEditView: View {
                                 currentButtons.append(button)
                             }
                         } label: {
-                            Text(button.label)
+                            ToolbarKeyGlyph(button: button)
                                 .font(.system(size: 13, weight: .medium, design: .monospaced))
                                 .foregroundStyle(.primary)
                                 .frame(minWidth: 50, minHeight: 36)

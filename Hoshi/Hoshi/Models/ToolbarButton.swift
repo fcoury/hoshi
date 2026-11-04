@@ -143,6 +143,23 @@ extension ToolbarButton {
 
     static let voiceActions: [ToolbarButton] = [voicePrompt]
 
+    /// SF Symbol rendered instead of `label` for keys whose text glyph reads poorly
+    /// at toolbar size. `nil` means the key renders its text label.
+    var symbolName: String? {
+        switch id {
+        case "arrow-up": "arrowtriangle.up.fill"
+        case "arrow-down": "arrowtriangle.down.fill"
+        case "arrow-left": "arrowtriangle.left.fill"
+        case "arrow-right": "arrowtriangle.right.fill"
+        case "swipe-all": "dpad"
+        case "swipe-horiz": "arrow.left.and.right"
+        case "swipe-vert": "arrow.up.and.down"
+        case "upload-file": "paperclip"
+        case "voice-prompt": "mic.fill"
+        default: nil
+        }
+    }
+
     var accessibilityLabel: String {
         switch id {
         case "esc": "Escape"
