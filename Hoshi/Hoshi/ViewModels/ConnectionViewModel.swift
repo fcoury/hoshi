@@ -37,8 +37,19 @@ final class ConnectionViewModel {
 
     // Herdr state. Discovered while connecting and kept current by the monitor.
     var detectedHerdr: HerdrInventory?
-    /// The Herdr session this terminal attached to, if any.
-    private(set) var attachedHerdrSession: String?
+    /// What this terminal shows from Herdr, if anything.
+    private(set) var herdrAttachment: HerdrAttachment?
+    /// Set before connecting to open a Herdr target directly.
+    @ObservationIgnored
+    var preferredHerdrAttachment: HerdrAttachment?
+
+    var herdrAttentionCount: Int { detectedHerdr?.attentionCount ?? 0 }
+    /// Agents waiting on an approval or question prompt.
+    var herdrBlockedCount: Int {
+        detectedHerdr?.runningSessions.reduce(0) { total, session in
+            total + session.agents.filter { $0.status == .blocked }.count
+        } ?? 0
+    }
 
     // Stashed credentials for fallback/install retry
     private var pendingServer: Server?
@@ -251,19 +262,40 @@ final class ConnectionViewModel {
     }
 
     func refreshHerdr() async {
-        do {
-            let output = try await runRemoteCommand(HerdrDiscovery.remoteCommand)
-            detectedHerdr = HerdrDiscovery.parse(output)
-        } catch {
-            presentConnectionError(error, operation: .tmux)
+        if let herdrMonitor {
+            await herdrMonitor.pollNow()
+            return
         }
+        // Herdr was not found while connecting; look again in case it was
+        // installed or started since. Failures leave the terminal untouched.
+        guard let output = try? await runRemoteCommand(HerdrDiscovery.remoteCommand) else { return }
+        detectedHerdr = HerdrDiscovery.parse(output)
+        if canAcceptTerminalInput {
+            startHerdrMonitorIfNeeded()
+        }
+    }
+
+    /// Switches the Herdr UI shown in this terminal to `agent`. Herdr focus is
+    /// shared, so other clients attached to the same session follow along.
+    func focusHerdrAgent(_ agent: HerdrAgent, in session: String) async throws {
+        guard let herdr = detectedHerdr,
+              let command = HerdrCommand.focusAgent(
+                paneID: agent.paneID,
+                session: session,
+                executable: herdr.executable
+              ) else {
+            throw ErrorMessageFailure(message: "That Herdr agent can no longer be focused.")
+        }
+        _ = try await runRemoteCommand(command)
+        await herdrMonitor?.pollNow()
     }
 
     private func startHerdrMonitorIfNeeded() {
         guard herdrMonitor == nil, let detectedHerdr else { return }
-        let hostname = pendingServer?.hostname ?? sshSession?.server.hostname ?? moshSession?.server.hostname
+        let server = pendingServer ?? sshSession?.server ?? moshSession?.server
         let monitor = HerdrAgentMonitor(
-            hostname: hostname,
+            hostname: server?.hostname,
+            hostKey: server.map { "\($0.username)@\($0.hostname):\($0.port)" },
             runner: { [weak self] command in
                 guard let self else { throw CancellationError() }
                 return try await self.runRemoteCommand(command)
@@ -379,14 +411,7 @@ final class ConnectionViewModel {
 
             guard case .connected = outcome else { return nil }
             pendingServer?.lastConnected = Date()
-            switch choice {
-            case .herdrSession(let name):
-                attachedHerdrSession = name
-            case .herdrAgent(let session, _):
-                attachedHerdrSession = session
-            default:
-                attachedHerdrSession = nil
-            }
+            herdrAttachment = HerdrAttachment(choice: choice)
             startHerdrMonitorIfNeeded()
 
             if case .attach(let session) = choice {
@@ -531,7 +556,7 @@ final class ConnectionViewModel {
         detectedTmuxSessions = []
         tmuxAvailable = false
         detectedHerdr = nil
-        attachedHerdrSession = nil
+        herdrAttachment = nil
         pendingServer = nil
         pendingPassword = nil
         pendingKeyTag = nil
@@ -657,6 +682,7 @@ final class ConnectionViewModel {
 
         while !Task.isCancelled, connectionGeneration == generation {
             let coordinator = ConnectionCoordinator()
+            coordinator.preferredHerdrAttachment = preferredHerdrAttachment
             self.coordinator = coordinator
             coordinator.onPhaseChanged = { [weak self] phase in
                 self?.connectionPhase = phase.statusText
@@ -730,6 +756,7 @@ final class ConnectionViewModel {
     private func syncMultiplexerState() {
         tmuxAvailable = coordinator?.tmuxAvailable ?? false
         detectedHerdr = coordinator?.detectedHerdr
+        herdrAttachment = coordinator?.herdrAttachment
     }
 
     private func adoptCoordinatorSessions(_ coordinator: ConnectionCoordinator) {

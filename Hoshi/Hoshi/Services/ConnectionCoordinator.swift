@@ -103,6 +103,12 @@ final class ConnectionCoordinator {
     private(set) var detectedTmuxSessions: [TmuxSessionInfo] = []
     private(set) var tmuxAvailable = false
     private(set) var detectedHerdr: HerdrInventory?
+    /// The Herdr view the transport was started with, if any.
+    private(set) var herdrAttachment: HerdrAttachment?
+    /// A Herdr target to open without showing the picker, used to restore a
+    /// session or open an agent in a new Hoshi session. Ignored when Herdr is
+    /// not found on the host.
+    var preferredHerdrAttachment: HerdrAttachment?
     private(set) var fallbackError: (any Error)?
     private var server: Server?
     private var password: String?
@@ -232,6 +238,8 @@ final class ConnectionCoordinator {
             command = herdrCommand
         }
 
+        herdrAttachment = HerdrAttachment(choice: choice)
+
         do {
             return try await startTransport(command: command)
         } catch {
@@ -331,6 +339,16 @@ final class ConnectionCoordinator {
         detectedTmuxSessions = []
         tmuxAvailable = false
         detectedHerdr = nil
+        herdrAttachment = nil
+    }
+
+    /// An agent that no longer exists falls back to its session's full UI.
+    static func resolve(_ attachment: HerdrAttachment, in inventory: HerdrInventory) -> HerdrAttachment {
+        guard case .agent(let session, let paneID) = attachment,
+              inventory.session(named: session)?.agent(paneID: paneID) == nil else {
+            return attachment
+        }
+        return .session(session)
     }
 
     private func recordTransportFallback(_ error: any Error) {
@@ -390,7 +408,7 @@ final class ConnectionCoordinator {
         guard let server else { throw ConnectionCoordinatorError.bootstrapUnavailable }
         try checkCancellation()
 
-        if server.tmuxPolicy == .rawShell {
+        if server.tmuxPolicy == .rawShell, preferredHerdrAttachment == nil {
             return try await startTransport(command: nil)
         }
 
@@ -440,6 +458,11 @@ final class ConnectionCoordinator {
         tmuxAvailable = available
         detectedTmuxSessions = sessions
         detectedHerdr = herdr
+
+        if let preferred = preferredHerdrAttachment, let herdr {
+            preferredHerdrAttachment = nil
+            return try await completeTmuxChoice(Self.resolve(preferred, in: herdr).choice)
+        }
 
         guard available || herdr != nil else {
             return try await startTransport(command: nil)

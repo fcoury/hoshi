@@ -14,6 +14,11 @@ final class ManagedSession: Identifiable {
 
     var lastAccessedAt: Date
     var tmuxSession: String?
+    /// The Herdr view to reopen when this session is restored.
+    var restoredHerdrAttachment: HerdrAttachment?
+    var herdrAttachment: HerdrAttachment? {
+        connectionVM.herdrAttachment ?? restoredHerdrAttachment
+    }
     var unreadAgentEventCount = 0
     var agentAttentionKind: AgentEventKind?
     var thumbnail: UIImage?
@@ -35,7 +40,8 @@ final class ManagedSession: Identifiable {
         id: UUID = UUID(),
         createdAt: Date = Date(),
         lastAccessedAt: Date? = nil,
-        tmuxSession: String? = nil
+        tmuxSession: String? = nil,
+        herdrAttachment: HerdrAttachment? = nil
     ) {
         self.id = id
         self.serverID = server.id
@@ -43,6 +49,7 @@ final class ManagedSession: Identifiable {
         self.createdAt = createdAt
         self.lastAccessedAt = lastAccessedAt ?? createdAt
         self.tmuxSession = tmuxSession ?? server.tmuxSession
+        self.restoredHerdrAttachment = herdrAttachment
         self.server = server
         self.connectionVM = ConnectionViewModel()
     }
@@ -55,7 +62,8 @@ final class ManagedSession: Identifiable {
             transportPolicy: transportPolicy,
             tmuxSession: tmuxSession,
             createdAt: createdAt,
-            lastAccessedAt: lastAccessedAt
+            lastAccessedAt: lastAccessedAt,
+            herdrAttachment: herdrAttachment
         )
     }
 

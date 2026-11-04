@@ -138,7 +138,8 @@ final class SessionManager {
                     id: descriptor.id,
                     createdAt: descriptor.createdAt,
                     lastAccessedAt: descriptor.lastAccessedAt,
-                    tmuxSession: descriptor.tmuxSession
+                    tmuxSession: descriptor.tmuxSession,
+                    herdrAttachment: descriptor.herdrAttachment
                 )
                 configureAgentMonitoring(for: session)
                 return session

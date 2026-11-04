@@ -531,6 +531,10 @@ struct ServerListView: View {
             onSwapSession: { sessionManager.switchToPrevious() },
             onSelectSession: { sessionManager.switchTo(sessionID: $0) },
             onAlwaysUseSSH: { try preferSSH(for: session) },
+            onOpenHerdr: { attachment in
+                let server = servers.first(where: { $0.id == session.serverID }) ?? session.server
+                launchSession(for: server, herdr: attachment)
+            },
             onDismiss: { sessionManager.returnToServerList() }
         )
     }
@@ -601,7 +605,11 @@ struct ServerListView: View {
         launchSession(for: sourceServer, tmuxOverride: sourceSession.tmuxSession)
     }
 
-    private func launchSession(for server: Server, tmuxOverride: String? = nil) {
+    private func launchSession(
+        for server: Server,
+        tmuxOverride: String? = nil,
+        herdr: HerdrAttachment? = nil
+    ) {
         quickLaunchError = nil
         let connectionServer = connectionServer(from: server, tmuxOverride: tmuxOverride)
 
@@ -612,6 +620,8 @@ struct ServerListView: View {
         }
 
         session.tmuxSession = connectionServer.tmuxSession
+        session.restoredHerdrAttachment = herdr
+        session.connectionVM.preferredHerdrAttachment = herdr
         connectingSession = session
 
         if ConnectionViewModel.hasStoredCredentials(for: connectionServer) {
@@ -730,6 +740,7 @@ struct ServerListView: View {
         for session in restoredSessions {
             guard ConnectionViewModel.hasStoredCredentials(for: session.server) else { continue }
 
+            session.connectionVM.preferredHerdrAttachment = session.restoredHerdrAttachment
             await session.connectionVM.quickLaunch(server: session.server)
             if session.connectionVM.showTmuxPicker {
                 let choice: TmuxChoice

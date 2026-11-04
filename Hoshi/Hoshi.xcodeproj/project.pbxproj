@@ -11,6 +11,7 @@
 		04119B6DCA7B159DED5322F0 /* ConnectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DAAFBD67A2073274FD71E7 /* ConnectionPolicy.swift */; };
 		04891F707B323D36FB701009 /* SauceCodeProNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = EE74F42FC3581FBD6835FEE6 /* SauceCodeProNerdFontMono-Regular.ttf */; };
 		064C00DA4CB553707EF8739B /* HerdrIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B82B7E9022DF81F3E5DDD245 /* HerdrIntegrationTests.swift */; };
+		06A11F7850D352D89F54D536 /* HerdrViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15CA71325EF6846BA2A426A5 /* HerdrViews.swift */; };
 		097940E5568A3DFD23FFF996 /* MononokiNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3E541CA9B24D14C5D80302FE /* MononokiNerdFontMono-Bold.ttf */; };
 		0B67E53F5AF59AC6F006596A /* AppLockService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F0A5E44FDEC0EE527C4254 /* AppLockService.swift */; };
 		0D0E8495B636DEB6E54CEAAB /* JetBrainsMonoNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CD6FB75DC159A221A4041B52 /* JetBrainsMonoNerdFontMono-BoldItalic.ttf */; };
@@ -204,6 +205,7 @@
 		11287515AC4FE877D7F9CC7F /* RemoteFileBrowserService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileBrowserService.swift; sourceTree = "<group>"; };
 		130FE85AB8EF04D290F43AAD /* Herdr.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Herdr.swift; sourceTree = "<group>"; };
 		1317C1167CDFEB8F24854E5E /* FantasqueSansMNerdFont-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFont-Bold.ttf"; sourceTree = "<group>"; };
+		15CA71325EF6846BA2A426A5 /* HerdrViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrViews.swift; sourceTree = "<group>"; };
 		168EE5B0051233375A63B33F /* MesloLGSNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MesloLGSNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		16D26ABDA765717B8480F607 /* TerminalIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalIdentity.swift; sourceTree = "<group>"; };
 		1913DF729009DA8DC0A599B5 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
@@ -509,6 +511,7 @@
 				6D0432E9957AC98AD4D63233 /* ErrorPresentationView.swift */,
 				FED1152F3552E3211B1A77BC /* FileUploadView.swift */,
 				9C0FA717B1413451034834BC /* FontPickerView.swift */,
+				15CA71325EF6846BA2A426A5 /* HerdrViews.swift */,
 				3BE99C6A440F89020EFE0E55 /* KeyboardToolbarView.swift */,
 				9917D156528C1F234C6AE282 /* KeyGeneratorView.swift */,
 				4B11C7963C2AE95E4AFDDD95 /* RemoteFileBrowserView.swift */,
@@ -819,6 +822,7 @@
 				949197A2CA73ECBA09B6427A /* HapticService.swift in Sources */,
 				855C4731646114168144F9F6 /* Herdr.swift in Sources */,
 				4FEE466B17B76250B24EF2BE /* HerdrAgentMonitor.swift in Sources */,
+				06A11F7850D352D89F54D536 /* HerdrViews.swift in Sources */,
 				5CF07FF1FE024A5759336ECC /* HoshiApp.swift in Sources */,
 				42EC5C294A912C3284C5864E /* KeyGeneratorView.swift in Sources */,
 				961B9C2272D0AB6E9B8C66C8 /* KeyboardToolbarView.swift in Sources */,

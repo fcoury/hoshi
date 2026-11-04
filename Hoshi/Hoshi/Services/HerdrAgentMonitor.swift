@@ -79,6 +79,27 @@ enum HerdrAgentChangeDetector {
     }
 }
 
+/// Ensures only one monitor per host reports events, so two Hoshi sessions
+/// on the same machine do not duplicate every notification. Other monitors
+/// keep tracking state and take over when the reporting one stops.
+@MainActor
+enum HerdrEventReporterRegistry {
+    private static var owners: [String: ObjectIdentifier] = [:]
+
+    static func claim(_ key: String, for owner: AnyObject) -> Bool {
+        let id = ObjectIdentifier(owner)
+        if let current = owners[key] { return current == id }
+        owners[key] = id
+        return true
+    }
+
+    static func release(_ key: String, for owner: AnyObject) {
+        if owners[key] == ObjectIdentifier(owner) {
+            owners[key] = nil
+        }
+    }
+}
+
 /// Polls Herdr over the session's verified SSH connection while Hoshi is in
 /// the foreground and reports agent changes as `AgentEventEnvelope`s.
 ///
@@ -91,6 +112,7 @@ final class HerdrAgentMonitor {
 
     private let runner: CommandRunner
     private let hostname: String?
+    private let hostKey: String?
     private let interval: Duration
     private let onEvent: @MainActor (AgentEventEnvelope) -> Void
     private let onInventory: @MainActor (HerdrInventory) -> Void
@@ -102,12 +124,14 @@ final class HerdrAgentMonitor {
 
     init(
         hostname: String?,
+        hostKey: String? = nil,
         interval: Duration = .seconds(5),
         runner: @escaping CommandRunner,
         onEvent: @escaping @MainActor (AgentEventEnvelope) -> Void,
         onInventory: @escaping @MainActor (HerdrInventory) -> Void = { _ in }
     ) {
         self.hostname = hostname
+        self.hostKey = hostKey
         self.interval = interval
         self.runner = runner
         self.onEvent = onEvent
@@ -130,11 +154,22 @@ final class HerdrAgentMonitor {
         task = nil
         observers.forEach(NotificationCenter.default.removeObserver)
         observers.removeAll()
+        if let hostKey {
+            HerdrEventReporterRegistry.release(hostKey, for: self)
+        }
+    }
+
+    /// Polls immediately, for example after the user changed Herdr's focus.
+    func pollNow() async {
+        guard let output = try? await runner(HerdrDiscovery.remoteCommand),
+              let inventory = HerdrDiscovery.parse(output) else { return }
+        process(inventory)
     }
 
     /// Processes one discovery output. Exposed for tests.
     func process(_ inventory: HerdrInventory) {
-        if let previous {
+        let reports = hostKey.map { HerdrEventReporterRegistry.claim($0, for: self) } ?? true
+        if reports, let previous {
             for event in HerdrAgentChangeDetector.events(
                 previous: previous,
                 current: inventory,

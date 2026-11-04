@@ -15,6 +15,8 @@ final class HerdrIntegrationTests: XCTestCase {
     __HERDR_LIST_END__
     __HERDR_SESSION__default
     {"id":"cli:agent:list","result":{"agents":[{"agent":"claude","agent_status":"blocked","completion_seq":190,"cwd":"/Users/me/code/wolfg","foreground_cwd":"/Users/me/code/wolfg/app","pane_id":"wP:p1","state_change_seq":191,"tab_id":"wP:t1","terminal_title_stripped":"App analysis","workspace_id":"wP"},{"agent":"codex","agent_status":"future_state","completion_seq":589,"cwd":"/Users/me/code/conduit","pane_id":"wS:p1","terminal_title_stripped":"  ","workspace_id":"wS"}]}}
+    __HERDR_WORKSPACES__default
+    {"id":"cli:workspace:list","result":{"type":"workspace_list","workspaces":[{"workspace_id":"wS","label":"conduit","number":2,"focused":true},{"workspace_id":"wP","label":"wolfg","number":1,"focused":false}]}}
 
     """
 
@@ -180,5 +182,111 @@ final class HerdrIntegrationTests: XCTestCase {
         monitor.process(inventory([HerdrAgent(paneID: "p1", agent: "claude", status: .idle, completionSeq: 2)]))
         XCTAssertEqual(received.map(\.kind), [.completed])
         XCTAssertEqual(inventories.count, 2)
+    }
+
+    // MARK: - Phase 2
+
+    func testDiscoveryParsesWorkspacesAndGroupsAgents() throws {
+        let inventory = try XCTUnwrap(HerdrDiscovery.parse(discoveryOutput))
+        let session = try XCTUnwrap(inventory.session(named: "default"))
+
+        XCTAssertEqual(session.workspaces.map(\.label), ["conduit", "wolfg"])
+        XCTAssertEqual(session.workspaces.first?.focused, true)
+        XCTAssertEqual(session.agentsByWorkspace.map(\.workspace.label), ["conduit", "wolfg"])
+        XCTAssertEqual(session.agentsByWorkspace.map { $0.agents.map(\.paneID) }, [["wS:p1"], ["wP:p1"]])
+        XCTAssertEqual(inventory.attentionCount, 1)
+    }
+
+    func testAgentsWithUnknownWorkspaceAreGroupedLast() {
+        let session = HerdrSessionInfo(
+            name: "s",
+            isRunning: true,
+            agents: [
+                HerdrAgent(paneID: "a", agent: "claude", status: .idle, workspaceID: "w1"),
+                HerdrAgent(paneID: "b", agent: "codex", status: .idle, workspaceID: "gone"),
+                HerdrAgent(paneID: "c", agent: "codex", status: .idle),
+            ],
+            workspaces: [HerdrWorkspace(id: "w1", label: "api"), HerdrWorkspace(id: "w2", label: "empty")]
+        )
+        XCTAssertEqual(session.agentsByWorkspace.map(\.workspace.label), ["api", "Other"])
+        XCTAssertEqual(session.agentsByWorkspace.last?.agents.map(\.paneID), ["b", "c"])
+    }
+
+    func testFocusCommandQuotesTokens() {
+        XCTAssertEqual(
+            HerdrCommand.focusAgent(paneID: "wP:p1", session: "default", executable: "/opt/homebrew/bin/herdr"),
+            "'/opt/homebrew/bin/herdr' --session 'default' agent focus 'wP:p1'"
+        )
+        XCTAssertNil(HerdrCommand.focusAgent(paneID: "$(id)", session: "default", executable: "/bin/herdr"))
+    }
+
+    func testAttachmentRoundTripsThroughChoicesAndPersistence() throws {
+        let agent = HerdrAttachment.agent(session: "default", paneID: "wP:p1")
+        XCTAssertEqual(HerdrAttachment(choice: agent.choice), agent)
+        XCTAssertEqual(HerdrAttachment(choice: HerdrAttachment.session("hoshi").choice), .session("hoshi"))
+        XCTAssertNil(HerdrAttachment(choice: .skip))
+        XCTAssertEqual(agent.sessionName, "default")
+
+        let descriptor = PersistedSessionDescriptor(
+            id: UUID(),
+            serverID: UUID(),
+            serverName: "mac",
+            transportPolicy: .auto,
+            tmuxSession: nil,
+            createdAt: Date(timeIntervalSince1970: 1),
+            lastAccessedAt: Date(timeIntervalSince1970: 2),
+            herdrAttachment: agent
+        )
+        let decoded = try JSONDecoder().decode(
+            PersistedSessionDescriptor.self,
+            from: JSONEncoder().encode(descriptor)
+        )
+        XCTAssertEqual(decoded.herdrAttachment, agent)
+    }
+
+    func testDescriptorsSavedBeforeHerdrStillDecode() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","serverID":"\(UUID().uuidString)","serverName":"mac",
+         "transportPolicy":"auto","tmuxSession":"main","createdAt":1,"lastAccessedAt":2}
+        """
+        let decoded = try JSONDecoder().decode(PersistedSessionDescriptor.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.tmuxSession, "main")
+        XCTAssertNil(decoded.herdrAttachment)
+    }
+
+    func testMissingAgentFallsBackToItsSession() throws {
+        let inventory = try XCTUnwrap(HerdrDiscovery.parse(discoveryOutput))
+        XCTAssertEqual(
+            ConnectionCoordinator.resolve(.agent(session: "default", paneID: "wP:p1"), in: inventory),
+            .agent(session: "default", paneID: "wP:p1")
+        )
+        XCTAssertEqual(
+            ConnectionCoordinator.resolve(.agent(session: "default", paneID: "gone:p9"), in: inventory),
+            .session("default")
+        )
+        XCTAssertEqual(ConnectionCoordinator.resolve(.session("hoshi"), in: inventory), .session("hoshi"))
+    }
+
+    func testOnlyOneMonitorPerHostReportsEvents() {
+        var first: [AgentEventEnvelope] = []
+        var second: [AgentEventEnvelope] = []
+        let key = "me@host:22-\(UUID().uuidString)"
+        let a = HerdrAgentMonitor(hostname: "host", hostKey: key, runner: { _ in "" }, onEvent: { first.append($0) })
+        let b = HerdrAgentMonitor(hostname: "host", hostKey: key, runner: { _ in "" }, onEvent: { second.append($0) })
+        let before = inventory([HerdrAgent(paneID: "p1", agent: "claude", status: .working, completionSeq: 1)])
+        let after = inventory([HerdrAgent(paneID: "p1", agent: "claude", status: .idle, completionSeq: 2)])
+        let later = inventory([HerdrAgent(paneID: "p1", agent: "claude", status: .idle, completionSeq: 3)])
+
+        a.process(before)
+        b.process(before)
+        a.process(after)
+        b.process(after)
+        XCTAssertEqual(first.count, 1)
+        XCTAssertEqual(second.count, 0, "The second monitor only tracks state")
+
+        a.stop()
+        b.process(later)
+        XCTAssertEqual(second.count, 1, "The second monitor takes over without replaying")
+        b.stop()
     }
 }

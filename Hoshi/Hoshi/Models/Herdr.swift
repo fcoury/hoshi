@@ -55,8 +55,12 @@ struct HerdrAgent: Decodable, Identifiable, Equatable, Sendable {
     let title: String?
     let completionSeq: Int
     let stateChangeSeq: Int
+    /// Whether this pane has focus in Herdr's own UI.
+    let focused: Bool
 
     var id: String { paneID }
+
+    var needsAttention: Bool { status == .blocked || status == .done }
 
     /// "claude" → "Claude", "codex" → "Codex".
     var displayName: String {
@@ -79,6 +83,7 @@ struct HerdrAgent: Decodable, Identifiable, Equatable, Sendable {
         case title = "terminal_title_stripped"
         case completionSeq = "completion_seq"
         case stateChangeSeq = "state_change_seq"
+        case focused
     }
 
     init(
@@ -90,7 +95,8 @@ struct HerdrAgent: Decodable, Identifiable, Equatable, Sendable {
         cwd: String? = nil,
         title: String? = nil,
         completionSeq: Int = 0,
-        stateChangeSeq: Int = 0
+        stateChangeSeq: Int = 0,
+        focused: Bool = false
     ) {
         self.paneID = paneID
         self.agent = agent
@@ -101,6 +107,7 @@ struct HerdrAgent: Decodable, Identifiable, Equatable, Sendable {
         self.title = title
         self.completionSeq = completionSeq
         self.stateChangeSeq = stateChangeSeq
+        self.focused = focused
     }
 
     init(from decoder: Decoder) throws {
@@ -116,6 +123,67 @@ struct HerdrAgent: Decodable, Identifiable, Equatable, Sendable {
         self.title = title.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         completionSeq = try container.decodeIfPresent(Int.self, forKey: .completionSeq) ?? 0
         stateChangeSeq = try container.decodeIfPresent(Int.self, forKey: .stateChangeSeq) ?? 0
+        focused = try container.decodeIfPresent(Bool.self, forKey: .focused) ?? false
+    }
+}
+
+/// A Herdr workspace, used to group agents the way Herdr's sidebar does.
+struct HerdrWorkspace: Decodable, Identifiable, Equatable, Sendable {
+    let id: String
+    let label: String
+    let number: Int?
+    let focused: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case id = "workspace_id"
+        case label
+        case number
+        case focused
+    }
+
+    init(id: String, label: String, number: Int? = nil, focused: Bool = false) {
+        self.id = id
+        self.label = label
+        self.number = number
+        self.focused = focused
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        label = try container.decodeIfPresent(String.self, forKey: .label) ?? id
+        number = try container.decodeIfPresent(Int.self, forKey: .number)
+        focused = try container.decodeIfPresent(Bool.self, forKey: .focused) ?? false
+    }
+}
+
+/// What a Hoshi terminal is showing from Herdr.
+enum HerdrAttachment: Codable, Equatable, Sendable {
+    /// Herdr's full UI for a session.
+    case session(String)
+    /// A single agent pane via `herdr agent attach`.
+    case agent(session: String, paneID: String)
+
+    var sessionName: String {
+        switch self {
+        case .session(let name): name
+        case .agent(let session, _): session
+        }
+    }
+
+    var choice: TmuxChoice {
+        switch self {
+        case .session(let name): .herdrSession(name)
+        case .agent(let session, let paneID): .herdrAgent(session: session, paneID: paneID)
+        }
+    }
+
+    init?(choice: TmuxChoice) {
+        switch choice {
+        case .herdrSession(let name): self = .session(name)
+        case .herdrAgent(let session, let paneID): self = .agent(session: session, paneID: paneID)
+        default: return nil
+        }
     }
 }
 
@@ -124,12 +192,46 @@ struct HerdrSessionInfo: Identifiable, Equatable, Sendable {
     let name: String
     let isRunning: Bool
     var agents: [HerdrAgent]
+    var workspaces: [HerdrWorkspace]
+
+    init(name: String, isRunning: Bool, agents: [HerdrAgent], workspaces: [HerdrWorkspace] = []) {
+        self.name = name
+        self.isRunning = isRunning
+        self.agents = agents
+        self.workspaces = workspaces
+    }
 
     var id: String { name }
 
     var attentionCount: Int {
-        agents.filter { $0.status == .blocked || $0.status == .done }.count
+        agents.filter(\.needsAttention).count
     }
+
+    /// Agents grouped by workspace in Herdr's order. Agents whose workspace
+    /// is unknown are collected last.
+    var agentsByWorkspace: [HerdrWorkspaceGroup] {
+        var groups = workspaces.compactMap { workspace -> HerdrWorkspaceGroup? in
+            let members = agents.filter { $0.workspaceID == workspace.id }
+            return members.isEmpty ? nil : HerdrWorkspaceGroup(workspace: workspace, agents: members)
+        }
+        let known = Set(workspaces.map(\.id))
+        let other = agents.filter { $0.workspaceID.map { !known.contains($0) } ?? true }
+        if !other.isEmpty {
+            groups.append(HerdrWorkspaceGroup(workspace: HerdrWorkspace(id: "", label: "Other"), agents: other))
+        }
+        return groups
+    }
+
+    func agent(paneID: String) -> HerdrAgent? {
+        agents.first { $0.paneID == paneID }
+    }
+}
+
+struct HerdrWorkspaceGroup: Identifiable, Equatable, Sendable {
+    let workspace: HerdrWorkspace
+    let agents: [HerdrAgent]
+
+    var id: String { workspace.id }
 }
 
 /// What Hoshi discovered about Herdr on the connected host.
@@ -140,6 +242,12 @@ struct HerdrInventory: Equatable, Sendable {
     var sessions: [HerdrSessionInfo]
 
     var runningSessions: [HerdrSessionInfo] { sessions.filter(\.isRunning) }
+
+    var attentionCount: Int { sessions.reduce(0) { $0 + $1.attentionCount } }
+
+    func session(named name: String) -> HerdrSessionInfo? {
+        sessions.first { $0.name == name }
+    }
 }
 
 // MARK: - Discovery script and parsing
@@ -154,6 +262,7 @@ enum HerdrDiscovery {
     private static let listStartMarker = "__HERDR_LIST__"
     private static let listEndMarker = "__HERDR_LIST_END__"
     private static let sessionMarker = "__HERDR_SESSION__"
+    private static let workspacesMarker = "__HERDR_WORKSPACES__"
     static let notInstalledMarker = "__HERDR_NONE__"
 
     /// A POSIX script that resolves `herdr`, lists its sessions, and prints
@@ -172,7 +281,8 @@ enum HerdrDiscovery {
         echo "\(versionMarker)$("$H" --version 2>/dev/null | head -n 1)"; \
         echo \(listStartMarker); "$H" session list 2>/dev/null; echo \(listEndMarker); \
         "$H" session list 2>/dev/null | awk 'NR > 1 && $2 == "running" { print $1 }' | \
-        while read -r s; do echo "\(sessionMarker)$s"; "$H" --session "$s" agent list 2>/dev/null; echo; done; \
+        while read -r s; do echo "\(sessionMarker)$s"; "$H" --session "$s" agent list 2>/dev/null; echo; \
+        echo "\(workspacesMarker)$s"; "$H" --session "$s" workspace list 2>/dev/null; echo; done; \
         exit 0
         """
     }
@@ -205,19 +315,29 @@ enum HerdrDiscovery {
             sessions = parseSessionTable(Array(lines[(start + 1)..<end]))
         }
 
-        var currentSession: String?
+        enum Pending { case agents(String), workspaces(String) }
+        var pending: Pending?
+        func index(of name: String) -> Int {
+            if let index = sessions.firstIndex(where: { $0.name == name }) { return index }
+            sessions.append(HerdrSessionInfo(name: name, isRunning: true, agents: []))
+            return sessions.count - 1
+        }
         for line in lines {
             if line.hasPrefix(sessionMarker) {
-                currentSession = String(line.dropFirst(sessionMarker.count))
+                pending = .agents(String(line.dropFirst(sessionMarker.count)))
                 continue
             }
-            guard let name = currentSession, line.hasPrefix("{") else { continue }
-            currentSession = nil
-            let agents = parseAgentList(line) ?? []
-            if let index = sessions.firstIndex(where: { $0.name == name }) {
-                sessions[index].agents = agents
-            } else {
-                sessions.append(HerdrSessionInfo(name: name, isRunning: true, agents: agents))
+            if line.hasPrefix(workspacesMarker) {
+                pending = .workspaces(String(line.dropFirst(workspacesMarker.count)))
+                continue
+            }
+            guard let current = pending, line.hasPrefix("{") else { continue }
+            pending = nil
+            switch current {
+            case .agents(let name):
+                sessions[index(of: name)].agents = parseAgentList(line) ?? []
+            case .workspaces(let name):
+                sessions[index(of: name)].workspaces = parseWorkspaceList(line) ?? []
             }
         }
 
@@ -264,6 +384,19 @@ enum HerdrDiscovery {
         }
         return response.result?.agents
     }
+
+    /// Parses one `herdr workspace list` JSON response.
+    static func parseWorkspaceList(_ json: String) -> [HerdrWorkspace]? {
+        struct Response: Decodable {
+            struct Result: Decodable { let workspaces: [HerdrWorkspace] }
+            let result: Result?
+        }
+        guard let data = json.data(using: .utf8),
+              let response = try? JSONDecoder().decode(Response.self, from: data) else {
+            return nil
+        }
+        return response.result?.workspaces
+    }
 }
 
 // MARK: - Terminal commands
@@ -284,6 +417,14 @@ enum HerdrCommand {
               isValidIdentifier(paneID),
               isSafeExecutablePath(executable) else { return nil }
         return "\(quote(executable)) --session \(quote(session)) agent attach \(quote(paneID))"
+    }
+
+    /// Focus an agent in every client attached to the session. Non-interactive.
+    static func focusAgent(paneID: String, session: String, executable: String) -> String? {
+        guard isValidSessionName(session),
+              isValidIdentifier(paneID),
+              isSafeExecutablePath(executable) else { return nil }
+        return "\(quote(executable)) --session \(quote(session)) agent focus \(quote(paneID))"
     }
 
     static func isValidSessionName(_ name: String) -> Bool {
