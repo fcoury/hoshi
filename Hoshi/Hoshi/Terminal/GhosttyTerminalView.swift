@@ -221,7 +221,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
     }
 }
 
-final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, UIEditMenuInteractionDelegate {
+final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     private static let inputTraceEnabled = ProcessInfo.processInfo.environment["HOSHI_INPUT_TRACE"] == "1"
 
     private enum InputSource {
@@ -329,6 +329,14 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
     var smartQuotesType: UITextSmartQuotesType = .no
     var smartDashesType: UITextSmartDashesType = .no
     var smartInsertDeleteType: UITextSmartInsertDeleteType = .no
+    var inlinePredictionType: UITextInlinePredictionType = .no
+
+    // UITextInput state. See TerminalTextInputDocument for why the terminal
+    // presents a document at all.
+    private(set) var textInputDocument = TerminalTextInputDocument()
+    weak var inputDelegate: UITextInputDelegate?
+    var markedTextStyle: [NSAttributedString.Key: Any]?
+    private(set) lazy var tokenizer: UITextInputTokenizer = UITextInputStringTokenizer(textInput: self)
 
     init(app: ghostty_app_t?, fontSize: CGFloat, keyboardVisible: Bool) {
         self.app = app
@@ -522,6 +530,12 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
     }
 
     func insertText(_ text: String) {
+        // Text inserted while composing replaces the composition.
+        if textInputDocument.hasMarkedText {
+            _ = textInputDocument.commitMarkedText()
+            updatePreedit()
+        }
+
         let terminalText = text.replacingOccurrences(of: "\n", with: "\r")
         let data = Data(terminalText.utf8)
 
@@ -540,6 +554,11 @@ final class GhosttyTerminalSurfaceView: UIView, UIKeyInput, UITextInputTraits, U
     func deleteBackward() {
         if Self.inputTraceEnabled {
             print("[INPUT_TRACE] deleteBackward")
+        }
+        // While composing, delete edits the composition, not the remote line.
+        if textInputDocument.deleteBackwardInMarkedText() {
+            updatePreedit()
+            return
         }
         sendInputData(Data([0x7f]))
     }
@@ -2109,6 +2128,176 @@ extension GhosttyTerminalSurfaceView: UIGestureRecognizerDelegate {
     /// terminal's scroll, tap and long-press gestures must not also act on them.
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         !(touch.view is TerminalSelectionHandleView)
+    }
+}
+
+// MARK: - UITextInput
+
+/// A minimal `UITextInput` adoption over `TerminalTextInputDocument`.
+///
+/// Its main purpose is to let the system keyboard auto-repeat backspace and
+/// to host IME compositions, which Ghostty draws at the cursor as preedit
+/// text. Keystrokes still reach the PTY through `insertText(_:)` and
+/// `deleteBackward()`; the document never accumulates terminal content.
+extension GhosttyTerminalSurfaceView {
+    private func documentRange(_ range: UITextRange) -> NSRange? {
+        (range as? TerminalTextRange).map { textInputDocument.clamp($0.range) }
+    }
+
+    private func documentOffset(_ position: UITextPosition) -> Int? {
+        (position as? TerminalTextPosition)?.offset
+    }
+
+    /// Mirrors the composition into Ghostty, which renders it at the cursor.
+    func updatePreedit() {
+        guard let surface else { return }
+        let marked = textInputDocument.markedText
+        marked.withCString { pointer in
+            ghostty_surface_preedit(surface, pointer, UInt(marked.utf8.count))
+        }
+    }
+
+    /// The terminal cursor cell in view coordinates, used to place the
+    /// keyboard's candidate bar and other system UI near the cursor.
+    private var cursorRect: CGRect {
+        guard let surface else { return CGRect(x: bounds.minX, y: bounds.minY, width: 0, height: 0) }
+        var x = 0.0, y = 0.0, width = 0.0, height = 0.0
+        ghostty_surface_ime_point(surface, &x, &y, &width, &height)
+        return CGRect(
+            x: CGFloat(x) + renderFrame.minX,
+            y: CGFloat(y) + renderFrame.minY,
+            width: CGFloat(width),
+            height: CGFloat(height)
+        )
+    }
+
+    // MARK: Text and replacement
+
+    func text(in range: UITextRange) -> String? {
+        documentRange(range).map(textInputDocument.text(in:))
+    }
+
+    func replace(_ range: UITextRange, withText text: String) {
+        // The document has no editable terminal content. Replacement text is
+        // new input; an empty replacement has nothing to delete remotely.
+        guard !text.isEmpty else { return }
+        insertText(text)
+    }
+
+    // MARK: Selection and marked text
+
+    var selectedTextRange: UITextRange? {
+        get { TerminalTextRange(textInputDocument.selectedRange) }
+        // The caret is pinned after the placeholder or inside the IME
+        // composition; the keyboard cannot move it into remote content.
+        set {}
+    }
+
+    var markedTextRange: UITextRange? {
+        textInputDocument.markedRange.map(TerminalTextRange.init)
+    }
+
+    func setMarkedText(_ markedText: String?, selectedRange: NSRange) {
+        textInputDocument.setMarkedText(markedText, selectedRange: selectedRange)
+        updatePreedit()
+    }
+
+    func unmarkText() {
+        let committed = textInputDocument.commitMarkedText()
+        updatePreedit()
+        guard !committed.isEmpty else { return }
+        sendInputData(Data(committed.replacingOccurrences(of: "\n", with: "\r").utf8))
+    }
+
+    // MARK: Positions and ranges
+
+    var beginningOfDocument: UITextPosition { TerminalTextPosition(0) }
+    var endOfDocument: UITextPosition { TerminalTextPosition(textInputDocument.length) }
+
+    func textRange(from fromPosition: UITextPosition, to toPosition: UITextPosition) -> UITextRange? {
+        guard let from = documentOffset(fromPosition), let to = documentOffset(toPosition) else { return nil }
+        return TerminalTextRange(NSRange(location: min(from, to), length: abs(to - from)))
+    }
+
+    func position(from position: UITextPosition, offset: Int) -> UITextPosition? {
+        guard let start = documentOffset(position) else { return nil }
+        let target = start + offset
+        guard (0...textInputDocument.length).contains(target) else { return nil }
+        return TerminalTextPosition(target)
+    }
+
+    func position(
+        from position: UITextPosition,
+        in direction: UITextLayoutDirection,
+        offset: Int
+    ) -> UITextPosition? {
+        switch direction {
+        case .left, .up: self.position(from: position, offset: -offset)
+        case .right, .down: self.position(from: position, offset: offset)
+        @unknown default: nil
+        }
+    }
+
+    func compare(_ position: UITextPosition, to other: UITextPosition) -> ComparisonResult {
+        guard let lhs = documentOffset(position), let rhs = documentOffset(other) else { return .orderedSame }
+        return lhs < rhs ? .orderedAscending : (lhs > rhs ? .orderedDescending : .orderedSame)
+    }
+
+    func offset(from: UITextPosition, to toPosition: UITextPosition) -> Int {
+        guard let from = documentOffset(from), let to = documentOffset(toPosition) else { return 0 }
+        return to - from
+    }
+
+    func position(within range: UITextRange, farthestIn direction: UITextLayoutDirection) -> UITextPosition? {
+        switch direction {
+        case .left, .up: range.start
+        case .right, .down: range.end
+        @unknown default: nil
+        }
+    }
+
+    func characterRange(byExtending position: UITextPosition, in direction: UITextLayoutDirection) -> UITextRange? {
+        switch direction {
+        case .left, .up: textRange(from: beginningOfDocument, to: position)
+        case .right, .down: textRange(from: position, to: endOfDocument)
+        @unknown default: nil
+        }
+    }
+
+    // MARK: Writing direction and geometry
+
+    func baseWritingDirection(
+        for position: UITextPosition,
+        in direction: UITextStorageDirection
+    ) -> NSWritingDirection {
+        .leftToRight
+    }
+
+    func setBaseWritingDirection(_ writingDirection: NSWritingDirection, for range: UITextRange) {}
+
+    func firstRect(for range: UITextRange) -> CGRect {
+        cursorRect
+    }
+
+    func caretRect(for position: UITextPosition) -> CGRect {
+        let cursor = cursorRect
+        return CGRect(x: cursor.minX, y: cursor.minY, width: 2, height: cursor.height)
+    }
+
+    func selectionRects(for range: UITextRange) -> [UITextSelectionRect] {
+        []
+    }
+
+    func closestPosition(to point: CGPoint) -> UITextPosition? {
+        endOfDocument
+    }
+
+    func closestPosition(to point: CGPoint, within range: UITextRange) -> UITextPosition? {
+        range.end
+    }
+
+    func characterRange(at point: CGPoint) -> UITextRange? {
+        nil
     }
 }
 

@@ -660,6 +660,126 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertEqual(sent, [Data("hello\r".utf8), Data([0x01]), Data([0x7F])])
     }
 
+    // MARK: System keyboard text input
+
+    func testTextInputDocumentAlwaysHasDeletableContextBeforeTheCaret() {
+        let document = TerminalTextInputDocument()
+
+        // The system keyboard only auto-repeats delete when the document it
+        // inspects has text before the caret.
+        XCTAssertEqual(document.length, 1)
+        XCTAssertEqual(document.selectedRange, NSRange(location: 1, length: 0))
+        XCTAssertEqual(document.text(in: NSRange(location: 0, length: 1)), TerminalTextInputDocument.placeholder)
+        XCTAssertNil(document.markedRange)
+    }
+
+    func testTextInputDocumentPlaceholderCannotTriggerKeyboardShortcuts() {
+        let placeholder = TerminalTextInputDocument.placeholder
+        // Neither Unicode whitespace (double-space period) nor a letter
+        // (autocapitalization). Foundation's whitespace set includes U+200B,
+        // so check the Unicode properties directly.
+        XCTAssertTrue(placeholder.unicodeScalars.allSatisfy { !$0.properties.isWhitespace })
+        XCTAssertTrue(placeholder.unicodeScalars.allSatisfy { !$0.properties.isAlphabetic })
+    }
+
+    func testTextInputDocumentTracksAndCommitsComposition() {
+        var document = TerminalTextInputDocument()
+
+        document.setMarkedText("にほん", selectedRange: NSRange(location: 3, length: 0))
+        XCTAssertEqual(document.markedRange, NSRange(location: 1, length: 3))
+        XCTAssertEqual(document.selectedRange, NSRange(location: 4, length: 0))
+        XCTAssertEqual(document.text(in: document.markedRange!), "にほん")
+
+        XCTAssertTrue(document.deleteBackwardInMarkedText())
+        XCTAssertEqual(document.markedText, "にほ")
+
+        XCTAssertEqual(document.commitMarkedText(), "にほ")
+        XCTAssertFalse(document.hasMarkedText)
+        XCTAssertFalse(document.deleteBackwardInMarkedText())
+        XCTAssertEqual(document.length, 1)
+    }
+
+    func testTextInputDocumentClampsOutOfBoundsRequests() {
+        var document = TerminalTextInputDocument()
+        document.setMarkedText("ab", selectedRange: NSRange(location: 9, length: 9))
+
+        XCTAssertEqual(document.selectedRange, NSRange(location: 3, length: 0))
+        XCTAssertEqual(document.text(in: NSRange(location: 2, length: 50)), "b")
+        XCTAssertEqual(document.text(in: NSRange(location: -4, length: 5)), TerminalTextInputDocument.placeholder)
+        XCTAssertEqual(document.text(in: NSRange(location: -4, length: 1)), "")
+    }
+
+    func testRepeatedDeleteBackwardSendsOneBackspaceEach() {
+        let surface = GhosttyTerminalSurfaceView(app: nil, fontSize: 14, keyboardVisible: false)
+        var sent: [Data] = []
+        surface.onInputData = { sent.append($0) }
+
+        for _ in 0..<3 {
+            surface.deleteBackward()
+        }
+
+        XCTAssertEqual(sent, Array(repeating: Data([0x7F]), count: 3))
+        // The keyboard keeps seeing deletable context after every delete.
+        XCTAssertTrue(surface.hasText)
+        XCTAssertEqual(surface.offset(from: surface.beginningOfDocument, to: surface.endOfDocument), 1)
+    }
+
+    func testCompositionIsEditedLocallyAndSentOnlyWhenCommitted() {
+        let surface = GhosttyTerminalSurfaceView(app: nil, fontSize: 14, keyboardVisible: false)
+        var sent: [Data] = []
+        surface.onInputData = { sent.append($0) }
+
+        surface.setMarkedText("か", selectedRange: NSRange(location: 1, length: 0))
+        surface.setMarkedText("かん", selectedRange: NSRange(location: 2, length: 0))
+        surface.deleteBackward()
+        XCTAssertTrue(sent.isEmpty)
+        XCTAssertNotNil(surface.markedTextRange)
+
+        surface.unmarkText()
+
+        XCTAssertEqual(sent, [Data("か".utf8)])
+        XCTAssertNil(surface.markedTextRange)
+    }
+
+    func testInsertTextReplacesCompositionInsteadOfCommittingIt() {
+        let surface = GhosttyTerminalSurfaceView(app: nil, fontSize: 14, keyboardVisible: false)
+        var sent: [Data] = []
+        surface.onInputData = { sent.append($0) }
+
+        surface.setMarkedText("kan", selectedRange: NSRange(location: 3, length: 0))
+        surface.insertText("漢")
+
+        XCTAssertEqual(sent, [Data("漢".utf8)])
+        XCTAssertNil(surface.markedTextRange)
+    }
+
+    func testTextInputPositionsStayInsideTheDocument() throws {
+        let surface = GhosttyTerminalSurfaceView(app: nil, fontSize: 14, keyboardVisible: false)
+        let start = surface.beginningOfDocument
+        let end = surface.endOfDocument
+
+        XCTAssertNil(surface.position(from: end, offset: 1))
+        XCTAssertNil(surface.position(from: start, offset: -1))
+        XCTAssertEqual(surface.compare(start, to: end), .orderedAscending)
+        let range = try XCTUnwrap(surface.textRange(from: end, to: start))
+        XCTAssertEqual(surface.text(in: range), TerminalTextInputDocument.placeholder)
+
+        // The keyboard cannot move the caret into remote content.
+        surface.selectedTextRange = range
+        XCTAssertEqual(surface.offset(from: start, to: try XCTUnwrap(surface.selectedTextRange).start), 1)
+    }
+
+    func testTerminalTextInputDisablesAutomaticTextChanges() {
+        let surface = GhosttyTerminalSurfaceView(app: nil, fontSize: 14, keyboardVisible: false)
+
+        XCTAssertEqual(surface.autocorrectionType, .no)
+        XCTAssertEqual(surface.spellCheckingType, .no)
+        XCTAssertEqual(surface.smartQuotesType, .no)
+        XCTAssertEqual(surface.smartDashesType, .no)
+        XCTAssertEqual(surface.smartInsertDeleteType, .no)
+        XCTAssertEqual(surface.inlinePredictionType, .no)
+    }
+
     func testGestureDefaultsSupportSelectionAndTwoFingerPaste() {
         XCTAssertEqual(AppearanceSettings.shared.doubleTapAction, .selectWord)
         XCTAssertEqual(AppearanceSettings.shared.twoFingerTapAction, .paste)
