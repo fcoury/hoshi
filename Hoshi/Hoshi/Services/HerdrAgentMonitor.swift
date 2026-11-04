@@ -19,7 +19,7 @@ enum HerdrAgentChangeDetector {
         var snapshot: [Key: HerdrAgent] = [:]
         for session in inventory.sessions {
             for agent in session.agents {
-                snapshot[Key(session: session.name, paneID: agent.paneID)] = agent
+                snapshot[Key(session: session.id, paneID: agent.paneID)] = agent
             }
         }
         return snapshot
@@ -33,24 +33,24 @@ enum HerdrAgentChangeDetector {
         var events: [AgentEventEnvelope] = []
         for session in current.sessions {
             for agent in session.agents {
-                guard let before = previous[Key(session: session.name, paneID: agent.paneID)] else {
+                guard let before = previous[Key(session: session.id, paneID: agent.paneID)] else {
                     continue
                 }
 
                 if agent.status == .blocked, before.status != .blocked {
                     events.append(envelope(
                         kind: .needsAttention,
-                        title: "\(agent.displayName) needs input",
+                        title: "\(name(of: agent, in: session)) needs input",
                         agent: agent,
-                        session: session.name,
+                        session: session,
                         hostname: hostname
                     ))
                 } else if agent.completionSeq > before.completionSeq {
                     events.append(envelope(
                         kind: .completed,
-                        title: "\(agent.displayName) finished",
+                        title: "\(name(of: agent, in: session)) finished",
                         agent: agent,
-                        session: session.name,
+                        session: session,
                         hostname: hostname
                     ))
                 }
@@ -59,14 +59,20 @@ enum HerdrAgentChangeDetector {
         return events
     }
 
+    /// "Claude", or "Claude on build-box" for an agent on a saved machine.
+    private static func name(of agent: HerdrAgent, in session: HerdrSessionInfo) -> String {
+        session.machine.map { "\(agent.displayName) on \($0.label)" } ?? agent.displayName
+    }
+
     private static func envelope(
         kind: AgentEventKind,
         title: String,
         agent: HerdrAgent,
-        session: String,
+        session: HerdrSessionInfo,
         hostname: String?
     ) -> AgentEventEnvelope {
-        let context = [agent.title, agent.directoryName.map { "in \($0)" }, "Herdr session \(session)"]
+        let location = session.machine.map { "via Herdr machine \($0.label)" } ?? "Herdr session \(session.name)"
+        let context = [agent.title, agent.directoryName.map { "in \($0)" }, location]
             .compactMap { $0 }
             .joined(separator: " · ")
         return AgentEventEnvelope(
@@ -75,7 +81,7 @@ enum HerdrAgentChangeDetector {
             message: String(context.prefix(1_000)),
             timestamp: Date(),
             hostname: hostname.map { String($0.prefix(255)) },
-            herdrTarget: HerdrAgentTarget(session: session, paneID: agent.paneID)
+            herdrTarget: session.target(for: agent)
         )
     }
 }

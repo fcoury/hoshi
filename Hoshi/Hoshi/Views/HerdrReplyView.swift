@@ -24,7 +24,10 @@ struct HerdrReplyView: View {
     private var options: [HerdrPromptOption] {
         status == .blocked ? HerdrPromptOption.parse(output) : []
     }
-    private var canShowHere: Bool { connectionVM.herdrAttachment == .session(target.session) }
+    private var canShowHere: Bool { connectionVM.canFocusHerdrInPlace(target) }
+    private var machine: HerdrMachine? {
+        target.machineID.flatMap { connectionVM.detectedHerdr?.machine(id: $0) }
+    }
 
     var body: some View {
         if isEmbedded {
@@ -74,7 +77,9 @@ struct HerdrReplyView: View {
                         .font(.subheadline.weight(.medium))
                         .lineLimit(1)
                 }
-                Text([agent?.directoryName, "Herdr \(target.session)"].compactMap { $0 }.joined(separator: " · "))
+                Text([agent?.directoryName, machine.map { "on \($0.label)" } ?? "Herdr \(target.session)"]
+                    .compactMap { $0 }
+                    .joined(separator: " · "))
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -190,7 +195,7 @@ struct HerdrReplyView: View {
             if canShowHere {
                 Button {
                     Task {
-                        if let agent { try? await connectionVM.focusHerdrAgent(agent, in: target.session) }
+                        try? await connectionVM.focusHerdrAgent(target)
                         dismiss()
                     }
                 } label: {
@@ -199,7 +204,8 @@ struct HerdrReplyView: View {
             }
             if let onOpenInNewSession {
                 Button {
-                    onOpenInNewSession(.agent(session: target.session, paneID: target.paneID))
+                    onOpenInNewSession(target.machineID.map { .machine(id: $0, paneID: target.paneID) }
+                        ?? .agent(session: target.session, paneID: target.paneID))
                     dismiss()
                 } label: {
                     Label("Open in New Session", systemImage: "plus.rectangle.on.rectangle")

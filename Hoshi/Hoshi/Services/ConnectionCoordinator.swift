@@ -236,6 +236,26 @@ final class ConnectionCoordinator {
                 throw ConnectionCoordinatorError.transportFailed("That Herdr agent can no longer be attached.")
             }
             command = herdrCommand
+        case .herdrMachine(let id, let paneID):
+            guard let herdr = detectedHerdr,
+                  let machine = herdr.machine(id: id),
+                  let herdrCommand = HerdrCommand.openMachine(machine, executable: herdr.executable) else {
+                throw ConnectionCoordinatorError.transportFailed(
+                    "That Herdr machine is no longer saved on this server."
+                )
+            }
+            // Show the chosen agent once the remote UI opens. Best effort: the
+            // machine UI still opens if the agent has gone.
+            if let paneID,
+               let focus = HerdrCommand.focusAgent(
+                paneID: paneID,
+                session: machine.session ?? "default",
+                machineID: id,
+                executable: herdr.executable
+               ) {
+                _ = try? await runRemoteCommand(HerdrCommand.captured(focus))
+            }
+            command = herdrCommand
         }
 
         herdrAttachment = HerdrAttachment(choice: choice)
@@ -344,11 +364,16 @@ final class ConnectionCoordinator {
 
     /// An agent that no longer exists falls back to its session's full UI.
     static func resolve(_ attachment: HerdrAttachment, in inventory: HerdrInventory) -> HerdrAttachment {
-        guard case .agent(let session, let paneID) = attachment,
-              inventory.session(named: session)?.agent(paneID: paneID) == nil else {
+        switch attachment {
+        case .agent(let session, let paneID)
+            where inventory.session(named: session)?.agent(paneID: paneID) == nil:
+            return .session(session)
+        case .machine(let id, .some(let paneID))
+            where inventory.sessions.first(where: { $0.machine?.id == id })?.agent(paneID: paneID) == nil:
+            return .machine(id: id, paneID: nil)
+        default:
             return attachment
         }
-        return .session(session)
     }
 
     private func recordTransportFallback(_ error: any Error) {

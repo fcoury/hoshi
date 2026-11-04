@@ -163,18 +163,29 @@ enum HerdrAttachment: Codable, Equatable, Sendable {
     case session(String)
     /// A single agent pane via `herdr agent attach`.
     case agent(session: String, paneID: String)
+    /// The full Herdr UI of a machine saved in this host's Herdr
+    /// (`herdr --remote`), optionally focused on one agent first.
+    case machine(id: String, paneID: String?)
 
+    /// The local session name, or the machine ID for a saved machine.
     var sessionName: String {
         switch self {
         case .session(let name): name
         case .agent(let session, _): session
+        case .machine(let id, _): id
         }
+    }
+
+    var machineID: String? {
+        if case .machine(let id, _) = self { return id }
+        return nil
     }
 
     var choice: TmuxChoice {
         switch self {
         case .session(let name): .herdrSession(name)
         case .agent(let session, let paneID): .herdrAgent(session: session, paneID: paneID)
+        case .machine(let id, let paneID): .herdrMachine(id: id, paneID: paneID)
         }
     }
 
@@ -182,7 +193,18 @@ enum HerdrAttachment: Codable, Equatable, Sendable {
         switch choice {
         case .herdrSession(let name): self = .session(name)
         case .herdrAgent(let session, let paneID): self = .agent(session: session, paneID: paneID)
+        case .herdrMachine(let id, let paneID): self = .machine(id: id, paneID: paneID)
         default: return nil
+        }
+    }
+
+    /// Whether this terminal shows the Herdr UI that owns `session`, so
+    /// focusing an agent there switches the view in place.
+    func shows(_ session: HerdrSessionInfo) -> Bool {
+        switch self {
+        case .session(let name): session.machine == nil && session.name == name
+        case .machine(let id, _): session.machine?.id == id
+        case .agent: false
         }
     }
 }
@@ -193,15 +215,31 @@ struct HerdrSessionInfo: Identifiable, Equatable, Sendable {
     let isRunning: Bool
     var agents: [HerdrAgent]
     var workspaces: [HerdrWorkspace]
+    /// Set for the session of a machine saved in this host's Herdr.
+    var machine: HerdrMachine?
 
-    init(name: String, isRunning: Bool, agents: [HerdrAgent], workspaces: [HerdrWorkspace] = []) {
+    init(
+        name: String,
+        isRunning: Bool,
+        agents: [HerdrAgent],
+        workspaces: [HerdrWorkspace] = [],
+        machine: HerdrMachine? = nil
+    ) {
         self.name = name
         self.isRunning = isRunning
         self.agents = agents
         self.workspaces = workspaces
+        self.machine = machine
     }
 
-    var id: String { name }
+    var id: String { machine.map { "machine:\($0.id)" } ?? name }
+
+    /// "default" on this host, or the machine's label.
+    var displayName: String { machine?.label ?? name }
+
+    func target(for agent: HerdrAgent) -> HerdrAgentTarget {
+        HerdrAgentTarget(session: name, paneID: agent.paneID, machineID: machine?.id)
+    }
 
     var attentionCount: Int {
         agents.filter(\.needsAttention).count
@@ -234,19 +272,69 @@ struct HerdrWorkspaceGroup: Identifiable, Equatable, Sendable {
     var id: String { workspace.id }
 }
 
+/// An SSH machine saved in the connected host's Herdr (`herdr machine add`).
+/// Hoshi reaches its agents through the host with `herdr --machine`, so the
+/// phone never needs its own route or credentials for that machine.
+struct HerdrMachine: Decodable, Identifiable, Equatable, Sendable {
+    let id: String
+    let label: String
+    /// The host's SSH target for the machine, such as `user@build-box`.
+    let target: String
+    /// The remote Herdr session the profile uses.
+    let session: String?
+    let enabled: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case id, label, target, session, enabled
+    }
+
+    init(id: String, label: String, target: String, session: String? = nil, enabled: Bool = true) {
+        self.id = id
+        self.label = label
+        self.target = target
+        self.session = session
+        self.enabled = enabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        target = try container.decodeIfPresent(String.self, forKey: .target) ?? ""
+        let label = try container.decodeIfPresent(String.self, forKey: .label)
+        self.label = (label?.isEmpty == false ? label : nil) ?? (target.isEmpty ? id : target)
+        session = try container.decodeIfPresent(String.self, forKey: .session)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+    }
+}
+
 /// What Hoshi discovered about Herdr on the connected host.
 struct HerdrInventory: Equatable, Sendable {
     /// Absolute path of the resolved `herdr` executable on the remote host.
     let executable: String
     let version: String?
+    /// Local sessions first, then one session per saved machine.
     var sessions: [HerdrSessionInfo]
 
     var runningSessions: [HerdrSessionInfo] { sessions.filter(\.isRunning) }
+    var localSessions: [HerdrSessionInfo] { sessions.filter { $0.machine == nil } }
+    var machineSessions: [HerdrSessionInfo] { sessions.filter { $0.machine != nil } }
 
     var attentionCount: Int { sessions.reduce(0) { $0 + $1.attentionCount } }
 
+    /// A session on this host by name.
     func session(named name: String) -> HerdrSessionInfo? {
-        sessions.first { $0.name == name }
+        sessions.first { $0.machine == nil && $0.name == name }
+    }
+
+    func session(for target: HerdrAgentTarget) -> HerdrSessionInfo? {
+        if let machineID = target.machineID {
+            return sessions.first { $0.machine?.id == machineID }
+        }
+        return session(named: target.session)
+    }
+
+    func machine(id: String) -> HerdrMachine? {
+        sessions.lazy.compactMap(\.machine).first { $0.id == id }
     }
 }
 
@@ -263,6 +351,10 @@ enum HerdrDiscovery {
     private static let listEndMarker = "__HERDR_LIST_END__"
     private static let sessionMarker = "__HERDR_SESSION__"
     private static let workspacesMarker = "__HERDR_WORKSPACES__"
+    private static let machinesStartMarker = "__HERDR_MACHINES__"
+    private static let machinesEndMarker = "__HERDR_MACHINES_END__"
+    private static let machineAgentsMarker = "__HERDR_MACHINE__"
+    private static let machineWorkspacesMarker = "__HERDR_MACHINE_WS__"
     static let notInstalledMarker = "__HERDR_NONE__"
 
     /// A POSIX script that resolves `herdr`, lists its sessions, and prints
@@ -283,6 +375,10 @@ enum HerdrDiscovery {
         "$H" session list 2>/dev/null | awk 'NR > 1 && $2 == "running" { print $1 }' | \
         while read -r s; do echo "\(sessionMarker)$s"; "$H" --session "$s" agent list 2>/dev/null; echo; \
         echo "\(workspacesMarker)$s"; "$H" --session "$s" workspace list 2>/dev/null; echo; done; \
+        echo \(machinesStartMarker); "$H" machine list --json 2>/dev/null; echo; echo \(machinesEndMarker); \
+        "$H" machine list --json 2>/dev/null | awk -F'"' '$2 == "id" { print $4 }' | \
+        while read -r m; do echo "\(machineAgentsMarker)$m"; "$H" --machine "$m" agent list 2>/dev/null; echo; \
+        echo "\(machineWorkspacesMarker)$m"; "$H" --machine "$m" workspace list 2>/dev/null; echo; done; \
         exit 0
         """
     }
@@ -315,20 +411,32 @@ enum HerdrDiscovery {
             sessions = parseSessionTable(Array(lines[(start + 1)..<end]))
         }
 
-        enum Pending { case agents(String), workspaces(String) }
+        var machines: [HerdrMachine] = []
+        if let start = lines.firstIndex(of: machinesStartMarker),
+           let end = lines[start...].firstIndex(of: machinesEndMarker) {
+            machines = parseMachineList(lines[(start + 1)..<end].joined(separator: "\n")) ?? []
+        }
+        var machineAgents: [String: [HerdrAgent]] = [:]
+        var machineWorkspaces: [String: [HerdrWorkspace]] = [:]
+
+        enum Pending {
+            case agents(String), workspaces(String), machineAgents(String), machineWorkspaces(String)
+        }
         var pending: Pending?
         func index(of name: String) -> Int {
             if let index = sessions.firstIndex(where: { $0.name == name }) { return index }
             sessions.append(HerdrSessionInfo(name: name, isRunning: true, agents: []))
             return sessions.count - 1
         }
+        let markers: [(String, (String) -> Pending)] = [
+            (machineWorkspacesMarker, Pending.machineWorkspaces),
+            (machineAgentsMarker, Pending.machineAgents),
+            (workspacesMarker, Pending.workspaces),
+            (sessionMarker, Pending.agents),
+        ]
         for line in lines {
-            if line.hasPrefix(sessionMarker) {
-                pending = .agents(String(line.dropFirst(sessionMarker.count)))
-                continue
-            }
-            if line.hasPrefix(workspacesMarker) {
-                pending = .workspaces(String(line.dropFirst(workspacesMarker.count)))
+            if let (marker, make) = markers.first(where: { line.hasPrefix($0.0) }) {
+                pending = make(String(line.dropFirst(marker.count)))
                 continue
             }
             guard let current = pending, line.hasPrefix("{") else { continue }
@@ -338,7 +446,22 @@ enum HerdrDiscovery {
                 sessions[index(of: name)].agents = parseAgentList(line) ?? []
             case .workspaces(let name):
                 sessions[index(of: name)].workspaces = parseWorkspaceList(line) ?? []
+            case .machineAgents(let id):
+                machineAgents[id] = parseAgentList(line)
+            case .machineWorkspaces(let id):
+                machineWorkspaces[id] = parseWorkspaceList(line)
             }
+        }
+
+        // A machine is running when Herdr could list its agents through the host.
+        for machine in machines where machine.enabled && HerdrCommand.isValidIdentifier(machine.id) {
+            sessions.append(HerdrSessionInfo(
+                name: machine.session ?? "default",
+                isRunning: machineAgents[machine.id] != nil,
+                agents: machineAgents[machine.id] ?? [],
+                workspaces: machineWorkspaces[machine.id] ?? [],
+                machine: machine
+            ))
         }
 
         return HerdrInventory(executable: executable, version: version, sessions: sessions)
@@ -383,6 +506,12 @@ enum HerdrDiscovery {
             return nil
         }
         return response.result?.agents
+    }
+
+    /// Parses `herdr machine list --json`.
+    static func parseMachineList(_ json: String) -> [HerdrMachine]? {
+        guard let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode([HerdrMachine].self, from: data)
     }
 
     /// Parses one `herdr workspace list` JSON response.
@@ -467,11 +596,15 @@ struct HerdrPromptOption: Identifiable, Equatable, Sendable {
 struct HerdrAgentTarget: Codable, Hashable, Identifiable, Sendable {
     let session: String
     let paneID: String
+    /// Set for an agent on a machine saved in the host's Herdr.
+    var machineID: String? = nil
 
-    var id: String { "\(session)/\(paneID)" }
+    var id: String { "\(machineID ?? "local")/\(session)/\(paneID)" }
 
     var isValid: Bool {
-        HerdrCommand.isValidSessionName(session) && HerdrCommand.isValidIdentifier(paneID)
+        HerdrCommand.isValidSessionName(session)
+            && HerdrCommand.isValidIdentifier(paneID)
+            && (machineID.map(HerdrCommand.isValidIdentifier) ?? true)
     }
 }
 
@@ -495,32 +628,70 @@ enum HerdrCommand {
         return "\(quote(executable)) --session \(quote(session)) agent attach \(quote(paneID))"
     }
 
-    /// Focus an agent in every client attached to the session. Non-interactive.
-    static func focusAgent(paneID: String, session: String, executable: String) -> String? {
-        guard isValidSessionName(session),
+    /// Opens a saved machine's full Herdr UI through the host. Herdr runs the
+    /// SSH connection itself, so it uses the host's keys and SSH config.
+    static func openMachine(_ machine: HerdrMachine, executable: String) -> String? {
+        guard isValidSSHTarget(machine.target), isSafeExecutablePath(executable) else { return nil }
+        var command = "\(quote(executable)) --remote \(quote(machine.target))"
+        if let session = machine.session {
+            guard isValidSessionName(session) else { return nil }
+            command += " --session \(quote(session))"
+        }
+        return command
+    }
+
+    /// The global flag pair that selects a local session or a saved machine.
+    /// Herdr does not allow combining `--machine` with `--session`.
+    private static func scope(session: String, machineID: String?) -> (flag: String, value: String)? {
+        if let machineID {
+            return isValidIdentifier(machineID) ? ("--machine", machineID) : nil
+        }
+        return isValidSessionName(session) ? ("--session", session) : nil
+    }
+
+    private static func agentCommand(
+        _ subcommand: String,
+        paneID: String,
+        session: String,
+        machineID: String?,
+        executable: String
+    ) -> String? {
+        guard let scope = scope(session: session, machineID: machineID),
               isValidIdentifier(paneID),
               isSafeExecutablePath(executable) else { return nil }
-        return "\(quote(executable)) --session \(quote(session)) agent focus \(quote(paneID))"
+        return "\(quote(executable)) \(scope.flag) \(quote(scope.value)) agent \(subcommand) \(quote(paneID))"
+    }
+
+    /// Focus an agent in every client attached to the session. Non-interactive.
+    static func focusAgent(paneID: String, session: String, machineID: String? = nil, executable: String) -> String? {
+        agentCommand("focus", paneID: paneID, session: session, machineID: machineID, executable: executable)
     }
 
     /// Recent output of an agent, without ANSI styling.
-    static func readAgent(paneID: String, session: String, executable: String, lines: Int = 60) -> String? {
-        guard isValidSessionName(session),
-              isValidIdentifier(paneID),
-              isSafeExecutablePath(executable) else { return nil }
+    static func readAgent(
+        paneID: String,
+        session: String,
+        machineID: String? = nil,
+        executable: String,
+        lines: Int = 60
+    ) -> String? {
         let count = min(max(lines, 1), 400)
-        return "\(quote(executable)) --session \(quote(session)) agent read \(quote(paneID)) "
-            + "--source recent-unwrapped --lines \(count)"
+        return agentCommand("read", paneID: paneID, session: session, machineID: machineID, executable: executable)
+            .map { $0 + " --source recent-unwrapped --lines \(count)" }
     }
 
     /// Presses keys in an agent, for example to answer an approval prompt.
-    static func sendKeys(_ keys: [HerdrKey], paneID: String, session: String, executable: String) -> String? {
-        guard !keys.isEmpty,
-              isValidSessionName(session),
-              isValidIdentifier(paneID),
-              isSafeExecutablePath(executable) else { return nil }
+    static func sendKeys(
+        _ keys: [HerdrKey],
+        paneID: String,
+        session: String,
+        machineID: String? = nil,
+        executable: String
+    ) -> String? {
+        guard !keys.isEmpty else { return nil }
         let tokens = keys.map { quote($0.token) }.joined(separator: " ")
-        return "\(quote(executable)) --session \(quote(session)) agent send-keys \(quote(paneID)) \(tokens)"
+        return agentCommand("send-keys", paneID: paneID, session: session, machineID: machineID, executable: executable)
+            .map { $0 + " " + tokens }
     }
 
     /// Submits free text. A ready agent gets `agent prompt`; a blocked one is
@@ -534,12 +705,13 @@ enum HerdrCommand {
         toBlockedAgent isBlocked: Bool,
         paneID: String,
         session: String,
+        machineID: String? = nil,
         executable: String
     ) -> String? {
         let trimmed = text.trimmingCharacters(in: .newlines)
         guard !trimmed.isEmpty,
               trimmed.utf8.count <= 8_192,
-              isValidSessionName(session),
+              let scope = scope(session: session, machineID: machineID),
               isValidIdentifier(paneID),
               isSafeExecutablePath(executable) else { return nil }
         // A newline would submit a blocked prompt early, so keep replies on one line.
@@ -548,8 +720,9 @@ enum HerdrCommand {
             : trimmed
         let payload = Data(body.utf8).base64EncodedString()
         let action = isBlocked ? "pane run" : "agent prompt"
-        let script = #"T=$(printf %s "$4" | base64 -d) && exec "$1" --session "$2" "# + action + #" "$3" "$T""#
-        return "sh -c \(quote(script)) herdr \(quote(executable)) \(quote(session)) \(quote(paneID)) \(quote(payload))"
+        let script = #"T=$(printf %s "$5" | base64 -d) && exec "$1" "$2" "$3" "# + action + #" "$4" "$T""#
+        return "sh -c \(quote(script)) herdr \(quote(executable)) \(quote(scope.flag)) \(quote(scope.value)) "
+            + "\(quote(paneID)) \(quote(payload))"
     }
 
     private static let exitMarker = "__HERDR_EXIT__"
@@ -605,6 +778,11 @@ enum HerdrCommand {
     /// Herdr identifiers look like `wS:p7`.
     static func isValidIdentifier(_ value: String) -> Bool {
         value.range(of: #"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"#, options: .regularExpression) != nil
+    }
+
+    /// An SSH alias or `user@host`, as saved by `herdr machine add`.
+    static func isValidSSHTarget(_ target: String) -> Bool {
+        target.range(of: #"^[A-Za-z0-9_][A-Za-z0-9._@:\[\]-]{0,254}$"#, options: .regularExpression) != nil
     }
 
     static func isSafeExecutablePath(_ path: String) -> Bool {

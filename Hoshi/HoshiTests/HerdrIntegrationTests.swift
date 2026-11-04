@@ -428,4 +428,167 @@ final class HerdrIntegrationTests: XCTestCase {
         XCTAssertEqual(state.primaryText, "Agent needs input", "Headlines stay hidden when details are private")
         XCTAssertNil(state.secondaryText)
     }
+
+    // MARK: - Saved machines
+
+    private let machineOutput = """
+    __HERDR_PATH__/opt/homebrew/bin/herdr
+    __HERDR_LIST__
+    name                 status   directory                                        socket
+    default              running  /Users/me/.config/herdr                          /Users/me/.config/herdr/herdr.sock
+    __HERDR_LIST_END__
+    __HERDR_SESSION__default
+    {"id":"cli:agent:list","result":{"agents":[{"agent":"claude","agent_status":"idle","pane_id":"w1:p1","workspace_id":"w1"}]}}
+    __HERDR_MACHINES__
+    [
+      {
+        "id": "18c09f31beb80afa3f51f1557bc2f58b",
+        "label": "build-box",
+        "target": "me@build-box",
+        "session": "default",
+        "enabled": true,
+        "selected": false
+      },
+      {
+        "id": "aa11",
+        "label": "",
+        "target": "gpu",
+        "session": null,
+        "enabled": true,
+        "selected": false
+      },
+      {
+        "id": "bb22",
+        "label": "old",
+        "target": "old-host",
+        "session": "default",
+        "enabled": false,
+        "selected": false
+      }
+    ]
+
+    __HERDR_MACHINES_END__
+    __HERDR_MACHINE__18c09f31beb80afa3f51f1557bc2f58b
+    {"id":"cli:agent:list","result":{"agents":[{"agent":"codex","agent_status":"blocked","pane_id":"w1:p1","workspace_id":"w1"}]}}
+    __HERDR_MACHINE_WS__18c09f31beb80afa3f51f1557bc2f58b
+    {"id":"cli:workspace:list","result":{"type":"workspace_list","workspaces":[{"workspace_id":"w1","label":"api"}]}}
+    __HERDR_MACHINE__aa11
+    {"error":{"code":"endpoint_unavailable","message":"connection failed"},"id":"cli:agent:list"}
+    __HERDR_MACHINE_WS__aa11
+
+    __HERDR_MACHINE__bb22
+    {"error":{"code":"machine_disabled","message":"disabled"},"id":"cli:agent:list"}
+
+    """
+
+    func testDiscoveryAddsOneSessionPerEnabledMachine() throws {
+        let inventory = try XCTUnwrap(HerdrDiscovery.parse(machineOutput))
+
+        XCTAssertEqual(inventory.localSessions.map(\.name), ["default"])
+        XCTAssertEqual(inventory.machineSessions.map(\.displayName), ["build-box", "gpu"],
+                       "Disabled machines are skipped; an empty label falls back to the target")
+
+        let buildBox = try XCTUnwrap(inventory.machineSessions.first)
+        XCTAssertTrue(buildBox.isRunning)
+        XCTAssertEqual(buildBox.name, "default")
+        XCTAssertEqual(buildBox.agents.first?.status, .blocked)
+        XCTAssertEqual(buildBox.agentsByWorkspace.first?.workspace.label, "api")
+        XCTAssertEqual(buildBox.id, "machine:18c09f31beb80afa3f51f1557bc2f58b")
+
+        let gpu = try XCTUnwrap(inventory.machineSessions.last)
+        XCTAssertFalse(gpu.isRunning, "A machine Herdr cannot reach is listed as unreachable")
+        XCTAssertEqual(inventory.runningSessions.count, 2)
+        XCTAssertEqual(inventory.attentionCount, 1)
+
+        // The same pane ID on two hosts resolves to different agents.
+        let local = HerdrAgentTarget(session: "default", paneID: "w1:p1")
+        let remote = buildBox.target(for: try XCTUnwrap(buildBox.agents.first))
+        XCTAssertEqual(remote.machineID, "18c09f31beb80afa3f51f1557bc2f58b")
+        XCTAssertEqual(inventory.session(for: local)?.agent(paneID: "w1:p1")?.agent, "claude")
+        XCTAssertEqual(inventory.session(for: remote)?.agent(paneID: "w1:p1")?.agent, "codex")
+        XCTAssertNotEqual(local.id, remote.id)
+    }
+
+    func testMachineCommandsUseMachineScopeOnly() throws {
+        let id = "18c09f31beb80afa3f51f1557bc2f58b"
+        XCTAssertEqual(
+            HerdrCommand.readAgent(paneID: "w1:p1", session: "default", machineID: id, executable: "/x/herdr", lines: 5),
+            "'/x/herdr' --machine '\(id)' agent read 'w1:p1' --source recent-unwrapped --lines 5"
+        )
+        XCTAssertEqual(
+            HerdrCommand.focusAgent(paneID: "w1:p1", session: "default", machineID: id, executable: "/x/herdr"),
+            "'/x/herdr' --machine '\(id)' agent focus 'w1:p1'"
+        )
+        let keys = try XCTUnwrap(HerdrCommand.sendKeys([.escape], paneID: "w1:p1", session: "default", machineID: id, executable: "/x/herdr"))
+        XCTAssertFalse(keys.contains("--session"), "Herdr rejects --machine combined with --session")
+
+        let text = try XCTUnwrap(HerdrCommand.submitText(
+            "hi", toBlockedAgent: false, paneID: "w1:p1", session: "default", machineID: id, executable: "/x/herdr"
+        ))
+        XCTAssertTrue(text.contains("'--machine' '\(id)'"))
+        XCTAssertNil(HerdrCommand.focusAgent(paneID: "w1:p1", session: "default", machineID: "x;y", executable: "/x/herdr"))
+    }
+
+    func testOpeningAMachineValidatesItsTarget() {
+        XCTAssertEqual(
+            HerdrCommand.openMachine(HerdrMachine(id: "m", label: "b", target: "me@build-box", session: "work"), executable: "/x/herdr"),
+            "'/x/herdr' --remote 'me@build-box' --session 'work'"
+        )
+        XCTAssertEqual(
+            HerdrCommand.openMachine(HerdrMachine(id: "m", label: "b", target: "gpu"), executable: "/x/herdr"),
+            "'/x/herdr' --remote 'gpu'"
+        )
+        XCTAssertNil(HerdrCommand.openMachine(HerdrMachine(id: "m", label: "b", target: "-oProxyCommand=x"), executable: "/x/herdr"))
+        XCTAssertNil(HerdrCommand.openMachine(HerdrMachine(id: "m", label: "b", target: "host; id"), executable: "/x/herdr"))
+    }
+
+    func testMachineEventsNameTheMachineAndCarryItsTarget() throws {
+        let machine = HerdrMachine(id: "m1", label: "build-box", target: "build-box", session: "default")
+        func inventory(_ status: HerdrAgentStatus) -> HerdrInventory {
+            HerdrInventory(executable: "/x/herdr", version: nil, sessions: [
+                HerdrSessionInfo(name: "default", isRunning: true, agents: [
+                    HerdrAgent(paneID: "p1", agent: "claude", status: .working),
+                ]),
+                HerdrSessionInfo(name: "default", isRunning: true, agents: [
+                    HerdrAgent(paneID: "p1", agent: "codex", status: status),
+                ], machine: machine),
+            ])
+        }
+
+        let events = HerdrAgentChangeDetector.events(
+            previous: HerdrAgentChangeDetector.snapshot(of: inventory(.working)),
+            current: inventory(.blocked),
+            hostname: nil
+        )
+        XCTAssertEqual(events.count, 1, "The local agent with the same pane ID is unaffected")
+        XCTAssertEqual(events.first?.title, "Codex on build-box needs input")
+        XCTAssertEqual(events.first?.herdrTarget, HerdrAgentTarget(session: "default", paneID: "p1", machineID: "m1"))
+        XCTAssertTrue(events.first?.message?.contains("via Herdr machine build-box") ?? false)
+    }
+
+    func testMachineAttachmentsResolveAndMatchTheirSession() throws {
+        let inventory = try XCTUnwrap(HerdrDiscovery.parse(machineOutput))
+        let id = "18c09f31beb80afa3f51f1557bc2f58b"
+        XCTAssertEqual(ConnectionCoordinator.resolve(.machine(id: id, paneID: "w1:p1"), in: inventory), .machine(id: id, paneID: "w1:p1"))
+        XCTAssertEqual(ConnectionCoordinator.resolve(.machine(id: id, paneID: "gone"), in: inventory), .machine(id: id, paneID: nil))
+
+        let machineSession = try XCTUnwrap(inventory.machineSessions.first)
+        let localSession = try XCTUnwrap(inventory.localSessions.first)
+        XCTAssertTrue(HerdrAttachment.machine(id: id, paneID: nil).shows(machineSession))
+        XCTAssertFalse(HerdrAttachment.machine(id: id, paneID: nil).shows(localSession))
+        XCTAssertTrue(HerdrAttachment.session("default").shows(localSession))
+        XCTAssertFalse(HerdrAttachment.session("default").shows(machineSession),
+                       "A local session and a machine's session of the same name are different")
+
+        XCTAssertEqual(HerdrAttachment(choice: .herdrMachine(id: id, paneID: nil)), .machine(id: id, paneID: nil))
+        XCTAssertEqual(HerdrAttachment.machine(id: id, paneID: "p").machineID, id)
+    }
+
+    func testTargetsSavedBeforeMachinesStillDecode() throws {
+        let json = #"{"session":"default","paneID":"w1:p1"}"#
+        let target = try JSONDecoder().decode(HerdrAgentTarget.self, from: Data(json.utf8))
+        XCTAssertNil(target.machineID)
+        XCTAssertTrue(target.isValid)
+        XCTAssertFalse(HerdrAgentTarget(session: "default", paneID: "p", machineID: "bad id").isValid)
+    }
 }

@@ -5,8 +5,14 @@ struct HerdrSessionRow: View {
 
     var body: some View {
         HStack {
+            if session.machine != nil {
+                Image(systemName: "server.rack")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22)
+                    .accessibilityHidden(true)
+            }
             VStack(alignment: .leading, spacing: 4) {
-                Text(session.name)
+                Text(session.displayName)
                     .font(.headline)
                 Text(summary)
                     .font(.caption)
@@ -27,6 +33,11 @@ struct HerdrSessionRow: View {
     }
 
     private var summary: String {
+        if let machine = session.machine {
+            guard session.isRunning else { return "Unreachable from this server" }
+            let count = session.agents.count
+            return "\(machine.target) · \(count) agent\(count == 1 ? "" : "s")"
+        }
         guard session.isRunning else { return "Stopped" }
         let count = session.agents.count
         return count == 0 ? "Running" : "\(count) agent\(count == 1 ? "" : "s")"
@@ -37,6 +48,8 @@ struct HerdrAgentRow: View {
     let agent: HerdrAgent
     /// Marks the agent this terminal is showing.
     var isCurrent = false
+    /// The saved machine the agent runs on, when not on this server.
+    var machine: String? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -52,6 +65,12 @@ struct HerdrAgentRow: View {
                         Text(directory)
                             .font(.caption.monospaced())
                             .foregroundStyle(.secondary)
+                    }
+                    if let machine {
+                        Label(machine, systemImage: "server.rack")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
                 Text(agent.title ?? agent.status.label)
@@ -88,9 +107,9 @@ struct HerdrAgentsView: View {
     private var herdr: HerdrInventory? { connectionVM.detectedHerdr }
     private var attachment: HerdrAttachment? { connectionVM.herdrAttachment }
 
-    private var attentionAgents: [(session: String, agent: HerdrAgent)] {
+    private var attentionAgents: [(session: HerdrSessionInfo, agent: HerdrAgent)] {
         (herdr?.runningSessions ?? []).flatMap { session in
-            session.agents.filter { $0.status == .blocked }.map { (session.name, $0) }
+            session.agents.filter { $0.status == .blocked }.map { (session, $0) }
         }
     }
 
@@ -162,10 +181,10 @@ struct HerdrAgentsView: View {
                 Section("Needs Input") {
                     ForEach(attentionAgents, id: \.agent.id) { item in
                         Button {
-                            replyTarget = HerdrAgentTarget(session: item.session, paneID: item.agent.paneID)
+                            replyTarget = item.session.target(for: item.agent)
                         } label: {
                             HStack {
-                                HerdrAgentRow(agent: item.agent)
+                                HerdrAgentRow(agent: item.agent, machine: item.session.machine?.label)
                                 Image(systemName: "chevron.right")
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.tertiary)
@@ -181,17 +200,17 @@ struct HerdrAgentsView: View {
                 ForEach(session.agentsByWorkspace) { group in
                     Section {
                         ForEach(group.agents) { agent in
-                            agentButton(agent, session: session.name)
+                            agentButton(agent, in: session)
                         }
                     } header: {
-                        Text(herdr.runningSessions.count > 1
-                            ? "\(session.name) · \(group.workspace.label)"
-                            : group.workspace.label)
+                        sectionHeader(session: session, workspace: group.workspace, herdr: herdr)
                     }
                 }
             }
 
-            if case .session = attachment {
+            unreachableMachines(herdr)
+
+            if attachment.map({ if case .agent = $0 { false } else { true } }) == true {
                 Section {
                 } footer: {
                     Text("Herdr shares focus between clients, so a desktop attached to the same session switches too.")
@@ -201,55 +220,96 @@ struct HerdrAgentsView: View {
         .refreshable { await connectionVM.refreshHerdr() }
     }
 
-    private func agentButton(_ agent: HerdrAgent, session: String) -> some View {
-        Button {
-            Task { await select(agent, session: session) }
+    @ViewBuilder
+    private func sectionHeader(session: HerdrSessionInfo, workspace: HerdrWorkspace, herdr: HerdrInventory) -> some View {
+        if let machine = session.machine {
+            Label("\(machine.label) · \(workspace.label)", systemImage: "server.rack")
+        } else if herdr.runningSessions.count > 1 {
+            Text("\(session.name) · \(workspace.label)")
+        } else {
+            Text(workspace.label)
+        }
+    }
+
+    @ViewBuilder
+    private func unreachableMachines(_ herdr: HerdrInventory) -> some View {
+        let offline = herdr.machineSessions.filter { !$0.isRunning }
+        if !offline.isEmpty {
+            Section {
+                ForEach(offline) { session in
+                    Label(session.displayName, systemImage: "server.rack")
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Unreachable Machines")
+            } footer: {
+                Text("Herdr on this server could not reach these machines. Run `herdr machine status` there for details.")
+            }
+        }
+    }
+
+    private func agentButton(_ agent: HerdrAgent, in session: HerdrSessionInfo) -> some View {
+        let target = session.target(for: agent)
+        let inPlace = connectionVM.canFocusHerdrInPlace(target)
+        return Button {
+            Task { await select(agent, in: session) }
         } label: {
-            HerdrAgentRow(agent: agent, isCurrent: isCurrent(agent, session: session))
+            HerdrAgentRow(agent: agent, isCurrent: isCurrent(agent, in: session))
         }
         .tint(.primary)
         .disabled(isWorking || !HerdrCommand.isValidIdentifier(agent.paneID))
-        .accessibilityHint(canFocusInPlace(session: session)
+        .accessibilityHint(inPlace
             ? "Shows this agent in the current terminal"
             : "Opens this agent in a new Hoshi session")
         .contextMenu {
             Button {
-                replyTarget = HerdrAgentTarget(session: session, paneID: agent.paneID)
+                replyTarget = target
             } label: {
                 Label("Reply…", systemImage: "text.bubble")
             }
-            if canFocusInPlace(session: session) {
+            if inPlace {
                 Button {
-                    Task { await select(agent, session: session) }
+                    Task { await select(agent, in: session) }
                 } label: {
                     Label("Show Here", systemImage: "eye")
                 }
             }
             if let onOpenInNewSession {
                 Button {
-                    onOpenInNewSession(.agent(session: session, paneID: agent.paneID))
+                    onOpenInNewSession(Self.newSessionAttachment(for: agent, in: session))
                     dismiss()
                 } label: {
-                    Label("Open Agent in New Session", systemImage: "plus.rectangle.on.rectangle")
+                    Label(
+                        session.machine == nil ? "Open Agent in New Session" : "Open on \(session.displayName) in New Session",
+                        systemImage: "plus.rectangle.on.rectangle"
+                    )
                 }
-                Button {
-                    onOpenInNewSession(.session(session))
-                    dismiss()
-                } label: {
-                    Label("Open Herdr \(session) in New Session", systemImage: "square.stack.3d.up")
+                if session.machine == nil {
+                    Button {
+                        onOpenInNewSession(.session(session.name))
+                        dismiss()
+                    } label: {
+                        Label("Open Herdr \(session.name) in New Session", systemImage: "square.stack.3d.up")
+                    }
                 }
             }
         }
     }
 
-    private func canFocusInPlace(session: String) -> Bool {
-        attachment == .session(session)
+    /// Local agents attach directly; agents on a saved machine open that
+    /// machine's Herdr UI focused on the agent, because Herdr does not
+    /// forward interactive attachment.
+    static func newSessionAttachment(for agent: HerdrAgent, in session: HerdrSessionInfo) -> HerdrAttachment {
+        if let machine = session.machine {
+            return .machine(id: machine.id, paneID: agent.paneID)
+        }
+        return .agent(session: session.name, paneID: agent.paneID)
     }
 
-    private func isCurrent(_ agent: HerdrAgent, session: String) -> Bool {
+    private func isCurrent(_ agent: HerdrAgent, in session: HerdrSessionInfo) -> Bool {
         switch attachment {
-        case .session(let name): name == session && agent.focused
-        case .agent(let name, let paneID): name == session && paneID == agent.paneID
+        case .agent(let name, let paneID): session.machine == nil && name == session.name && paneID == agent.paneID
+        case .some(let attachment): attachment.shows(session) && agent.focused
         case nil: false
         }
     }
@@ -261,21 +321,24 @@ struct HerdrAgentsView: View {
         case .agent(let session, let paneID):
             let agent = herdr?.session(named: session)?.agent(paneID: paneID)
             return "Attached to \(agent?.displayName ?? paneID) in \(session)"
+        case .machine(let id, _):
+            return "Showing Herdr on \(herdr?.machine(id: id)?.label ?? "a saved machine")"
         }
     }
 
-    private func select(_ agent: HerdrAgent, session: String) async {
-        if canFocusInPlace(session: session) {
+    private func select(_ agent: HerdrAgent, in session: HerdrSessionInfo) async {
+        let target = session.target(for: agent)
+        if connectionVM.canFocusHerdrInPlace(target) {
             isWorking = true
             defer { isWorking = false }
             do {
-                try await connectionVM.focusHerdrAgent(agent, in: session)
+                try await connectionVM.focusHerdrAgent(target)
                 dismiss()
             } catch {
                 actionError = error.localizedDescription
             }
         } else if let onOpenInNewSession {
-            onOpenInNewSession(.agent(session: session, paneID: agent.paneID))
+            onOpenInNewSession(Self.newSessionAttachment(for: agent, in: session))
             dismiss()
         }
     }

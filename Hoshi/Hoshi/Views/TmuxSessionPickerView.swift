@@ -21,17 +21,17 @@ struct TmuxSessionPickerView: View {
 
     private var filteredHerdrSessions: [HerdrSessionInfo] {
         (herdr?.sessions ?? []).compactMap { session in
-            if matches(session.name) { return session }
-            let agents = session.agents.filter {
+            if matches(session.name) || matches(session.machine?.label) { return session }
+            var filtered = session
+            filtered.agents = session.agents.filter {
                 matches($0.agent) || matches($0.title) || matches($0.directoryName)
             }
-            guard !agents.isEmpty else { return nil }
-            return HerdrSessionInfo(name: session.name, isRunning: session.isRunning, agents: agents)
+            return filtered.agents.isEmpty ? nil : filtered
         }
     }
 
     private var hasHerdrSession: Bool {
-        herdr?.sessions.contains(where: { $0.name == HerdrDiscovery.suggestedSessionName }) ?? false
+        herdr?.session(named: HerdrDiscovery.suggestedSessionName) != nil
     }
 
     private var filteredSessions: [TmuxSessionInfo] {
@@ -177,14 +177,16 @@ struct TmuxSessionPickerView: View {
 
             ForEach(filteredHerdrSessions) { session in
                 Button {
-                    onChoice(.herdrSession(session.name))
+                    onChoice(Self.openChoice(for: session))
                     dismiss()
                 } label: {
                     HerdrSessionRow(session: session)
                 }
                 .tint(.primary)
-                .disabled(!HerdrCommand.isValidSessionName(session.name))
-                .accessibilityHint("Opens this Herdr session")
+                .disabled(!Self.canOpen(session, herdr: herdr))
+                .accessibilityHint(session.machine == nil
+                    ? "Opens this Herdr session"
+                    : "Opens Herdr on this machine through the server")
             }
         } header: {
             Text("Herdr")
@@ -195,19 +197,36 @@ struct TmuxSessionPickerView: View {
         }
 
         ForEach(filteredHerdrSessions.filter { $0.isRunning && !$0.agents.isEmpty }) { session in
-            Section("Agents · \(session.name)") {
+            Section("Agents · \(session.displayName)") {
                 ForEach(session.agents) { agent in
                     Button {
-                        onChoice(.herdrAgent(session: session.name, paneID: agent.paneID))
+                        onChoice(Self.agentChoice(agent, in: session))
                         dismiss()
                     } label: {
                         HerdrAgentRow(agent: agent)
                     }
                     .tint(.primary)
-                    .disabled(!HerdrCommand.isValidIdentifier(agent.paneID))
-                    .accessibilityHint("Attaches directly to this agent's terminal")
+                    .disabled(!HerdrCommand.isValidIdentifier(agent.paneID) || !Self.canOpen(session, herdr: herdr))
+                    .accessibilityHint(session.machine == nil
+                        ? "Attaches directly to this agent's terminal"
+                        : "Opens Herdr on this machine focused on the agent")
                 }
             }
         }
+    }
+
+    static func openChoice(for session: HerdrSessionInfo) -> TmuxChoice {
+        session.machine.map { .herdrMachine(id: $0.id, paneID: nil) } ?? .herdrSession(session.name)
+    }
+
+    static func agentChoice(_ agent: HerdrAgent, in session: HerdrSessionInfo) -> TmuxChoice {
+        session.machine.map { .herdrMachine(id: $0.id, paneID: agent.paneID) }
+            ?? .herdrAgent(session: session.name, paneID: agent.paneID)
+    }
+
+    static func canOpen(_ session: HerdrSessionInfo, herdr: HerdrInventory?) -> Bool {
+        guard let machine = session.machine else { return HerdrCommand.isValidSessionName(session.name) }
+        guard let herdr else { return false }
+        return session.isRunning && HerdrCommand.openMachine(machine, executable: herdr.executable) != nil
     }
 }

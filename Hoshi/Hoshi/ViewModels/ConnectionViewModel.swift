@@ -280,7 +280,13 @@ final class ConnectionViewModel {
     }
 
     func herdrAgent(for target: HerdrAgentTarget) -> HerdrAgent? {
-        detectedHerdr?.session(named: target.session)?.agent(paneID: target.paneID)
+        detectedHerdr?.session(for: target)?.agent(paneID: target.paneID)
+    }
+
+    /// Whether focusing `target` switches what this terminal shows.
+    func canFocusHerdrInPlace(_ target: HerdrAgentTarget) -> Bool {
+        guard let herdrAttachment, let session = detectedHerdr?.session(for: target) else { return false }
+        return herdrAttachment.shows(session)
     }
 
     /// The agent's recent output, without styling.
@@ -289,6 +295,7 @@ final class ConnectionViewModel {
         guard let command = HerdrCommand.readAgent(
             paneID: target.paneID,
             session: target.session,
+            machineID: target.machineID,
             executable: executable,
             lines: lines
         ) else { throw HerdrActionError.invalidTarget }
@@ -301,6 +308,7 @@ final class ConnectionViewModel {
             keys,
             paneID: target.paneID,
             session: target.session,
+            machineID: target.machineID,
             executable: executable
         ) else { throw HerdrActionError.invalidTarget }
         _ = try await runHerdrAction(command)
@@ -315,6 +323,7 @@ final class ConnectionViewModel {
             toBlockedAgent: isBlocked,
             paneID: target.paneID,
             session: target.session,
+            machineID: target.machineID,
             executable: executable
         ) else { throw HerdrActionError.invalidText }
         _ = try await runHerdrAction(command)
@@ -336,16 +345,17 @@ final class ConnectionViewModel {
 
     /// Switches the Herdr UI shown in this terminal to `agent`. Herdr focus is
     /// shared, so other clients attached to the same session follow along.
-    func focusHerdrAgent(_ agent: HerdrAgent, in session: String) async throws {
+    func focusHerdrAgent(_ target: HerdrAgentTarget) async throws {
         guard let herdr = detectedHerdr,
               let command = HerdrCommand.focusAgent(
-                paneID: agent.paneID,
-                session: session,
+                paneID: target.paneID,
+                session: target.session,
+                machineID: target.machineID,
                 executable: herdr.executable
               ) else {
-            throw ErrorMessageFailure(message: "That Herdr agent can no longer be focused.")
+            throw HerdrActionError.invalidTarget
         }
-        _ = try await runRemoteCommand(command)
+        _ = try await runHerdrAction(command)
         await herdrMonitor?.pollNow()
     }
 
