@@ -33,6 +33,10 @@ enum TmuxChoice: Sendable {
     case newNamedSession(String)
     case skip
     case cancel
+    /// Create-or-attach a named Herdr session and show its full UI.
+    case herdrSession(String)
+    /// Attach directly to one Herdr agent pane.
+    case herdrAgent(session: String, paneID: String)
 }
 
 // Detects tmux on a remote host and lists active sessions

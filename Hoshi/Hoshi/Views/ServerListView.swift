@@ -489,6 +489,8 @@ struct ServerListView: View {
     private func tmuxPicker(for session: ManagedSession) -> some View {
         TmuxSessionPickerView(
             sessions: session.connectionVM.detectedTmuxSessions,
+            tmuxAvailable: session.connectionVM.tmuxAvailable,
+            herdr: session.connectionVM.detectedHerdr,
             onRefresh: {
                 Task { await session.connectionVM.refreshTmuxSessions() }
             }
