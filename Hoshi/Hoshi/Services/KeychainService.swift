@@ -264,6 +264,34 @@ final class KeychainService {
         }
     }
 
+    /// Every trusted host key as (Keychain account, OpenSSH public key, creation date).
+    func listKnownHostKeys() throws -> [(account: String, publicKey: String, createdAt: Date?)] {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: servicePrefix,
+            kSecReturnAttributes as String: true,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return [] }
+        guard status == errSecSuccess, let items = result as? [[String: Any]] else {
+            throw SSHConnectionError.keychainError(
+                reason: "Failed to list SSH host keys (status: \(status))"
+            )
+        }
+
+        return items.compactMap { item in
+            guard let account = item[kSecAttrAccount as String] as? String,
+                  account.hasPrefix("hostkey-"),
+                  let data = item[kSecValueData as String] as? Data,
+                  let publicKey = String(data: data, encoding: .utf8) else { return nil }
+            return (account, publicKey, item[kSecAttrCreationDate as String] as? Date)
+        }
+    }
+
     private func knownHostAccount(hostname: String, port: Int, algorithm: String) -> String {
         let normalizedHostname = hostname.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return "hostkey-\(normalizedHostname):\(port):\(algorithm)"

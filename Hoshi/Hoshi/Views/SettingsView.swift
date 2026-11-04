@@ -221,6 +221,13 @@ struct SettingsView: View {
             ))
             .disabled(!appLock.isAvailable && !appLock.isEnabled)
 
+            NavigationLink {
+                KnownHostsView()
+            } label: {
+                Label("Known Hosts", systemImage: "lock.shield")
+            }
+            .accessibilityIdentifier("settings.known-hosts")
+
             if let presentation = appLock.presentedError {
                 ErrorPresentationView(presentation: presentation)
             }
