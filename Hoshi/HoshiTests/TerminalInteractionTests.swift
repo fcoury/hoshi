@@ -1786,6 +1786,12 @@ final class KeyProfileTests: XCTestCase {
         XCTAssertEqual(KeyProfileResolver.resolve(title: "~/Desktop", pinnedID: nil, autoSwitch: true, profiles: profiles()).id, KeyProfile.shellID)
     }
 
+    func testHerdrAttachmentSelectsHerdrUnlessPinned() {
+        XCTAssertEqual(KeyProfileResolver.resolve(title: "claude", pinnedID: nil, attachedID: KeyProfile.herdrID, autoSwitch: true, profiles: profiles()).id, KeyProfile.herdrID)
+        XCTAssertEqual(KeyProfileResolver.resolve(title: "claude", pinnedID: KeyProfile.agentID, attachedID: KeyProfile.herdrID, autoSwitch: true, profiles: profiles()).id, KeyProfile.agentID)
+        XCTAssertEqual(KeyProfileResolver.resolve(title: "claude", pinnedID: nil, attachedID: KeyProfile.herdrID, autoSwitch: false, profiles: profiles()).id, KeyProfile.shellID)
+    }
+
     func testPinAndAutoSwitch() {
         XCTAssertEqual(KeyProfileResolver.resolve(title: "vim", pinnedID: KeyProfile.herdrID, autoSwitch: true, profiles: profiles()).id, KeyProfile.herdrID)
         XCTAssertEqual(KeyProfileResolver.resolve(title: "vim", pinnedID: nil, autoSwitch: false, profiles: profiles()).id, KeyProfile.shellID)

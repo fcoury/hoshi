@@ -577,7 +577,12 @@ struct TerminalView: View {
     // MARK: - Key sets
 
     private var activeKeyProfile: KeyProfile {
-        keyProfiles.resolve(title: managedSession?.terminalTitle, serverID: currentServer?.id)
+        keyProfiles.resolve(
+            title: managedSession?.terminalTitle,
+            serverID: currentServer?.id,
+            // Sessions attached to Herdr get Herdr keys even when the title doesn't say so.
+            attachedID: managedSession?.herdrAttachment != nil ? KeyProfile.herdrID : nil
+        )
     }
 
     /// Reads the connected server's Herdr config.toml (nil when it has none).

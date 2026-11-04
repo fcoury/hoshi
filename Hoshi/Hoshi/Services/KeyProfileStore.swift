@@ -87,10 +87,11 @@ final class KeyProfileStore {
         defaults.set(pins, forKey: Key.pins)
     }
 
-    func resolve(title: String?, serverID: UUID?) -> KeyProfile {
+    func resolve(title: String?, serverID: UUID?, attachedID: String? = nil) -> KeyProfile {
         KeyProfileResolver.resolve(
             title: title,
             pinnedID: pinnedProfileID(for: serverID),
+            attachedID: attachedID,
             autoSwitch: autoSwitch,
             profiles: profiles
         )

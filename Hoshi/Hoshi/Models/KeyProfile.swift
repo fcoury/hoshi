@@ -166,11 +166,13 @@ extension KeyProfile {
 // MARK: - Automatic selection
 
 enum KeyProfileResolver {
-    /// Picks the key set for a terminal: an explicit pin wins, then the first set
-    /// (in `profiles` order) whose pattern matches a word of the title, then Shell.
+    /// Picks the key set for a terminal: an explicit pin wins, then a set implied by
+    /// how the session is attached (e.g. Herdr), then the first set (in `profiles`
+    /// order) whose pattern matches a word of the title, then Shell.
     static func resolve(
         title: String?,
         pinnedID: String?,
+        attachedID: String? = nil,
         autoSwitch: Bool,
         profiles: [KeyProfile]
     ) -> KeyProfile {
@@ -178,7 +180,11 @@ enum KeyProfileResolver {
         if let pinnedID, let pinned = profiles.first(where: { $0.id == pinnedID }) {
             return pinned
         }
-        guard autoSwitch, let title, !title.isEmpty else { return shell }
+        guard autoSwitch else { return shell }
+        if let attachedID, let attached = profiles.first(where: { $0.id == attachedID }) {
+            return attached
+        }
+        guard let title, !title.isEmpty else { return shell }
         let words = titleWords(title)
         for profile in profiles where !profile.isShell {
             if profile.matchPatterns.contains(where: { matches($0, title: title, words: words) }) {
