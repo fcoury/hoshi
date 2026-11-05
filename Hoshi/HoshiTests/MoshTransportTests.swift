@@ -254,6 +254,19 @@ final class MoshStateSyncTests: XCTestCase {
         return instruction
     }
 
+    func testASilentServerIsNoticedAndTheTransmitterWakesForIt() {
+        var sync = MoshStateSync()
+        sync.resetHeartbeat(now: 100)
+        XCTAssertFalse(sync.serverIsSilent(now: 110))
+        sync.heardFromServer(at: 110)
+        XCTAssertFalse(sync.serverIsSilent(now: 110 + MoshStateSync.serverSilenceTimeout - 1))
+        XCTAssertTrue(sync.serverIsSilent(now: 110 + MoshStateSync.serverSilenceTimeout))
+
+        // Heartbeats keep going out every 3 seconds, so the silence check never waits long.
+        _ = sync.nextTransmission(now: 124, timeout: 1)
+        XCTAssertEqual(sync.nextTransmissionDue(timeout: 1), 110 + MoshStateSync.serverSilenceTimeout)
+    }
+
     func testOnlyDiffsFromOurExactStateApply() {
         var sync = MoshStateSync()
         XCTAssertEqual(sync.receive(instruction(old: 0, new: 2)), .applied)

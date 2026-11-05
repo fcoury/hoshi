@@ -9,6 +9,10 @@ struct MoshStateSync: Sendable {
     static let shutdownStateNum = MoshTransportSender.shutdownStateNum
     /// Keepalive interval for the NAT mapping and our acknowledgements, as in mosh.
     static let heartbeatInterval: TimeInterval = 3
+    /// mosh-server heartbeats every 3 seconds too, so this much silence means it is gone
+    /// (it can exit without a word, such as when it never received a client state) or
+    /// the path is broken.
+    static let serverSilenceTimeout: TimeInterval = 15
     /// mosh's blank frame: a full terminal reset (RIS), so nothing an earlier session in
     /// this view left behind (colors, modes, alternate screen) leaks into mosh's diffs,
     /// then scrolling region, attributes and screen as mosh's own clear sets them.
@@ -34,6 +38,8 @@ struct MoshStateSync: Sendable {
     /// the next heartbeat; that lets mosh-server send its next diff from our state.
     private(set) var needsImmediateAck = false
     private(set) var lastTransmitAt: TimeInterval = 0
+    /// When an authenticated instruction last arrived from the server.
+    private(set) var lastHeardAt: TimeInterval = 0
     /// mosh-server draws its first frame as a diff against a blank screen.
     private var terminalNeedsBlankScreen = true
 
@@ -56,6 +62,16 @@ struct MoshStateSync: Sendable {
         guard instruction.oldNum == remoteStateNum else { return .unknownBase }
         remoteStateNum = instruction.newNum
         return .applied
+    }
+
+    /// Records that an authenticated instruction arrived.
+    mutating func heardFromServer(at now: TimeInterval) {
+        lastHeardAt = max(lastHeardAt, now)
+    }
+
+    /// The server hasn't been heard from for `serverSilenceTimeout`.
+    func serverIsSilent(now: TimeInterval) -> Bool {
+        now - lastHeardAt >= Self.serverSilenceTimeout
     }
 
     /// Host bytes ready for the terminal. The first bytes of a session start from a blank
@@ -83,9 +99,10 @@ struct MoshStateSync: Sendable {
         min(1, max(0.05, (smoothedRoundTrip ?? 1) * 2)) + 0.1
     }
 
-    /// Starts the heartbeat clock, such as when a transmit loop starts.
+    /// Starts the heartbeat and silence clocks, such as when a transmit loop starts.
     mutating func resetHeartbeat(now: TimeInterval) {
         lastTransmitAt = now
+        lastHeardAt = now
     }
 
     /// The instruction to send now, if any: new or resent input, else a quick ack or a
@@ -103,8 +120,9 @@ struct MoshStateSync: Sendable {
     }
 
     /// When `nextTransmission` will next have something to send, unless woken earlier.
+    /// Also wakes when the server would count as silent.
     func nextTransmissionDue(timeout: TimeInterval) -> TimeInterval {
-        let heartbeat = lastTransmitAt + Self.heartbeatInterval
+        let heartbeat = min(lastTransmitAt + Self.heartbeatInterval, lastHeardAt + Self.serverSilenceTimeout)
         guard let resend = sender.retransmitDeadline(timeout: timeout) else { return heartbeat }
         return min(heartbeat, resend)
     }

@@ -391,7 +391,47 @@ final class ConnectionCoordinatorTests: XCTestCase {
         XCTAssertEqual(session.connectionState, .connected)
         XCTAssertEqual(session.debugStats.decryptSuccesses, 1)
         XCTAssertEqual(session.debugStats.decodedHostBytes, 0)
-        XCTAssertEqual(transport.sentDatagrams.count, 1)
+        let serverSide = try MoshProtocolEngine(key: info.sessionKey)
+        var probes = 0
+        for datagram in transport.sentDatagrams {
+            if let decoded = try await serverSide.decode(datagram, direction: .toServer),
+               decoded.instruction.newNum == 0 {
+                probes += 1
+            }
+        }
+        XCTAssertEqual(probes, 1, "One answered probe is enough")
+        await session.disconnect()
+    }
+
+    func testConnectingSendsATerminalSizeEvenWithoutAView() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        let response = try await makeServerDatagrams(key: info.sessionKey).first!
+        transport.onSend = { transport.yield(response) }
+
+        // A restored session connects before any terminal view reports its size. mosh-server
+        // starts the shell only once it receives a client state, and exits a minute later
+        // without one.
+        try await session.establishUDP(info: info, timeout: 1)
+
+        let serverSide = try MoshProtocolEngine(key: info.sessionKey)
+        let expected = MoshUserInput.encodeResize(
+            width: Int32(MoshSession.initialTerminalSize.cols),
+            height: Int32(MoshSession.initialTerminalSize.rows)
+        )
+        var sentSize = false
+        let deadline = Date().addingTimeInterval(1)
+        while !sentSize, Date() < deadline {
+            for datagram in transport.sentDatagrams {
+                if let decoded = try await serverSide.decode(datagram, direction: .toServer),
+                   decoded.instruction.newNum == 1, decoded.instruction.diff == expected {
+                    sentSize = true
+                }
+            }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertTrue(sentSize)
         await session.disconnect()
     }
 
