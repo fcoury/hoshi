@@ -123,6 +123,12 @@ struct GhosttyTerminalView: UIViewRepresentable {
 
     func updateUIView(_ uiView: GhosttyTerminalSurfaceView, context: Context) {
         let coordinator = context.coordinator
+        // The surface and coordinator are bound to one session in makeUIView, so callers must
+        // give each session its own view identity (`.id(session.id)`).
+        assert(
+            coordinator.connectionVM === connectionVM,
+            "GhosttyTerminalView was reused for a different session"
+        )
         uiView.onInputData = { [weak coordinator] data in
             coordinator?.sendInput(data)
         }
