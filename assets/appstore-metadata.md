@@ -18,12 +18,14 @@ Powered by the Ghostty terminal engine with Metal rendering, Hoshi delivers a fa
 
 - Multiple simultaneous SSH and Mosh connections
 - tmux discovery, session creation, and automatic attachment
+- Herdr integration: attach to Herdr sessions or agents, see their status, and reply to them from the app
 - A local-first inbox for coding-agent updates, with optional notifications and Live Activities
 - Secure remote file browsing and SFTP uploads over host-key-verified connections
 - Private on-device voice dictation with editable, in-memory drafts
 - Device-local SSH key generation and public-key sharing
 - Live session thumbnails and swipe navigation between sessions
-- Customizable keyboard toolbar with Esc, Ctrl, Opt, Tab, and arrow keys
+- Context-aware keyboard toolbar with custom keys, Herdr actions, and an arrow-key joystick
+- Host-key verification with a trust prompt and a Known Hosts list
 - Touch selection, copy and paste, scrollback gestures, and pinch-to-zoom font sizing
 - More than 50 bundled Nerd Fonts and configurable terminal themes
 - Mosh support for roaming between Wi-Fi and cellular without dropping sessions
@@ -40,11 +42,12 @@ ssh,mosh,terminal,server,shell,remote,console,devops,tmux,cli,linux,coding,agent
 ## Promotional Text (170 chars max, can be updated without review)
 Monitor coding agents, browse remote files, dictate private prompts, and work in a fast SSH & Mosh terminal powered by Ghostty.
 
-## What's New (Version 1.1.0)
-- Monitor coding agents with a local inbox, optional notifications, and Live Activities.
-- Browse remote files and upload documents or photos securely over SFTP.
-- Dictate private prompts with on-device speech recognition and share generated SSH public keys.
-- Improved text selection, copy and paste, scrolling, fonts, themes, and connection reliability.
+## What's New (Version 1.2.0)
+- Herdr support: attach to Herdr sessions or agents, see what your agents are doing, and reply from the app or a Live Activity.
+- A new keyboard toolbar with key sets for each context, custom keys, and a long-press arrow joystick.
+- Verify servers with a host-key trust prompt and manage them in Known Hosts.
+- Much more reliable Mosh: no lost keystrokes, cleaner screens, faster reconnects, and clear help when mosh-server can't start.
+- A fresh app icon, plus many fixes for text selection, the keyboard, and iPad sessions.
 
 ## Support URL
 https://gethoshi.app
