@@ -44,6 +44,16 @@ final class ConnectionViewModel {
     /// Set before connecting to open a Herdr target directly.
     @ObservationIgnored
     var preferredHerdrAttachment: HerdrAttachment?
+    /// A mosh-server an earlier connection of this session left running (the app was
+    /// killed, or it never acknowledged our shutdown); the next Mosh launch stops it.
+    var moshServerPIDToReplace: Int32?
+    /// Called once a connection is established, so the session's saved state can follow.
+    var onConnectionEstablished: (() -> Void)?
+
+    /// The mosh-server to stop if this session is restored after the app was killed.
+    var runningMoshServerPID: Int32? {
+        moshSession?.runningServerPID ?? moshServerPIDToReplace
+    }
 
     var herdrAttentionCount: Int { detectedHerdr?.attentionCount ?? 0 }
     /// An agent whose reply card should open over this terminal.
@@ -598,10 +608,15 @@ final class ConnectionViewModel {
         connectionTask?.cancel()
         connectionTask = nil
         await stopHerdrMonitor()
+        let previousMosh = moshSession
         await coordinator?.cancel()
         coordinator = nil
         await moshSession?.disconnect()
         await sshSession?.disconnect()
+        // Still set if the old server never acknowledged the shutdown (it was unreachable).
+        if let leftover = previousMosh?.runningServerPID {
+            moshServerPIDToReplace = leftover
+        }
         moshSession = nil
         sshSession = nil
 
@@ -766,6 +781,7 @@ final class ConnectionViewModel {
         while !Task.isCancelled, connectionGeneration == generation {
             let coordinator = ConnectionCoordinator()
             coordinator.preferredHerdrAttachment = preferredHerdrAttachment
+            coordinator.replacingMoshServerPID = moshServerPIDToReplace
             self.coordinator = coordinator
             coordinator.onPhaseChanged = { [weak self] phase in
                 self?.connectionPhase = phase.statusText
@@ -789,6 +805,8 @@ final class ConnectionViewModel {
                 applyCoordinatorOutcome(outcome)
                 if connectionState == .connected {
                     server.lastConnected = Date()
+                    moshServerPIDToReplace = nil
+                    onConnectionEstablished?()
                 }
                 return
             } catch is CancellationError {

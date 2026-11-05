@@ -63,6 +63,18 @@ final class MoshSession: ObservableObject {
     /// follows isn't mistaken for a network drop and retried.
     private(set) var sessionEndedNormally = false
 
+    /// The current mosh-server's process ID, as it reported at launch.
+    private(set) var serverPID: Int32?
+    /// A mosh-server left running by an earlier connection of this session, stopped when
+    /// the next one launches.
+    var replacingServerPID: Int32?
+
+    /// The server's PID while it may still be running: not after it acknowledged our
+    /// shutdown or ended the session itself.
+    var runningServerPID: Int32? {
+        stateSync.clientShutdownAcknowledged || sessionEndedNormally ? nil : serverPID
+    }
+
     /// SSP state for the current mosh-server; survives socket replacement during recovery.
     private var stateSync = MoshStateSync()
     private var consecutiveDatagramFailures = 0
@@ -178,7 +190,11 @@ final class MoshSession: ObservableObject {
         do {
             connectionState = .moshStarting
             let bootstrap = try makeBootstrapService(client: client)
-            let info = try await bootstrap.startMoshServer(initialCommand: initialCommand)
+            let info = try await bootstrap.startMoshServer(
+                initialCommand: initialCommand,
+                replacingServerPID: replacingServerPID
+            )
+            replacingServerPID = nil
             try Task.checkCancellation()
             try await establishUDP(info: info, timeout: udpTimeout)
             try Task.checkCancellation()
@@ -391,6 +407,7 @@ final class MoshSession: ObservableObject {
         transportGeneration = UUID()
         sessionEndedNormally = false
         stateSync = MoshStateSync()
+        serverPID = info.serverPID
         outputClosed = false
         consecutiveDatagramFailures = 0
         debugSendInstructionCount = 0

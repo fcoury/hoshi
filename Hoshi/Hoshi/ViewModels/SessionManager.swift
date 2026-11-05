@@ -38,6 +38,7 @@ final class SessionManager {
     func createSession(for server: Server) -> ManagedSession? {
         guard sessions.count < Self.maxSessions else { return nil }
         let session = ManagedSession(server: server)
+        trackConnections(of: session)
         configureAgentMonitoring(for: session)
         promoteSessionToFront(session)
         attachAgentEventCenter()
@@ -139,8 +140,10 @@ final class SessionManager {
                     createdAt: descriptor.createdAt,
                     lastAccessedAt: descriptor.lastAccessedAt,
                     tmuxSession: descriptor.tmuxSession,
-                    herdrAttachment: descriptor.herdrAttachment
+                    herdrAttachment: descriptor.herdrAttachment,
+                    moshServerPID: descriptor.moshServerPID
                 )
+                trackConnections(of: session)
                 configureAgentMonitoring(for: session)
                 return session
             }
@@ -196,6 +199,14 @@ final class SessionManager {
             sessions.insert(existing, at: 0)
         } else {
             sessions.insert(session, at: 0)
+        }
+    }
+
+    /// Saves the session again whenever it connects, so its mosh-server PID is current.
+    private func trackConnections(of session: ManagedSession) {
+        session.connectionVM.onConnectionEstablished = { [weak self, weak session] in
+            guard let self, let session else { return }
+            self.recordSessionUpdate(session)
         }
     }
 

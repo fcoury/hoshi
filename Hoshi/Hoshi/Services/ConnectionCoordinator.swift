@@ -109,6 +109,8 @@ final class ConnectionCoordinator {
     /// session or open an agent in a new Hoshi session. Ignored when Herdr is
     /// not found on the host.
     var preferredHerdrAttachment: HerdrAttachment?
+    /// A mosh-server this session left running earlier, stopped by the next launch.
+    var replacingMoshServerPID: Int32?
     private(set) var fallbackError: (any Error)?
     private var server: Server?
     private var password: String?
@@ -408,6 +410,7 @@ final class ConnectionCoordinator {
         guard let server else { throw ConnectionCoordinatorError.bootstrapUnavailable }
         onPhaseChanged?(.sshBootstrap)
         let session = MoshSession(server: server)
+        session.replacingServerPID = replacingMoshServerPID
         moshSession = session
         sshSession = nil
         activeTransport = .mosh

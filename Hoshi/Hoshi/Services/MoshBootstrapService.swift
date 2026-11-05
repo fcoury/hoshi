@@ -8,6 +8,8 @@ struct MoshConnectionInfo: Sendable {
     let sessionKey: Data
     let sessionKeyBase64: String
     let serverIP: String
+    /// mosh-server's process ID, so a later session can stop it if this one is abandoned.
+    var serverPID: Int32? = nil
 }
 
 // Package managers we can detect on the remote host
@@ -101,13 +103,19 @@ final class MoshBootstrapService {
 
     // Start mosh-server and parse connection info from its output
     // mosh-server prints: MOSH CONNECT <port> <base64-key>
-    func startMoshServer(initialCommand: String? = nil) async throws -> MoshConnectionInfo {
+    /// Starts mosh-server. `replacingServerPID` is a mosh-server this session left running
+    /// earlier (the app was killed before it could shut it down); it is stopped first.
+    func startMoshServer(
+        initialCommand: String? = nil,
+        replacingServerPID: Int32? = nil
+    ) async throws -> MoshConnectionInfo {
         let output: String
         do {
             output = try await runCommand(Self.serverLaunchCommand(
                 configuredServerPath: configuredServerPath,
                 portRange: portRange,
-                initialCommand: initialCommand
+                initialCommand: initialCommand,
+                replacingServerPID: replacingServerPID
             ))
         } catch let failure as SSHClient.CommandFailed {
             // The launch command reports mosh-server's status itself, so this means the
@@ -144,8 +152,17 @@ final class MoshBootstrapService {
             udpPort: port,
             sessionKey: keyData,
             sessionKeyBase64: keyString,
-            serverIP: serverIP
+            serverIP: serverIP,
+            serverPID: Self.parseServerPID(output)
         )
+    }
+
+    /// mosh-server reports "[mosh-server detached, pid = 1234]" once it is running.
+    static func parseServerPID(_ output: String) -> Int32? {
+        guard let range = output.range(of: #"\[mosh-server detached, pid = (\d+)\]"#, options: .regularExpression) else {
+            return nil
+        }
+        return Int32(output[range].filter(\.isNumber))
     }
 
     // Parse "MOSH CONNECT <port> <key>" from mosh-server output
@@ -238,7 +255,8 @@ final class MoshBootstrapService {
     static func serverLaunchCommand(
         configuredServerPath: String?,
         portRange: MoshPortRange?,
-        initialCommand: String?
+        initialCommand: String?,
+        replacingServerPID: Int32? = nil
     ) -> String {
         let binary = configuredServerPath?.trimmingCharacters(in: .whitespacesAndNewlines)
         let executable = shellEscape(binary.flatMap { $0.isEmpty ? nil : $0 } ?? "mosh-server")
@@ -250,7 +268,11 @@ final class MoshBootstrapService {
         // A client that vanishes without shutting down (the app was killed in the background)
         // must not leave the shell running forever. Respect a timeout the user already set.
         let networkTimeout = "MOSH_SERVER_NETWORK_TMOUT=\"${MOSH_SERVER_NETWORK_TMOUT:-\(orphanedServerTimeout)}\""
-        let command = "[ -n \"$SSH_CONNECTION\" ] && printf \"\\nMOSH SSH_CONNECTION %s\\n\" \"$SSH_CONNECTION\"; \(networkTimeout) \(executable) new -s -c 256 -l LANG=en_US.UTF-8\(terminalEnvironment)\(rangeArgument)\(commandArgument); printf \"\\n\(MoshLaunchFailure.exitMarker) %s\\n\" \"$?\""
+        // Stop only a process that is still a mosh-server; kill only reaches our own processes.
+        let stopPrevious = replacingServerPID.map {
+            "case \"$(ps -p \($0) -o comm= 2>/dev/null)\" in *mosh-server*) kill \($0) 2>/dev/null;; esac; "
+        } ?? ""
+        let command = "\(stopPrevious)[ -n \"$SSH_CONNECTION\" ] && printf \"\\nMOSH SSH_CONNECTION %s\\n\" \"$SSH_CONNECTION\"; \(networkTimeout) \(executable) new -s -c 256 -l LANG=en_US.UTF-8\(terminalEnvironment)\(rangeArgument)\(commandArgument); printf \"\\n\(MoshLaunchFailure.exitMarker) %s\\n\" \"$?\""
         return "sh -lc \(shellEscape(command)) 2>&1"
     }
 
