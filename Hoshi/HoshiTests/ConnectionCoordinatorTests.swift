@@ -2,6 +2,7 @@ import GhosttyKit
 import SwiftData
 import UIKit
 import XCTest
+import Network
 @testable import Hoshi
 
 @MainActor
@@ -372,6 +373,111 @@ final class ConnectionCoordinatorTests: XCTestCase {
         XCTAssertEqual(session.debugStats.decodedHostBytes, 0)
         XCTAssertEqual(transport.sentDatagrams.count, 1)
         await session.disconnect()
+    }
+
+    func testServerShutdownStateEndsMoshSessionWithoutRecovery() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        let response = try await makeServerDatagrams(key: info.sessionKey).first!
+        transport.onSend = { transport.yield(response) }
+        try await session.establishUDP(info: info, timeout: 1)
+        transport.onSend = nil
+        let sentBeforeShutdown = transport.sentDatagrams.count
+
+        // The remote shell exited: mosh-server sends its final state numbered UInt64.max.
+        var shutdown = MoshTransportInstruction()
+        shutdown.oldNum = 0
+        shutdown.newNum = MoshSession.shutdownStateNum
+        for datagram in try await makeServerDatagrams(key: info.sessionKey, instruction: shutdown, firstSequence: 2) {
+            transport.yield(datagram)
+        }
+
+        let deadline = Date().addingTimeInterval(1)
+        while session.connectionState != .disconnected, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        XCTAssertEqual(session.connectionState, .disconnected)
+        XCTAssertTrue(session.sessionEndedNormally)
+        XCTAssertEqual(transport.connectCount, 1, "A finished session must not start UDP recovery")
+        XCTAssertFalse(transport.isReady)
+
+        let serverSide = try MoshProtocolEngine(key: info.sessionKey)
+        var acks: [UInt64] = []
+        for datagram in transport.sentDatagrams.dropFirst(sentBeforeShutdown) {
+            if let decoded = try await serverSide.decode(datagram, direction: .toServer) {
+                acks.append(decoded.instruction.ackNum)
+            }
+        }
+        XCTAssertTrue(acks.contains(MoshSession.shutdownStateNum), "mosh-server needs the shutdown acked to exit")
+    }
+
+    func testShutdownStateWithUnknownBaseIsNotTreatedAsSessionEnd() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        let response = try await makeServerDatagrams(key: info.sessionKey).first!
+        transport.onSend = { transport.yield(response) }
+        try await session.establishUDP(info: info, timeout: 1)
+        transport.onSend = nil
+
+        // A shutdown diff from a base we never reached can't be applied; wait for the retransmit.
+        var shutdown = MoshTransportInstruction()
+        shutdown.oldNum = 7
+        shutdown.newNum = MoshSession.shutdownStateNum
+        for datagram in try await makeServerDatagrams(key: info.sessionKey, instruction: shutdown, firstSequence: 2) {
+            transport.yield(datagram)
+        }
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertEqual(session.connectionState, .connected)
+        XCTAssertFalse(session.sessionEndedNormally)
+        await session.disconnect()
+    }
+
+    func testMoshUDPTargetsTheResolvedAddressMoshServerBoundTo() {
+        // A hostname resolving to IPv4 and a scoped link-local address: SSH arrived over IPv6,
+        // so mosh-server bound there and UDP must keep the client-side interface scope.
+        let candidates = ["192.168.1.20", "fe80::1c2:3%en0"]
+        XCTAssertEqual(
+            MoshBootstrapService.udpHost(serverIP: "fe80::1c2:3%en7", hostname: "mac.local", candidates: candidates),
+            "fe80::1c2:3%en0"
+        )
+        XCTAssertEqual(
+            MoshBootstrapService.udpHost(serverIP: "192.168.1.20", hostname: "mac.local", candidates: candidates),
+            "192.168.1.20"
+        )
+        // sshd on a dual-stack socket reports IPv4 clients as IPv4-mapped IPv6.
+        XCTAssertEqual(
+            MoshBootstrapService.udpHost(serverIP: "::ffff:192.168.1.20", hostname: "mac.local", candidates: candidates),
+            "192.168.1.20"
+        )
+    }
+
+    func testMoshUDPFallsBackToHostnameWhenServerAddressIsNotResolvable() {
+        // Behind NAT the server reports its private address; keep using the name.
+        XCTAssertEqual(
+            MoshBootstrapService.udpHost(serverIP: "10.0.0.5", hostname: "example.com", candidates: ["203.0.113.9"]),
+            "example.com"
+        )
+        XCTAssertEqual(
+            MoshBootstrapService.udpHost(serverIP: nil, hostname: "example.com", candidates: ["203.0.113.9"]),
+            "example.com"
+        )
+    }
+
+    func testMoshServerIPIsReadFromSSHConnectionLine() {
+        let output = "motd\nMOSH SSH_CONNECTION fe80::9%en0 51234 fe80::1c2:3%en0 22\n\nMOSH CONNECT 60001 abc\n"
+        XCTAssertEqual(MoshBootstrapService.parseServerIPFromSSHConnection(output), "fe80::1c2:3%en0")
+    }
+
+    func testNumericHostResolutionKeepsLiteralsAndScopes() throws {
+        XCTAssertEqual(MoshBootstrapService.resolveNumericHosts("127.0.0.1", port: 60001), ["127.0.0.1"])
+        XCTAssertEqual(MoshBootstrapService.resolveNumericHosts("fe80::1%lo0", port: 60001), ["fe80::1%lo0"])
+        // The scoped literal must survive into the UDP endpoint's interface.
+        let address = try XCTUnwrap(IPv6Address("fe80::1%lo0"))
+        XCTAssertEqual(address.interface?.name, "lo0")
     }
 
     func testUnauthenticatedResponseCannotMarkMoshConnected() async throws {
@@ -1025,7 +1131,8 @@ final class ConnectionCoordinatorTests: XCTestCase {
 
     private func makeServerDatagrams(
         key: Data,
-        instruction: MoshTransportInstruction = MoshTransportInstruction()
+        instruction: MoshTransportInstruction = MoshTransportInstruction(),
+        firstSequence: UInt64 = 1
     ) async throws -> [Data] {
         let engine = try MoshProtocolEngine(key: key)
         let clientDatagrams = try await engine.encode(instruction)
@@ -1035,7 +1142,7 @@ final class ConnectionCoordinatorTests: XCTestCase {
             let plaintext = try crypto.decrypt(datagram: datagram, direction: .toServer).plaintext
             return try crypto.encrypt(
                 plaintext: plaintext,
-                nonce: MoshNonce(direction: .toClient, sequenceNumber: UInt64(index + 1))
+                nonce: MoshNonce(direction: .toClient, sequenceNumber: firstSequence + UInt64(index))
             )
         }
     }
