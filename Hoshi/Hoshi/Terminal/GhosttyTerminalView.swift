@@ -761,8 +761,12 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
             return
         }
 
-        guard let surface else { return }
+        guard let surface else {
+            TerminalCaptureRecorder.note("dropped \(bytes.count) bytes: no surface")
+            return
+        }
         let data = Data(bytes)
+        TerminalCaptureRecorder.record(data)
         data.withUnsafeBytes { buffer in
             guard let base = buffer.baseAddress else { return }
             base.assumingMemoryBound(to: CChar.self).withMemoryRebound(to: CChar.self, capacity: data.count) { charPtr in
@@ -1686,6 +1690,8 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
                 UInt32(targetPixels.height)
             )
             lastSurfacePixelSize = targetPixels
+            let resized = ghostty_surface_size(surface)
+            TerminalCaptureRecorder.note("size \(resized.columns)x\(resized.rows)")
         }
 
         let snapped = geometry?.snappedSize ?? CGSize(width: targetPixels.width / scale, height: targetPixels.height / scale)
@@ -2581,5 +2587,33 @@ private final class WeakDisplayLinkTarget: NSObject {
 
     @objc func tick() {
         onTick()
+    }
+}
+
+/// Debug aid: with HOSHI_TERMINAL_CAPTURE=1, every chunk written to a terminal (base64, one
+/// per line) and every grid resize ("# ..." lines) is appended to
+/// Library/Caches/terminal-capture.log, so a rendering bug can be replayed offline.
+enum TerminalCaptureRecorder {
+    private static let handle: FileHandle? = {
+        #if DEBUG
+        guard ProcessInfo.processInfo.environment["HOSHI_TERMINAL_CAPTURE"] == "1",
+              let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+        else { return nil }
+        let url = caches.appendingPathComponent("terminal-capture.log")
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        return try? FileHandle(forWritingTo: url)
+        #else
+        return nil
+        #endif
+    }()
+
+    static func record(_ data: Data) {
+        guard let handle else { return }
+        handle.write(Data((data.base64EncodedString() + "\n").utf8))
+    }
+
+    static func note(_ message: String) {
+        guard let handle else { return }
+        handle.write(Data("# \(Date().timeIntervalSince1970) \(message)\n".utf8))
     }
 }
