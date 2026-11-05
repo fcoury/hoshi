@@ -265,12 +265,14 @@ final class KeychainService {
     }
 
     /// Every trusted host key as (Keychain account, OpenSSH public key, creation date).
+    ///
+    /// The service also holds passwords and private keys, so enumerate attributes only and
+    /// fetch item data just for `hostkey-` accounts; secrets never get loaded into memory here.
     func listKnownHostKeys() throws -> [(account: String, publicKey: String, createdAt: Date?)] {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: servicePrefix,
             kSecReturnAttributes as String: true,
-            kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitAll,
         ]
 
@@ -286,10 +288,24 @@ final class KeychainService {
         return items.compactMap { item in
             guard let account = item[kSecAttrAccount as String] as? String,
                   account.hasPrefix("hostkey-"),
-                  let data = item[kSecValueData as String] as? Data,
+                  let data = knownHostKeyData(account: account),
                   let publicKey = String(data: data, encoding: .utf8) else { return nil }
             return (account, publicKey, item[kSecAttrCreationDate as String] as? Date)
         }
+    }
+
+    private func knownHostKeyData(account: String) -> Data? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: servicePrefix,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess else { return nil }
+        return result as? Data
     }
 
     private func knownHostAccount(hostname: String, port: Int, algorithm: String) -> String {
