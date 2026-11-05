@@ -288,6 +288,11 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
     }
 
     private static var surfaceRegistry: [UnsafeRawPointer: WeakViewRef] = [:]
+    /// Views keyed by the `userdata` pointer handed to Ghostty. Callbacks resolve
+    /// through this instead of `takeUnretainedValue()`, so a callback fired while
+    /// the view is tearing down (for example from `ghostty_surface_free` in
+    /// `deinit`) finds nothing instead of touching a deallocating object.
+    private static var userdataRegistry: [UnsafeRawPointer: WeakViewRef] = [:]
     private static let registryLock = NSLock()
 
     private let app: ghostty_app_t?
@@ -523,6 +528,7 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
         NotificationCenter.default.removeObserver(self)
         scrollbarFadeTimer?.invalidate()
         scrollbarOverlay.removeFromSuperview()
+        Self.unregisterUserdata(of: self)
         if let surface {
             Self.unregister(surface: surface)
             ghostty_surface_free(surface)
@@ -1586,6 +1592,7 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
         ))
         config.scale_factor = max(1, window?.screen.scale ?? traitCollection.displayScale)
         config.font_size = Float(fontSize)
+        Self.registerUserdata(of: self)
 
         guard let surface = ghostty_surface_new(app, &config) else {
             return
@@ -1604,11 +1611,12 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
         updateSurfaceFocus()
 
         ghostty_surface_set_pty_input_callback(surface) { userdata, data, len in
-            guard let userdata, let data, len > 0 else { return }
-            let view = Unmanaged<GhosttyTerminalSurfaceView>.fromOpaque(userdata).takeUnretainedValue()
+            guard let data, len > 0,
+                  let view = GhosttyTerminalSurfaceView.liveView(userdata: userdata)
+            else { return }
             let input = Data(bytes: data, count: Int(len))
-            DispatchQueue.main.async {
-                view.handlePtyInputCallback(input)
+            DispatchQueue.main.async { [weak view] in
+                view?.handlePtyInputCallback(input)
             }
         }
     }
@@ -2148,6 +2156,29 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
         let ptr = UnsafeRawPointer(surface)
         registryLock.lock()
         surfaceRegistry.removeValue(forKey: ptr)
+        registryLock.unlock()
+    }
+
+    /// The live view for a Ghostty `userdata` pointer, or nil once the view has
+    /// started tearing down.
+    static func liveView(userdata: UnsafeMutableRawPointer?) -> GhosttyTerminalSurfaceView? {
+        guard let userdata else { return nil }
+        registryLock.lock()
+        defer { registryLock.unlock() }
+        return userdataRegistry[UnsafeRawPointer(userdata)]?.view
+    }
+
+    private static func registerUserdata(of view: GhosttyTerminalSurfaceView) {
+        let ptr = UnsafeRawPointer(Unmanaged.passUnretained(view).toOpaque())
+        registryLock.lock()
+        userdataRegistry[ptr] = WeakViewRef(view)
+        registryLock.unlock()
+    }
+
+    private static func unregisterUserdata(of view: GhosttyTerminalSurfaceView) {
+        let ptr = UnsafeRawPointer(Unmanaged.passUnretained(view).toOpaque())
+        registryLock.lock()
+        userdataRegistry.removeValue(forKey: ptr)
         registryLock.unlock()
     }
 }
