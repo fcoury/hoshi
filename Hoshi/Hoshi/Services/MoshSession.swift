@@ -55,6 +55,10 @@ final class MoshSession: ObservableObject {
     private var udpHost: String?
     private var udpPort: UInt16?
     private var pendingTerminalSize: (cols: Int, rows: Int)?
+    /// Sent on connect when no view has reported a size yet (a session restored in the
+    /// background). mosh-server starts the shell only once it receives a client state, and
+    /// exits after 60 seconds without one. The view's real size replaces it.
+    static let initialTerminalSize = (cols: 80, rows: 24)
 
     /// mosh marks the last state of a session with this number, in either direction.
     static let shutdownStateNum = MoshStateSync.shutdownStateNum
@@ -446,9 +450,8 @@ final class MoshSession: ObservableObject {
         recoveryStartedAt = nil
 
         startTransmitter()
-        if let size = pendingTerminalSize {
-            await resize(cols: size.cols, rows: size.rows)
-        }
+        let size = pendingTerminalSize ?? Self.initialTerminalSize
+        await resize(cols: size.cols, rows: size.rows)
 
         // Start network monitoring for auto-reconnect
         startNetworkWatch()
@@ -573,6 +576,7 @@ final class MoshSession: ObservableObject {
             }
             debugDecryptSuccessCount += 1
             recordRoundTripSample(decoded.roundTripSample)
+            stateSync.heardFromServer(at: CACurrentMediaTime())
             let instruction = decoded.instruction
             debugInstructionDecodeCount += 1
             let prevRemote = stateSync.remoteStateNum
@@ -702,6 +706,11 @@ final class MoshSession: ObservableObject {
                       self.transportGeneration == generation,
                       self.connectionState == .connected,
                       self.recoveryStatus == .idle else { return }
+
+                if self.stateSync.serverIsSilent(now: CACurrentMediaTime()) {
+                    self.requestRecovery(trigger: "server silent")
+                    return
+                }
 
                 let timeout = self.retransmitTimeout
                 do {
