@@ -12,7 +12,9 @@ read -r A1 A2 A3 <<<"${SHOTS_AGENTS:-builder reviewer writer}"
 # SHOTS_HOLD=1: reviewer waits for /tmp/shots/block, writer for /tmp/shots/finish
 # (see scripts/screenshots/trigger.sh), so Hoshi sees those changes happen.
 rm -rf /tmp/shots && mkdir -p /tmp/shots
-if [ "${SHOTS_HOLD:-0}" = 1 ]; then HB="--hold /tmp/shots/block"; HF="--hold /tmp/shots/finish"; else HB=""; HF=""; fi
+# SHOTS_HOLD=2 (video): also the builder waits for /tmp/shots/start.
+if [ "${SHOTS_HOLD:-0}" != 0 ]; then HB="--hold /tmp/shots/block"; HF="--hold /tmp/shots/finish"; else HB=""; HF=""; fi
+if [ "${SHOTS_HOLD:-0}" = 2 ]; then HS="--start /tmp/shots/start"; else HS=""; fi
 
 tmux kill-server 2>/dev/null || true
 tmux -L herdr kill-server 2>/dev/null || true
@@ -62,7 +64,7 @@ EOF
   ws1=$($H workspace list | python3 -c 'import json,sys;print(json.load(sys.stdin)["result"]["workspaces"][0]["workspace_id"])')
   $H workspace rename "$ws1" hoshi >/dev/null 2>&1 || true
   p1=$($H pane list | python3 -c 'import json,sys;print(json.load(sys.stdin)["result"]["panes"][0]["pane_id"])')
-  $H pane run "$p1" "/opt/shots/agent.py working --label $A1" >/dev/null
+  $H pane run "$p1" "/opt/shots/agent.py working --label $A1 $HS" >/dev/null
   p2=$($H pane split "$p1" --direction down --no-focus | python3 -c 'import json,sys;d=json.load(sys.stdin)["result"];print(d.get("pane_id") or d["pane"]["pane_id"])')
   $H pane run "$p2" "/opt/shots/agent.py approval --label $A2 $HB" >/dev/null
   $H workspace create --cwd "$HOME/hoshi" --label site --no-focus >/dev/null

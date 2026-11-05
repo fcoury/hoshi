@@ -33,6 +33,26 @@ Store Connect with no alpha channel. Preview the slides with `bun dev`.
 `SKIP_BUILD=1` reuses the last build; a second argument picks runs, e.g.
 `capture.sh iphone-6.3 agents`.
 
+## App Preview video
+
+```bash
+scripts/screenshots/preview.sh iphone-6.3          # records two takes
+(cd assets/screenshot-generator && bun run export -- --cards)
+node scripts/screenshots/compose-preview.mjs       # -> assets/app-preview/iphone-6.9.mp4
+```
+
+`preview.sh` records the `agents` take (picker, the builder streaming live,
+Lock Screen reply) and the `terminal` take (tmux, vim, joystick) with
+`simctl io recordVideo`, logging marks and touches beside each `.mov`. The
+terminal font is JetBrains Mono for the video (`SHOTS_FONT`). The builder waits
+for `trigger.sh start` (`SHOTS_HOLD=2`) so its work streams in on camera.
+
+`compose-preview.mjs` cuts segments relative to those marks, so a new take
+needs no retiming. It speeds up typing, draws touch dots, and crossfades to
+the JetBrains Mono title cards. Output is 886×1920, 30 fps, H.264 High with a
+silent stereo AAC track, 15–30 s: the App Preview spec for 6.9" and 6.5"
+iPhones. Edit `PLAN` in the script to change the cut.
+
 ## How it stays deterministic
 
 - **Seeded app.** Debug builds read `HOSHI_SCREENSHOT_SEED` (base64 JSON,

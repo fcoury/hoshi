@@ -29,6 +29,7 @@ PURPLE = "\x1b[38;5;141m"
 
 PANE = os.environ.get("HERDR_PANE_ID")
 SPEED = 1.0
+START = None      # --start: file that releases the scripted work
 LOG = []          # every line printed so far, replayed on resize
 PROMPT = ""       # trailing partial line (input prompt), replayed on resize
 HOLD = None       # when set, wait for this file before the key moment
@@ -40,6 +41,14 @@ def hold():
     if HOLD:
         while not os.path.exists(HOLD):
             time.sleep(0.2)
+
+
+def wait_for_start():
+    """With --start, show the task, then wait for the capture script so the
+    work streams in on camera (App Preview video)."""
+    if START:
+        while not os.path.exists(START):
+            time.sleep(0.1)
 
 
 def emit(text):
@@ -123,6 +132,7 @@ def scenario_working(label):
     title = "Detect a silent mosh-server"
     report(label, "working", title)
     header(label, "recover when", "mosh-server goes silent")
+    wait_for_start()
     step("Read", "MoshStateSync.swift")
     step("Read", "MoshSession.swift", "transmitter loop")
     step("Search", '"lastHeardAt"', "3 matches in 2 files")
@@ -200,14 +210,16 @@ SCENARIOS = {"working": scenario_working, "approval": scenario_approval, "done":
 
 
 def main():
-    global SPEED, HOLD
+    global SPEED, HOLD, START
     p = argparse.ArgumentParser()
     p.add_argument("scenario", choices=SCENARIOS)
     p.add_argument("--label", default="agent")
     p.add_argument("--fast", action="store_true", help="no typing delays (stills)")
     p.add_argument("--hold", help="wait for this file before blocking or finishing")
+    p.add_argument("--start", help="wait for this file before starting the work")
     a = p.parse_args()
     HOLD = a.hold
+    START = a.start
     if a.fast:
         SPEED = 0.0
     signal.signal(signal.SIGWINCH, redraw)
