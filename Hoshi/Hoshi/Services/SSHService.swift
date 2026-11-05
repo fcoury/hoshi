@@ -13,6 +13,9 @@ final class SSHSession: ObservableObject {
     @Published var recoveryStatus: ConnectionRecoveryStatus = .idle
     @Published var outputBuffer: String = ""
     private var bufferedTerminalOutput = Data()
+    /// Set by `disconnect()`. Output still being decoded must not reach the terminal: it may
+    /// already belong to another session (a Mosh connection that replaced this one).
+    private var outputClosed = false
     private let agentEventDecoder = AgentEventStreamDecoder()
 
     private(set) var client: SSHClient?
@@ -167,6 +170,7 @@ final class SSHSession: ObservableObject {
     func processInboundOutput(_ data: Data) async {
         lastShellOutputAt = .now
         let result = await agentEventDecoder.ingest(data)
+        guard !outputClosed else { return }
         for event in result.events {
             onAgentEvent?(event)
         }
@@ -214,6 +218,7 @@ final class SSHSession: ObservableObject {
 
     // Disconnect from the server (user-initiated)
     func disconnect() async {
+        outputClosed = true
         // Cancel any pending reconnection
         reconnectTask?.cancel()
         reconnectTask = nil
@@ -416,6 +421,7 @@ final class SSHSession: ObservableObject {
     private func startTerminalSession() async throws {
         guard let client else { throw ConnectionCoordinatorError.bootstrapUnavailable }
         sessionEndedNormally = false
+        outputClosed = false
 
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
