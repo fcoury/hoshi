@@ -1236,7 +1236,7 @@ final class TerminalInteractionTests: XCTestCase {
 
         surface.pasteFromClipboard()
         request?.onDecision(true)
-        await waitUntil { !sent.isEmpty }
+        await waitUntil { String(data: sent.reduce(Data(), +), encoding: .utf8) == "echo first\recho second" }
 
         XCTAssertEqual(String(data: sent.reduce(Data(), +), encoding: .utf8), "echo first\recho second")
     }
@@ -1251,7 +1251,10 @@ final class TerminalInteractionTests: XCTestCase {
         surface.onInputData = { sent.append($0) }
 
         surface.pasteFromClipboard()
-        await waitUntil { !sent.isEmpty }
+        // The bracketed paste can arrive in several chunks; wait for the end marker.
+        await waitUntil {
+            String(data: sent.reduce(Data(), +), encoding: .utf8)?.hasSuffix("\u{1B}[201~") == true
+        }
 
         XCTAssertNil(request)
         XCTAssertEqual(
@@ -1268,7 +1271,7 @@ final class TerminalInteractionTests: XCTestCase {
         surface.onInputData = { sent.append($0) }
 
         surface.pasteFromClipboard()
-        await waitUntil { !sent.isEmpty }
+        await waitUntil { String(data: sent.reduce(Data(), +), encoding: .utf8) == "echo intentional local paste" }
 
         XCTAssertEqual(
             String(data: sent.reduce(Data(), +), encoding: .utf8),
@@ -1406,7 +1409,9 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertTrue(sent.isEmpty)
 
         request?.onDecision(true)
-        await waitUntil { !sent.isEmpty }
+        await waitUntil {
+            String(data: sent.reduce(Data(), +), encoding: .utf8)?.contains(Data("private clipboard".utf8).base64EncodedString()) == true
+        }
 
         let response = String(data: sent.reduce(Data(), +), encoding: .utf8)
         XCTAssertTrue(response?.contains(Data("private clipboard".utf8).base64EncodedString()) == true)
@@ -1424,7 +1429,9 @@ final class TerminalInteractionTests: XCTestCase {
         surface.onClipboardNotice = { notices.append($0) }
 
         surface.writeRemoteOutput(Array("\u{1B}]52;c;?\u{07}".utf8))
-        await waitUntil { !sent.isEmpty }
+        await waitUntil {
+            String(data: sent.reduce(Data(), +), encoding: .utf8)?.contains(Data("private clipboard".utf8).base64EncodedString()) == true
+        }
 
         XCTAssertNil(request)
         let response = String(data: sent.reduce(Data(), +), encoding: .utf8)
@@ -1559,7 +1566,7 @@ final class TerminalInteractionTests: XCTestCase {
     }
 
     private func waitUntil(
-        timeout: TimeInterval = 1,
+        timeout: TimeInterval = 5,
         _ predicate: () -> Bool
     ) async {
         let deadline = Date().addingTimeInterval(timeout)

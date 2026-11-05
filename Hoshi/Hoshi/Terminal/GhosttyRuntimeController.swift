@@ -257,8 +257,7 @@ final class GhosttyRuntimeController: ObservableObject {
         userdata: UnsafeMutableRawPointer?,
         state: UnsafeMutableRawPointer?
     ) {
-        guard let userdata, let state else { return }
-        let view = Unmanaged<GhosttyTerminalSurfaceView>.fromOpaque(userdata).takeUnretainedValue()
+        guard let state, let view = GhosttyTerminalSurfaceView.liveView(userdata: userdata) else { return }
         view.completeClipboardRequest(state: state, content: TerminalPasteboard.shared.string ?? "", confirmed: false)
     }
 
@@ -268,8 +267,7 @@ final class GhosttyRuntimeController: ObservableObject {
         state: UnsafeMutableRawPointer?,
         request: ghostty_clipboard_request_e
     ) {
-        guard let userdata, let state else { return }
-        let view = Unmanaged<GhosttyTerminalSurfaceView>.fromOpaque(userdata).takeUnretainedValue()
+        guard let state, let view = GhosttyTerminalSurfaceView.liveView(userdata: userdata) else { return }
         let content: String
         if let string, request != GHOSTTY_CLIPBOARD_REQUEST_PASTE {
             switch TerminalClipboardPayload.decodeCString(string) {
@@ -292,10 +290,9 @@ final class GhosttyRuntimeController: ObservableObject {
         len: Int,
         requiresConfirmation: Bool
     ) {
-        guard let userdata, let content, len > 0 else { return }
-        let view = Unmanaged<GhosttyTerminalSurfaceView>
-            .fromOpaque(userdata)
-            .takeUnretainedValue()
+        guard let content, len > 0,
+              let view = GhosttyTerminalSurfaceView.liveView(userdata: userdata)
+        else { return }
 
         for index in 0..<len {
             let item = content[index]

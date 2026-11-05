@@ -16,6 +16,8 @@ concurrency:
 jobs:
   build-and-test:
     runs-on: macos-15
+    # A hung simulator test once held a runner for six hours; fail fast instead.
+    timeout-minutes: 45
 
     steps:
       - name: Check out repository and submodules
@@ -99,5 +101,7 @@ jobs:
             -project Hoshi/Hoshi.xcodeproj \
             -scheme Hoshi \
             -destination "platform=iOS Simulator,id=$simulator_id" \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGNING_REQUIRED=NO
