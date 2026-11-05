@@ -57,6 +57,13 @@ final class MoshSession: ObservableObject {
     private var outboundTask: Task<Void, Never>?
     private var outboundTaskID: UUID?
 
+    /// mosh-server sends its final state with this number when its shell exits.
+    static let shutdownStateNum = UInt64.max
+
+    /// Set once the server reported that its shell exited, so the silence that
+    /// follows isn't mistaken for a network drop and retried.
+    private(set) var sessionEndedNormally = false
+
     // SSP state tracking
     private var localStateNum: UInt64 = 0
     private var remoteStateNum: UInt64 = 0
@@ -381,6 +388,7 @@ final class MoshSession: ObservableObject {
         udpHost = info.serverIP
         udpPort = info.udpPort
         transportGeneration = UUID()
+        sessionEndedNormally = false
         localStateNum = 0
         remoteStateNum = 0
         needsImmediateAck = false
@@ -670,6 +678,11 @@ final class MoshSession: ObservableObject {
                 }
             }
             consecutiveDatagramFailures = 0
+
+            // Only a shutdown state we actually applied counts, so its final output was shown.
+            if remoteStateNum == Self.shutdownStateNum {
+                await finishRemoteShutdown()
+            }
         } catch {
             consecutiveDatagramFailures += 1
             reportNonFatalError(error, context: "process datagram")
@@ -681,6 +694,30 @@ final class MoshSession: ObservableObject {
                 ).explanation)
             }
         }
+    }
+
+    /// The remote shell exited. Acknowledge the shutdown state so mosh-server exits
+    /// right away instead of waiting out its timeout, then end like an SSH `exit`.
+    private func finishRemoteShutdown() async {
+        guard !sessionEndedNormally else { return }
+        sessionEndedNormally = true
+        recoveryLog.notice("Mosh server reported that the remote shell exited")
+
+        var instruction = MoshTransportInstruction()
+        instruction.oldNum = localStateNum
+        instruction.newNum = localStateNum
+        instruction.ackNum = Self.shutdownStateNum
+        // UDP may drop one; mosh-server retransmits its shutdown until acked anyway.
+        for _ in 0..<2 {
+            do {
+                try await sendTransportInstruction(instruction)
+            } catch {
+                reportNonFatalError(error, context: "shutdown ack")
+                break
+            }
+        }
+
+        await disconnect()
     }
 
     // Send periodic keepalive datagrams to maintain NAT mapping.
@@ -747,6 +784,7 @@ final class MoshSession: ObservableObject {
 
     private func requestRecovery(trigger: String, underlyingError: Error? = nil) {
         guard isAppActive,
+              !sessionEndedNormally,
               connectionState != .disconnected,
               recoveryTask == nil else { return }
 
@@ -838,7 +876,7 @@ final class MoshSession: ObservableObject {
 
         pauseRecoveryBudget()
         guard isAppActive, !Task.isCancelled else { return }
-        let message = "Mosh could not restore its UDP connection after 60 seconds."
+        let message = "Mosh hasn't heard from the server in 60 seconds. The session may have ended on the server, or the network is blocking UDP."
         recoveryStatus = .unavailable(message)
         connectionError = lastError
         connectionState = .error(message)

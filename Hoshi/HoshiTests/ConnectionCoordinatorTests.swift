@@ -374,6 +374,67 @@ final class ConnectionCoordinatorTests: XCTestCase {
         await session.disconnect()
     }
 
+    func testServerShutdownStateEndsMoshSessionWithoutRecovery() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        let response = try await makeServerDatagrams(key: info.sessionKey).first!
+        transport.onSend = { transport.yield(response) }
+        try await session.establishUDP(info: info, timeout: 1)
+        transport.onSend = nil
+        let sentBeforeShutdown = transport.sentDatagrams.count
+
+        // The remote shell exited: mosh-server sends its final state numbered UInt64.max.
+        var shutdown = MoshTransportInstruction()
+        shutdown.oldNum = 0
+        shutdown.newNum = MoshSession.shutdownStateNum
+        for datagram in try await makeServerDatagrams(key: info.sessionKey, instruction: shutdown, firstSequence: 2) {
+            transport.yield(datagram)
+        }
+
+        let deadline = Date().addingTimeInterval(1)
+        while session.connectionState != .disconnected, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        XCTAssertEqual(session.connectionState, .disconnected)
+        XCTAssertTrue(session.sessionEndedNormally)
+        XCTAssertEqual(transport.connectCount, 1, "A finished session must not start UDP recovery")
+        XCTAssertFalse(transport.isReady)
+
+        let serverSide = try MoshProtocolEngine(key: info.sessionKey)
+        var acks: [UInt64] = []
+        for datagram in transport.sentDatagrams.dropFirst(sentBeforeShutdown) {
+            if let decoded = try await serverSide.decode(datagram, direction: .toServer) {
+                acks.append(decoded.instruction.ackNum)
+            }
+        }
+        XCTAssertTrue(acks.contains(MoshSession.shutdownStateNum), "mosh-server needs the shutdown acked to exit")
+    }
+
+    func testShutdownStateWithUnknownBaseIsNotTreatedAsSessionEnd() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        let response = try await makeServerDatagrams(key: info.sessionKey).first!
+        transport.onSend = { transport.yield(response) }
+        try await session.establishUDP(info: info, timeout: 1)
+        transport.onSend = nil
+
+        // A shutdown diff from a base we never reached can't be applied; wait for the retransmit.
+        var shutdown = MoshTransportInstruction()
+        shutdown.oldNum = 7
+        shutdown.newNum = MoshSession.shutdownStateNum
+        for datagram in try await makeServerDatagrams(key: info.sessionKey, instruction: shutdown, firstSequence: 2) {
+            transport.yield(datagram)
+        }
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertEqual(session.connectionState, .connected)
+        XCTAssertFalse(session.sessionEndedNormally)
+        await session.disconnect()
+    }
+
     func testUnauthenticatedResponseCannotMarkMoshConnected() async throws {
         let transport = FakeMoshUDPTransport()
         let session = makeMoshSession(transport: transport)
@@ -1025,7 +1086,8 @@ final class ConnectionCoordinatorTests: XCTestCase {
 
     private func makeServerDatagrams(
         key: Data,
-        instruction: MoshTransportInstruction = MoshTransportInstruction()
+        instruction: MoshTransportInstruction = MoshTransportInstruction(),
+        firstSequence: UInt64 = 1
     ) async throws -> [Data] {
         let engine = try MoshProtocolEngine(key: key)
         let clientDatagrams = try await engine.encode(instruction)
@@ -1035,7 +1097,7 @@ final class ConnectionCoordinatorTests: XCTestCase {
             let plaintext = try crypto.decrypt(datagram: datagram, direction: .toServer).plaintext
             return try crypto.encrypt(
                 plaintext: plaintext,
-                nonce: MoshNonce(direction: .toClient, sequenceNumber: UInt64(index + 1))
+                nonce: MoshNonce(direction: .toClient, sequenceNumber: firstSequence + UInt64(index))
             )
         }
     }
