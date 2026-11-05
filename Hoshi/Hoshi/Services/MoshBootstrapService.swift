@@ -8,6 +8,8 @@ struct MoshConnectionInfo: Sendable {
     let sessionKey: Data
     let sessionKeyBase64: String
     let serverIP: String
+    /// mosh-server's process ID, so a later session can stop it if this one is abandoned.
+    var serverPID: Int32? = nil
 }
 
 // Package managers we can detect on the remote host
@@ -101,15 +103,36 @@ final class MoshBootstrapService {
 
     // Start mosh-server and parse connection info from its output
     // mosh-server prints: MOSH CONNECT <port> <base64-key>
-    func startMoshServer(initialCommand: String? = nil) async throws -> MoshConnectionInfo {
-        let output = try await runCommand(Self.serverLaunchCommand(
-            configuredServerPath: configuredServerPath,
-            portRange: portRange,
-            initialCommand: initialCommand
-        ))
+    /// Starts mosh-server. `replacingServerPID` is a mosh-server this session left running
+    /// earlier (the app was killed before it could shut it down); it is stopped first.
+    func startMoshServer(
+        initialCommand: String? = nil,
+        replacingServerPID: Int32? = nil
+    ) async throws -> MoshConnectionInfo {
+        let output: String
+        do {
+            output = try await runCommand(Self.serverLaunchCommand(
+                configuredServerPath: configuredServerPath,
+                portRange: portRange,
+                initialCommand: initialCommand,
+                replacingServerPID: replacingServerPID
+            ))
+        } catch let failure as SSHClient.CommandFailed {
+            // The launch command reports mosh-server's status itself, so this means the
+            // wrapper shell failed; its output is lost.
+            throw MoshBootstrapError.serverFailedToStart(
+                MoshLaunchFailure(launchOutput: "", exitCode: failure.exitCode)
+            )
+        }
 
         // Parse the MOSH CONNECT line
-        let (port, keyString) = try MoshBootstrapService.parseMoshConnect(output)
+        let port: UInt16
+        let keyString: String
+        do {
+            (port, keyString) = try MoshBootstrapService.parseMoshConnect(output)
+        } catch {
+            throw MoshBootstrapError.serverFailedToStart(MoshLaunchFailure(launchOutput: output))
+        }
         // mosh-server binds only to the address SSH arrived on (`new -s`). Aim UDP at
         // that exact address instead of letting the socket resolve the name again, which
         // can pick another address family or drop a link-local IPv6 interface scope.
@@ -129,8 +152,17 @@ final class MoshBootstrapService {
             udpPort: port,
             sessionKey: keyData,
             sessionKeyBase64: keyString,
-            serverIP: serverIP
+            serverIP: serverIP,
+            serverPID: Self.parseServerPID(output)
         )
+    }
+
+    /// mosh-server reports "[mosh-server detached, pid = 1234]" once it is running.
+    static func parseServerPID(_ output: String) -> Int32? {
+        guard let range = output.range(of: #"\[mosh-server detached, pid = (\d+)\]"#, options: .regularExpression) else {
+            return nil
+        }
+        return Int32(output[range].filter(\.isNumber))
     }
 
     // Parse "MOSH CONNECT <port> <key>" from mosh-server output
@@ -223,7 +255,8 @@ final class MoshBootstrapService {
     static func serverLaunchCommand(
         configuredServerPath: String?,
         portRange: MoshPortRange?,
-        initialCommand: String?
+        initialCommand: String?,
+        replacingServerPID: Int32? = nil
     ) -> String {
         let binary = configuredServerPath?.trimmingCharacters(in: .whitespacesAndNewlines)
         let executable = shellEscape(binary.flatMap { $0.isEmpty ? nil : $0 } ?? "mosh-server")
@@ -235,7 +268,11 @@ final class MoshBootstrapService {
         // A client that vanishes without shutting down (the app was killed in the background)
         // must not leave the shell running forever. Respect a timeout the user already set.
         let networkTimeout = "MOSH_SERVER_NETWORK_TMOUT=\"${MOSH_SERVER_NETWORK_TMOUT:-\(orphanedServerTimeout)}\""
-        let command = "[ -n \"$SSH_CONNECTION\" ] && printf \"\\nMOSH SSH_CONNECTION %s\\n\" \"$SSH_CONNECTION\"; \(networkTimeout) \(executable) new -s -c 256 -l LANG=en_US.UTF-8\(terminalEnvironment)\(rangeArgument)\(commandArgument)"
+        // Stop only a process that is still a mosh-server; kill only reaches our own processes.
+        let stopPrevious = replacingServerPID.map {
+            "case \"$(ps -p \($0) -o comm= 2>/dev/null)\" in *mosh-server*) kill \($0) 2>/dev/null;; esac; "
+        } ?? ""
+        let command = "\(stopPrevious)[ -n \"$SSH_CONNECTION\" ] && printf \"\\nMOSH SSH_CONNECTION %s\\n\" \"$SSH_CONNECTION\"; \(networkTimeout) \(executable) new -s -c 256 -l LANG=en_US.UTF-8\(terminalEnvironment)\(rangeArgument)\(commandArgument); printf \"\\n\(MoshLaunchFailure.exitMarker) %s\\n\" \"$?\""
         return "sh -lc \(shellEscape(command)) 2>&1"
     }
 
@@ -261,6 +298,7 @@ enum MoshBootstrapError: LocalizedError {
     case installFailed(reason: String)
     case invalidSessionKey
     case noConnectLine(output: String)
+    case serverFailedToStart(MoshLaunchFailure)
     case sshCommandFailed(String)
 
     var errorDescription: String? {
@@ -271,6 +309,11 @@ enum MoshBootstrapError: LocalizedError {
             return "mosh-server returned an invalid session key"
         case .noConnectLine(let output):
             return "Could not find MOSH CONNECT in server output: \(output)"
+        case .serverFailedToStart(let failure):
+            var description = failure.summary
+            if let exitCode = failure.exitCode { description += " Exit status \(exitCode)." }
+            if !failure.output.isEmpty { description += "\nServer output:\n\(failure.output)" }
+            return description
         case .sshCommandFailed(let reason):
             return "SSH command failed: \(reason)"
         }
@@ -284,6 +327,8 @@ enum MoshBootstrapError: LocalizedError {
             return "The mosh-server may be an incompatible version. Try updating it."
         case .noConnectLine:
             return "Ensure mosh-server is properly installed and your user has permission to run it."
+        case .serverFailedToStart(let failure):
+            return failure.recovery
         case .sshCommandFailed:
             return "Check your SSH connection and try again."
         }

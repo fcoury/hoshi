@@ -46,7 +46,8 @@ final class ManagedSession: Identifiable {
         createdAt: Date = Date(),
         lastAccessedAt: Date? = nil,
         tmuxSession: String? = nil,
-        herdrAttachment: HerdrAttachment? = nil
+        herdrAttachment: HerdrAttachment? = nil,
+        moshServerPID: Int32? = nil
     ) {
         self.id = id
         self.serverID = server.id
@@ -57,6 +58,7 @@ final class ManagedSession: Identifiable {
         self.restoredHerdrAttachment = herdrAttachment
         self.server = server
         self.connectionVM = ConnectionViewModel()
+        connectionVM.moshServerPIDToReplace = moshServerPID
     }
 
     var persistedDescriptor: PersistedSessionDescriptor {
@@ -68,7 +70,8 @@ final class ManagedSession: Identifiable {
             tmuxSession: tmuxSession,
             createdAt: createdAt,
             lastAccessedAt: lastAccessedAt,
-            herdrAttachment: herdrAttachment
+            herdrAttachment: herdrAttachment,
+            moshServerPID: connectionVM.runningMoshServerPID
         )
     }
 

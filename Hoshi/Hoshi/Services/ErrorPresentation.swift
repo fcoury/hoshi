@@ -213,6 +213,10 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
     var hostKeyChange: HostKeyChange?
     /// Set when the server rejected or lacked credentials, so the UI can offer to re-enter them.
     var isCredentialFailure = false
+    /// A command to run on the server that likely fixes the failure, offered for copying.
+    var suggestedCommand: String?
+    /// What the server printed when a remote program failed, shown in full in details.
+    var serverOutput: String?
 
     init(
         title: String,
@@ -363,7 +367,23 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
         )
         presentation.hostKeyChange = HostKeyChange(in: error)
         presentation.isCredentialFailure = isCredentialFailure(error)
+        if let launchFailure = moshLaunchFailure(in: error) {
+            presentation.suggestedCommand = launchFailure.suggestedCommand
+            presentation.serverOutput = launchFailure.output.isEmpty
+                ? nil
+                : ErrorRedactor.redact(launchFailure.output)
+        }
         return presentation
+    }
+
+    private static func moshLaunchFailure(in error: any Error) -> MoshLaunchFailure? {
+        if let fallback = error as? ConnectionFallbackError {
+            return moshLaunchFailure(in: fallback.moshError)
+        }
+        if case .serverFailedToStart(let failure)? = error as? MoshBootstrapError {
+            return failure
+        }
+        return nil
     }
 
     static func isCredentialFailure(_ error: any Error) -> Bool {
@@ -795,8 +815,20 @@ struct ErrorPresentation: Identifiable, Equatable, Sendable {
             return Classification(title: "Mosh Session Key Is Invalid", explanation: error.localizedDescription, recovery: "Update mosh-server and reconnect using a compatible client/server version.")
         case .noConnectLine:
             return Classification(title: "Mosh Server Did Not Start", explanation: error.localizedDescription, recovery: "Verify mosh-server is installed, executable, and permitted for this user.")
+        case .serverFailedToStart(let failure):
+            return Classification(title: Self.title(for: failure), explanation: failure.summary, recovery: failure.recovery)
         case .sshCommandFailed:
             return Classification(title: "Mosh SSH Bootstrap Failed", explanation: error.localizedDescription, recovery: "Check the SSH account, server command restrictions, and Mosh installation.")
+        }
+    }
+
+    private static func title(for failure: MoshLaunchFailure) -> String {
+        switch failure.kind {
+        case .notFound: "mosh-server Not Found"
+        case .permissionDenied: "mosh-server Isn't Executable"
+        case .missingLibrary, .crashed: "mosh-server Won't Start"
+        case .localeUnsupported: "Server Needs a UTF-8 Locale"
+        case .unknown: "Mosh Server Did Not Start"
         }
     }
 

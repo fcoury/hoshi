@@ -244,6 +244,21 @@ final class ConnectionCoordinatorTests: XCTestCase {
         XCTAssertTrue(command.contains("TERM_PROGRAM_VERSION="))
     }
 
+    func testClosedSSHSessionNeverWritesToTheTerminal() async {
+        let session = SSHSession(server: Server(name: "SSH", hostname: "127.0.0.1", username: "user"))
+        var received: [[UInt8]] = []
+        session.onDataReceived = { received.append($0) }
+        await session.processInboundOutput(Data("before".utf8))
+
+        await session.disconnect()
+        // A view update may hand the old session the terminal again before it is released.
+        session.onDataReceived = { received.append($0) }
+        // Like tmux's last redraw as it detaches, ending on its status bar color.
+        await session.processInboundOutput(Data("\u{1b}[48;5;233mlate".utf8))
+
+        XCTAssertEqual(received, [Array("before".utf8)])
+    }
+
     func testRawMoshLaunchDoesNotInjectTmuxCommand() throws {
         let command = MoshBootstrapService.serverLaunchCommand(
             configuredServerPath: nil,
@@ -376,7 +391,47 @@ final class ConnectionCoordinatorTests: XCTestCase {
         XCTAssertEqual(session.connectionState, .connected)
         XCTAssertEqual(session.debugStats.decryptSuccesses, 1)
         XCTAssertEqual(session.debugStats.decodedHostBytes, 0)
-        XCTAssertEqual(transport.sentDatagrams.count, 1)
+        let serverSide = try MoshProtocolEngine(key: info.sessionKey)
+        var probes = 0
+        for datagram in transport.sentDatagrams {
+            if let decoded = try await serverSide.decode(datagram, direction: .toServer),
+               decoded.instruction.newNum == 0 {
+                probes += 1
+            }
+        }
+        XCTAssertEqual(probes, 1, "One answered probe is enough")
+        await session.disconnect()
+    }
+
+    func testConnectingSendsATerminalSizeEvenWithoutAView() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        let response = try await makeServerDatagrams(key: info.sessionKey).first!
+        transport.onSend = { transport.yield(response) }
+
+        // A restored session connects before any terminal view reports its size. mosh-server
+        // starts the shell only once it receives a client state, and exits a minute later
+        // without one.
+        try await session.establishUDP(info: info, timeout: 1)
+
+        let serverSide = try MoshProtocolEngine(key: info.sessionKey)
+        let expected = MoshUserInput.encodeResize(
+            width: Int32(MoshSession.initialTerminalSize.cols),
+            height: Int32(MoshSession.initialTerminalSize.rows)
+        )
+        var sentSize = false
+        let deadline = Date().addingTimeInterval(1)
+        while !sentSize, Date() < deadline {
+            for datagram in transport.sentDatagrams {
+                if let decoded = try await serverSide.decode(datagram, direction: .toServer),
+                   decoded.instruction.newNum == 1, decoded.instruction.diff == expected {
+                    sentSize = true
+                }
+            }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertTrue(sentSize)
         await session.disconnect()
     }
 
@@ -516,7 +571,7 @@ final class ConnectionCoordinatorTests: XCTestCase {
         }
 
         XCTAssertEqual(received, [
-            Array("\u{1b}[r\u{1b}[0m\u{1b}[H\u{1b}[2J".utf8) + Array(header),
+            Array(MoshStateSync.blankScreen) + Array(header),
             Array(partialRepaint),
             Array(appExit),
         ])
@@ -967,6 +1022,58 @@ final class ConnectionCoordinatorTests: XCTestCase {
         XCTAssertEqual(restored.first?.serverID, server.id)
         XCTAssertEqual(restored.first?.tmuxSession, "restored-agent")
         XCTAssertEqual(restored.first?.lastAccessedAt, descriptor.lastAccessedAt)
+    }
+
+    func testRestoredSessionStopsTheMoshServerItLeftRunning() {
+        let server = makeServer()
+        var descriptor = makeDescriptor(serverID: server.id)
+        descriptor.moshServerPID = 4980
+        let store = SessionPersistenceStore(defaults: defaults)
+        store.save([descriptor])
+        let manager = SessionManager(persistenceStore: store)
+
+        let restored = manager.restoreSessions(using: [server])
+
+        XCTAssertEqual(restored.first?.connectionVM.moshServerPIDToReplace, 4980)
+        // Saved again until a new connection replaces it, so a second kill still finds it.
+        XCTAssertEqual(store.load().first?.moshServerPID, 4980)
+    }
+
+    func testDescriptorsSavedBeforeMoshPIDsStillDecode() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","serverID":"\(UUID().uuidString)","serverName":"mac",
+         "transportPolicy":"auto","createdAt":1,"lastAccessedAt":2}
+        """
+        let decoded = try JSONDecoder().decode(PersistedSessionDescriptor.self, from: Data(json.utf8))
+        XCTAssertNil(decoded.moshServerPID)
+    }
+
+    func testMoshLaunchStopsOnlyTheMoshServerItReplaces() throws {
+        let plain = MoshBootstrapService.serverLaunchCommand(configuredServerPath: nil, portRange: nil, initialCommand: nil)
+        XCTAssertFalse(plain.contains("kill"))
+
+        let command = MoshBootstrapService.serverLaunchCommand(
+            configuredServerPath: nil,
+            portRange: nil,
+            initialCommand: nil,
+            replacingServerPID: 4980
+        )
+        XCTAssertTrue(command.contains("ps -p 4980 -o comm="), command)
+        XCTAssertTrue(command.contains("*mosh-server*) kill 4980"), command)
+        let kill = try XCTUnwrap(command.range(of: "kill 4980"))
+        let server = try XCTUnwrap(command.range(of: " new -s"))
+        XCTAssertLessThan(kill.lowerBound, server.lowerBound)
+    }
+
+    func testMoshServerPIDIsReadFromItsLaunchOutput() {
+        let output = """
+        MOSH CONNECT 60001 4NeCCgvZFe2RnPgrcU1PQw
+
+        mosh-server (mosh 1.4.0) [build mosh 1.4.0]
+        [mosh-server detached, pid = 86585]
+        """
+        XCTAssertEqual(MoshBootstrapService.parseServerPID(output), 86585)
+        XCTAssertNil(MoshBootstrapService.parseServerPID("MOSH CONNECT 60001 4NeCCgvZFe2RnPgrcU1PQw"))
     }
 
     func testSessionManagerIgnoresRemovedServerProfiles() {

@@ -55,6 +55,10 @@ final class MoshSession: ObservableObject {
     private var udpHost: String?
     private var udpPort: UInt16?
     private var pendingTerminalSize: (cols: Int, rows: Int)?
+    /// Sent on connect when no view has reported a size yet (a session restored in the
+    /// background). mosh-server starts the shell only once it receives a client state, and
+    /// exits after 60 seconds without one. The view's real size replaces it.
+    static let initialTerminalSize = (cols: 80, rows: 24)
 
     /// mosh marks the last state of a session with this number, in either direction.
     static let shutdownStateNum = MoshStateSync.shutdownStateNum
@@ -63,9 +67,23 @@ final class MoshSession: ObservableObject {
     /// follows isn't mistaken for a network drop and retried.
     private(set) var sessionEndedNormally = false
 
+    /// The current mosh-server's process ID, as it reported at launch.
+    private(set) var serverPID: Int32?
+    /// A mosh-server left running by an earlier connection of this session, stopped when
+    /// the next one launches.
+    var replacingServerPID: Int32?
+
+    /// The server's PID while it may still be running: not after it acknowledged our
+    /// shutdown or ended the session itself.
+    var runningServerPID: Int32? {
+        stateSync.clientShutdownAcknowledged || sessionEndedNormally ? nil : serverPID
+    }
+
     /// SSP state for the current mosh-server; survives socket replacement during recovery.
     private var stateSync = MoshStateSync()
     private var consecutiveDatagramFailures = 0
+    /// Set by `disconnect()`, so output still being decoded never reaches the terminal.
+    private var outputClosed = false
 
     private var debugSendInstructionCount = 0
     private var debugSendDatagramCount = 0
@@ -176,7 +194,11 @@ final class MoshSession: ObservableObject {
         do {
             connectionState = .moshStarting
             let bootstrap = try makeBootstrapService(client: client)
-            let info = try await bootstrap.startMoshServer(initialCommand: initialCommand)
+            let info = try await bootstrap.startMoshServer(
+                initialCommand: initialCommand,
+                replacingServerPID: replacingServerPID
+            )
+            replacingServerPID = nil
             try Task.checkCancellation()
             try await establishUDP(info: info, timeout: udpTimeout)
             try Task.checkCancellation()
@@ -331,6 +353,7 @@ final class MoshSession: ObservableObject {
 
     // Disconnect everything
     func disconnect() async {
+        outputClosed = true
         await requestServerShutdown()
         isAppActive = false
         recoveryTask?.cancel()
@@ -388,6 +411,8 @@ final class MoshSession: ObservableObject {
         transportGeneration = UUID()
         sessionEndedNormally = false
         stateSync = MoshStateSync()
+        serverPID = info.serverPID
+        outputClosed = false
         consecutiveDatagramFailures = 0
         debugSendInstructionCount = 0
         debugSendDatagramCount = 0
@@ -425,9 +450,8 @@ final class MoshSession: ObservableObject {
         recoveryStartedAt = nil
 
         startTransmitter()
-        if let size = pendingTerminalSize {
-            await resize(cols: size.cols, rows: size.rows)
-        }
+        let size = pendingTerminalSize ?? Self.initialTerminalSize
+        await resize(cols: size.cols, rows: size.rows)
 
         // Start network monitoring for auto-reconnect
         startNetworkWatch()
@@ -552,6 +576,7 @@ final class MoshSession: ObservableObject {
             }
             debugDecryptSuccessCount += 1
             recordRoundTripSample(decoded.roundTripSample)
+            stateSync.heardFromServer(at: CACurrentMediaTime())
             let instruction = decoded.instruction
             debugInstructionDecodeCount += 1
             let prevRemote = stateSync.remoteStateNum
@@ -573,6 +598,7 @@ final class MoshSession: ObservableObject {
                 for (idx, output) in outputs.enumerated() {
                     if let rawHostString = output.hostString {
                         let processed = await processInboundOutput(rawHostString)
+                        guard !outputClosed else { return }
                         guard !processed.isEmpty else { continue }
                         let hostString = stateSync.terminalBytes(processed)
                         debugHostByteCount += hostString.count
@@ -680,6 +706,11 @@ final class MoshSession: ObservableObject {
                       self.transportGeneration == generation,
                       self.connectionState == .connected,
                       self.recoveryStatus == .idle else { return }
+
+                if self.stateSync.serverIsSilent(now: CACurrentMediaTime()) {
+                    self.requestRecovery(trigger: "server silent")
+                    return
+                }
 
                 let timeout = self.retransmitTimeout
                 do {
