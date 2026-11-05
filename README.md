@@ -1,8 +1,14 @@
 # Hoshi
 
-A terminal app for iOS built for monitoring and interacting with AI coding agents on remote servers. Connect over **Mosh** or **SSH**, pick a **tmux** session, and get to work — all from your phone.
+## Human written summary
 
-Hoshi (星, "star" in Japanese) is designed around a specific workflow: connect → pick tmux session → check agent status → send input → disconnect. It prioritizes mobile-friendly terminal interaction with gesture controls, a customizable keyboard toolbar, and Metal-accelerated rendering powered by [Ghostty](https://ghostty.org).
+A terminal app for iOS made with love. I wanted to build an open source terminal app that I would use myself. It brings all the features I couldn't leave without, like click and hold for arrows, copy and paste and moshi support.
+
+I recently started using Herdr a lot, so on top of the pre-existing tmux support, I also added support for it.
+
+## AI Project Description
+
+Hoshi (星, "star" in Japanese) is an SSH and Mosh terminal for iPhone and iPad, built for checking in on coding agents running on your own machines. Tap a server and you're back in your tmux or Herdr session. See what your agents are doing, reply to one, and put the phone away.
 
 <a href="https://apps.apple.com/app/id6760631255">
   <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" height="40" />
@@ -16,104 +22,72 @@ Hoshi (星, "star" in Japanese) is designed around a specific workflow: connect 
   <img src="assets/screenshots/6.9/03-multi-session-1320x2868.png" width="250" alt="Every server, one swipe" />
 </p>
 
+## Highlights
+
+- **A real terminal engine.** Hoshi renders with [Ghostty](https://ghostty.org) on Metal, so full-screen apps like vim, htop, and Claude Code look the way they do on your desktop.
+- **Mosh, written from scratch in Swift.** Sessions survive switching between Wi-Fi and cellular, sleeping the phone, and changing networks. Lost packets are resent. When mosh-server can't start, Hoshi tells you why and how to fix it, then falls back to SSH.
+- **Arrow keys you can hold.** Long-press the arrow key and drag in any direction for a joystick. Swipe on the toolbar to send arrows too.
+- **Copy and paste that works.** Long-press to select, drag the handles, and copy. Paste waits for your approval when the text could do damage.
+- **tmux and Herdr, built in.** Hoshi finds your tmux sessions, or attaches to a Herdr session or agent, and remembers your choice for the next connection.
+- **Your agents at a glance.** See which Herdr agents are working, waiting, or done. Reply to one without leaving the app, and follow it on the Lock Screen and Dynamic Island with Live Activities.
+- **A keyboard that knows where you are.** The toolbar shows a different key set in a shell, in tmux, and in Herdr. It has sticky Ctrl, Opt, and Shift, custom keys, and a palette of Herdr actions.
+- **Several servers at once.** Keep up to five sessions open and swipe between them using live thumbnails. On iPad, each session gets its own terminal in split view.
+- **Private by design.** There's no account, analytics, advertising, or required cloud service. Hoshi verifies every server's host key, stores credentials in the Keychain, and transcribes voice prompts on the device.
+- **One purchase.** No subscription.
+
 ## Features
 
 ### Connections
 
-- **Mosh (Mobile Shell)** — UDP-based protocol that survives network changes, sleep, and roaming
-- **SSH** — full PTY support with automatic reconnection
-- Password and SSH key authentication (Ed25519, RSA)
-- Generate device-local SSH keys and share only the public key with the native iOS share sheet
-- Up to 5 concurrent sessions with a carousel UI for quick switching
+- Mosh and SSH, with password or key authentication (Ed25519, RSA)
+- SSH keys generated on the device. Share only the public key, from the iOS share sheet.
+- A host-key trust prompt on first connect, and a Known Hosts list to review or remove servers later
+- Automatic reconnection. Sessions you had open are restored when you relaunch the app.
 
-### tmux Integration
+### tmux and Herdr
 
-- Automatic session detection on connect
-- Session picker showing name, window count, attached status, and recent activity
-- Auto-attach to saved sessions
-- Named session creation or an explicit raw-shell fallback
-- Configurable tmux command palette, prefix, and custom byte sequences
+- tmux sessions detected on connect, with name, window count, attached status, and recent activity
+- Attach automatically, create a named session, or choose a raw shell
+- Herdr detection: attach to a Herdr session or jump straight to one agent's pane
+- Reach agents on other machines listed in the host's Herdr
 
-### Coding Agent Monitoring
+### Coding agents
 
-- Local-first inbox for completed jobs, attention requests, and approvals
-- Per-session attention badges and optional local notifications
-- Opt-in Lock Screen and Dynamic Island Live Activities with privacy-safe agent status
-- Notification deep links reopen the relevant terminal
-- Versioned terminal hooks for direct SSH connections
-- Optional bearer-token-protected, self-hosted companion for tmux and Mosh
-- No account, mandatory cloud service, or automatically executed approvals
+- A local inbox for finished jobs, attention requests, and approvals, with optional notifications
+- Lock Screen and Dynamic Island Live Activities that show agent status without revealing its content
+- Notification taps open the right terminal. Approvals never run commands on their own.
+- Optional hooks and a self-hosted companion for setups where tmux or Mosh swallow terminal events (see [below](#agent-hooks-and-self-hosted-companion))
 
-### Private Voice Prompts
+### Typing and touch
 
-- Push-to-talk dictation using on-device speech recognition only
-- Editable, in-memory drafts with no saved audio or transcripts
-- Insert text without Return, or explicitly confirm submitting it
-- Configurable language and recording limits
-- Drafts and recording are cleared when Hoshi locks or backgrounds
+- Customizable toolbar with Esc, Tab, ^C, function keys, and symbols. Drag buttons to reorder them.
+- Tap to click in vim, htop, and on URLs. Pan to scroll. Pinch to change the font size.
+- Text selection with draggable handles, plus a scrollbar overlay
+- Private voice prompts: push to talk, on-device speech recognition, and an editable draft before anything is sent
 
-### Secure File and Image Uploads
+### Files
 
-- Select documents or photos without granting full photo-library access
-- Encrypted SFTP uploads over pinned, host-key-verified SSH connections
-- Existing SSH sessions are reused; Mosh sessions open a separately verified SSH transfer connection
-- Home-directory-only destinations, unique filenames, private permissions, and atomic completion
-- Progress reporting, cancellation, and automatic partial-file cleanup
-- Optional shell-quoted remote path insertion without executing Return
-
-### Remote File Browser
-
-- Browse and search remote files inside the server's home directory over verified SSH/SFTP
-- Navigate folders with breadcrumbs, natural sorting, metadata, and optional hidden files
-- Preview and share privately staged downloads with bounded size and cancellation support
-- Upload documents or photos directly into the currently selected remote folder
-- Symbolic links and paths outside the remote home are blocked; private downloads are erased on close or app lock
-
-### Terminal
-
-- Powered by [Ghostty](https://ghostty.org) with Metal-accelerated rendering
-- xterm-256color with true color (24-bit) support
-- Unicode/UTF-8 and CJK character support
-- Scrollback buffer with gesture-based scrolling
-- Pinch-to-zoom font size adjustment
-- 50+ bundled Nerd Fonts
-
-### Keyboard Toolbar
-
-- Fully customizable button bar with drag-to-reorder
-- Sticky modifiers — Ctrl, Opt/Alt, and Shift apply to the next keystroke
-- Swipe-to-arrow controls — drag gestures emit arrow keys
-- Esc, Tab, function keys, symbols, and common combos (^C, ^D, ^Z)
-- Customizable microphone action for private voice prompt composition
-- Customizable file-upload action for documents and photos
-
-### Touch & Gestures
-
-- Tap to click (for vim, htop, URLs)
-- Long press + drag for mouse selection
-- One-finger pan to scroll the terminal buffer
-- Pinch to adjust font size
-- Scrollbar overlay indicator
+- Browse and search the server's home directory over a verified SSH/SFTP connection
+- Preview and share downloads, which are kept privately and erased when you close the browser or Hoshi locks
+- Upload documents or photos (without full photo-library access), with progress, cancellation, and cleanup
+- Optionally insert the uploaded file's path into the terminal
 
 ### Appearance
 
-- Dark and light terminal themes, including Nord, Dracula, Solarized Dark, Solarized Light, Gruvbox Dark, Tokyo Night, and Catppuccin Mocha
-- Cursor style configuration (block, beam, underline)
-- Background opacity control
-- Scroll speed multiplier
-- Haptic feedback throughout
+- More than 50 bundled Nerd Fonts
+- Themes including Nord, Dracula, Solarized, Gruvbox, Tokyo Night, and Catppuccin
+- Cursor style, background opacity, scroll speed, and haptics
 
 ## Tech Stack
 
-- **Swift 5.9** / **SwiftUI** — iOS 18.0+
-- **GhosttyKit** — Metal-accelerated terminal rendering via embedded xcframework
-- **Citadel** — SSH client library
-- **CryptoSwift** — AES-OCB encryption for the Mosh protocol
-- **SwiftData** — local persistence for server profiles
-- **Keychain Services** — credential storage
-- **Speech / AVFoundation** — strictly on-device voice prompt dictation
+- **Swift** / **SwiftUI**, iOS 18.0+
+- **GhosttyKit**: Metal-accelerated terminal rendering from an embedded xcframework
+- **Citadel**: SSH client
+- **CryptoSwift**: AES-OCB encryption for Mosh
+- **SwiftData** for server profiles, **Keychain Services** for credentials
+- **Speech / AVFoundation** for on-device dictation
 
-The Mosh protocol is implemented from scratch in Swift, including UDP transport, SSP (State Synchronization Protocol), and AES-OCB encryption.
+The Mosh client is implemented from scratch in Swift, covering the UDP transport, the State Synchronization Protocol, and AES-OCB encryption.
 
 ## Building
 
@@ -205,4 +179,6 @@ companion HTTP protocol.
 
 ## License
 
-This project is not yet licensed. All rights reserved.
+Hoshi is released under the [MIT License](LICENSE).
+
+Third-party components keep their own licenses: Ghostty (MIT) in `vendor/ghostty`, Swift package dependencies such as Citadel (MIT), CryptoSwift and the Apple Swift packages (Apache 2.0) under their own licenses, and the bundled Nerd Fonts under their fonts' licenses (mostly the SIL Open Font License 1.1, in `Hoshi/Hoshi/Resources/Fonts`).
