@@ -52,6 +52,7 @@ struct TerminalView: View {
     @State private var showSessionPicker = false
     @State private var showHerdrAgents = false
     @State private var keyboardVisibleBeforeHerdrAgents = true
+    @State private var keyboardVisibleBeforeHerdrReply = true
 
     // Keyboard visibility for explicit show/hide control
     @State private var isKeyboardVisible = true
@@ -253,6 +254,16 @@ struct TerminalView: View {
                     isKeyboardVisible = false
                 } else {
                     isKeyboardVisible = keyboardVisibleBeforeHerdrAgents
+                }
+            }
+            // A reply opened from a Live Activity or notification lands on the
+            // terminal; keep its keyboard from covering the reply composer.
+            .onChange(of: connectionVM.pendingHerdrReply != nil) { _, isPresented in
+                if isPresented {
+                    keyboardVisibleBeforeHerdrReply = isKeyboardVisible
+                    isKeyboardVisible = false
+                } else {
+                    isKeyboardVisible = keyboardVisibleBeforeHerdrReply
                 }
             }
     }
