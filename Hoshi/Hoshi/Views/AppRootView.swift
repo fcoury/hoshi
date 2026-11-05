@@ -1,7 +1,11 @@
 import SwiftUI
+import SwiftData
 
 struct AppRootView: View {
     @Environment(\.scenePhase) private var scenePhase
+    #if DEBUG
+    @Environment(\.modelContext) private var modelContext
+    #endif
 
     private let appearance = AppearanceSettings.shared
     private let appLock = AppLockService.shared
@@ -41,6 +45,9 @@ struct AppRootView: View {
             }
         }
         .task {
+            #if DEBUG
+            ScreenshotSeed.applyIfRequested(context: modelContext)
+            #endif
             if appLock.isLocked {
                 await appLock.unlock()
             }

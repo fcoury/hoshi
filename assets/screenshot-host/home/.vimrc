@@ -1,0 +1,11 @@
+syntax on
+set number
+set termguicolors
+set background=dark
+colorscheme habamax
+set laststatus=2
+set noswapfile
+set nobackup
+set mouse=a
+set nowrap
+set sidescroll=1

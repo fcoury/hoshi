@@ -1,0 +1,42 @@
+# Three hosts for the screenshot pipeline. Ports bind to loopback only (IPv4
+# and IPv6, since *.localhost resolves to ::1 on macOS).
+#   devbox.localhost:2222   UDP 60200-60209  Hoshi repo, tmux, Herdr agents
+#   gpu-box.localhost:2223  UDP 60210-60219  training job / htop
+#   prod-api.localhost:2224 UDP 60220-60229  logs
+# SHOTS_PASSWORD comes from the environment (scripts/screenshots/host.sh).
+x-host: &host
+  build: .
+  image: hoshi-screenshot-host
+  cap_add: [NET_ADMIN]   # tc netem for the Mosh dropout shot
+
+services:
+  devbox:
+    <<: *host
+    hostname: devbox
+    container_name: shots-devbox
+    environment: { SHOTS_PASSWORD: "${SHOTS_PASSWORD}", SHOTS_ROLE: devbox }
+    ports:
+      - "127.0.0.1:2222:22"
+      - "[::1]:2222:22"
+      - "127.0.0.1:60200-60209:60200-60209/udp"
+      - "[::1]:60200-60209:60200-60209/udp"
+  gpu-box:
+    <<: *host
+    hostname: gpu-box
+    container_name: shots-gpu-box
+    environment: { SHOTS_PASSWORD: "${SHOTS_PASSWORD}", SHOTS_ROLE: gpu-box }
+    ports:
+      - "127.0.0.1:2223:22"
+      - "[::1]:2223:22"
+      - "127.0.0.1:60210-60219:60210-60219/udp"
+      - "[::1]:60210-60219:60210-60219/udp"
+  prod-api:
+    <<: *host
+    hostname: prod-api
+    container_name: shots-prod-api
+    environment: { SHOTS_PASSWORD: "${SHOTS_PASSWORD}", SHOTS_ROLE: prod-api }
+    ports:
+      - "127.0.0.1:2224:22"
+      - "[::1]:2224:22"
+      - "127.0.0.1:60220-60229:60220-60229/udp"
+      - "[::1]:60220-60229:60220-60229/udp"

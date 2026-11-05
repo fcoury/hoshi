@@ -15,11 +15,11 @@ Hoshi (星, "star" in Japanese) is an SSH and Mosh terminal for iPhone and iPad,
 </a>
 
 <p align="center">
-  <img src="assets/screenshots/6.9/01-hero-1320x2868.png" width="250" alt="Your AI agents, in your pocket" />
+  <img src="assets/screenshots/iphone-6.9/01-hero.png" width="250" alt="The open-source terminal for coding agents" />
   &nbsp;&nbsp;
-  <img src="assets/screenshots/6.9/02-terminal-1320x2868.png" width="250" alt="A real terminal. Finally." />
+  <img src="assets/screenshots/iphone-6.9/02-lock-screen.png" width="250" alt="Answer your agents from the Lock Screen" />
   &nbsp;&nbsp;
-  <img src="assets/screenshots/6.9/03-multi-session-1320x2868.png" width="250" alt="Every server, one swipe" />
+  <img src="assets/screenshots/iphone-6.9/03-sessions-picker.png" width="250" alt="Every session, one tap away" />
 </p>
 
 ## Highlights

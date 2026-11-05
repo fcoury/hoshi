@@ -145,37 +145,58 @@ private struct StatusGlyph: View {
     }
 }
 
-/// Working / waiting / done chips, showing only non-zero counts.
+/// Working / waiting / done chips, showing only non-zero counts. When all
+/// three don't fit beside the action pill, the labels drop so nothing wraps.
 private struct AgentCountsRow: View {
     let state: State
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            chips(labeled: true)
+            chips(labeled: false)
+        }
+    }
+
+    private func chips(labeled: Bool) -> some View {
         HStack(spacing: 6) {
             if state.blockedCount > 0 {
-                chip(state.blockedCount, "waiting", "hand.raised.fill", Palette.attention)
+                chip(state.blockedCount, "waiting", "hand.raised.fill", Palette.attention, labeled: labeled)
             }
             if state.workingCount > 0 {
-                chip(state.workingCount, "working", "circle.dotted.circle", Palette.working)
+                chip(state.workingCount, "working", "circle.dotted.circle", Palette.working, labeled: labeled)
             }
             if state.doneCount > 0 {
-                chip(state.doneCount, "done", "checkmark", Palette.done)
+                chip(state.doneCount, "done", "checkmark", Palette.done, labeled: labeled)
             }
             if !state.hasAgentCounts, state.attentionCount > 0 {
-                chip(state.attentionCount, "unread", "tray.full.fill", Palette.tint(for: state.displayStatus))
+                chip(
+                    state.attentionCount, "unread", "tray.full.fill",
+                    Palette.tint(for: state.displayStatus), labeled: labeled
+                )
             }
         }
     }
 
-    private func chip(_ count: Int, _ label: String, _ symbol: String, _ tint: Color) -> some View {
+    private func chip(
+        _ count: Int,
+        _ label: String,
+        _ symbol: String,
+        _ tint: Color,
+        labeled: Bool
+    ) -> some View {
         HStack(spacing: 4) {
             Image(systemName: symbol)
                 .font(.system(size: 10, weight: .bold))
             Text("\(count)")
                 .font(.caption.weight(.semibold).monospacedDigit())
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.6))
+            if labeled {
+                Text(label)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.6))
+            }
         }
+        .lineLimit(1)
+        .fixedSize()
         .foregroundStyle(tint)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)

@@ -43,3 +43,8 @@ Hoshi/Frameworks/GhosttyKit.xcframework
 assets/screenshot-generator/.next/
 assets/screenshot-generator/node_modules/
 assets/screenshot-generator/.DS_Store
+
+# Screenshot pipeline (local test password and raw captures)
+assets/screenshot-host/.shots-password
+.shots/
+assets/screenshot-generator/public/shots/
