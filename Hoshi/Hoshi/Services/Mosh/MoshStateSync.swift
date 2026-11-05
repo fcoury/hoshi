@@ -9,8 +9,10 @@ struct MoshStateSync: Sendable {
     static let shutdownStateNum = MoshTransportSender.shutdownStateNum
     /// Keepalive interval for the NAT mapping and our acknowledgements, as in mosh.
     static let heartbeatInterval: TimeInterval = 3
-    /// Resets scrolling region and attributes and clears the screen: mosh's blank frame.
-    static let blankScreen = Data("\u{1b}[r\u{1b}[0m\u{1b}[H\u{1b}[2J".utf8)
+    /// mosh's blank frame: a full terminal reset (RIS), so nothing an earlier session in
+    /// this view left behind (colors, modes, alternate screen) leaks into mosh's diffs,
+    /// then scrolling region, attributes and screen as mosh's own clear sets them.
+    static let blankScreen = Data("\u{1b}c\u{1b}[r\u{1b}[0m\u{1b}[H\u{1b}[2J".utf8)
 
     enum Receipt: Equatable {
         /// The diff builds on our state, so its output goes to the terminal.

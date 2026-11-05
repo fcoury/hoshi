@@ -392,6 +392,9 @@ struct TerminalView: View {
                 TransportFallbackBanner(
                     presentation: fallback,
                     serverName: serverName,
+                    onRetryMosh: {
+                        Task { await connectionVM.restartConnection() }
+                    },
                     onAlwaysUseSSH: connectionVM.canRememberSSHFallback ? onAlwaysUseSSH : nil,
                     onDismiss: connectionVM.dismissTransportFallbackNotice
                 )
@@ -1294,29 +1297,42 @@ private extension ConnectionRecoveryStatus {
 private struct TransportFallbackBanner: View {
     let presentation: ErrorPresentation
     let serverName: String
+    let onRetryMosh: (() -> Void)?
     let onAlwaysUseSSH: (() throws -> Void)?
     let onDismiss: () -> Void
 
     @State private var preferenceSaved = false
     @State private var saveError: ErrorPresentation?
+    @State private var showDetails = false
 
     private let appearanceSettings = AppearanceSettings.shared
 
+    private var theme: TerminalTheme { appearanceSettings.currentTheme }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "arrow.triangle.branch")
-                    .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.accentYellow))
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(SwiftUI.Color(theme.accentYellow))
+                    .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Mosh unavailable — connected using SSH")
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.foreground))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Connected using SSH")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(SwiftUI.Color(theme.foreground))
 
                     Text(presentation.explanation)
                         .font(.caption)
-                        .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.secondaryForeground))
+                        .foregroundStyle(SwiftUI.Color(theme.foreground).opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
+
+                    if let recovery = presentation.recoverySuggestion {
+                        Text(recovery)
+                            .font(.caption)
+                            .foregroundStyle(SwiftUI.Color(theme.secondaryForeground))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 Spacer(minLength: 0)
@@ -1324,10 +1340,17 @@ private struct TransportFallbackBanner: View {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.secondaryForeground))
-                        .frame(minWidth: 44, minHeight: 44)
+                        .foregroundStyle(SwiftUI.Color(theme.secondaryForeground))
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("Dismiss SSH fallback notice")
+            }
+
+            if let command = presentation.suggestedCommand {
+                SuggestedCommandRow(command: command, hostname: presentation.context.hostname)
+                    .foregroundStyle(SwiftUI.Color(theme.foreground))
             }
 
             if preferenceSaved {
@@ -1336,85 +1359,87 @@ private struct TransportFallbackBanner: View {
                     systemImage: "checkmark.circle.fill"
                 )
                 .font(.caption)
-                .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.accentGreen))
+                .foregroundStyle(SwiftUI.Color(theme.accentGreen))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("terminal.transport.fallback.preferenceSaved")
-            } else if onAlwaysUseSSH != nil {
-                HStack(spacing: 8) {
-                    Button(action: saveSSHPreference) {
-                        Text("Always Use SSH")
-                            .font(.caption.weight(.semibold))
-                            .frame(minHeight: 44)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(SwiftUI.Color(appearanceSettings.currentTheme.accentBlue))
-                    .accessibilityLabel("Always use SSH for \(serverName)")
-                    .accessibilityHint("Saves SSH for future connections to this server")
-                    .accessibilityIdentifier("terminal.transport.fallback.alwaysSSH")
-
-                    Button(action: onDismiss) {
-                        Text("Not Now")
-                            .font(.caption)
-                            .frame(minHeight: 44)
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityHint("Keeps automatic transport selection")
-                    .accessibilityIdentifier("terminal.transport.fallback.notNow")
-                }
             }
 
             if let saveError {
-                VStack(alignment: .leading, spacing: 4) {
-                    Label(saveError.title, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.accentRed))
-
-                    Text(saveError.explanation)
-                        .font(.caption)
-                        .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.secondaryForeground))
-
-                    if let recovery = saveError.recoverySuggestion {
-                        Text(recovery)
-                            .font(.caption)
-                            .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.accentBlue))
-                    }
-
-                    DisclosureGroup("Save error details") {
-                        Text(saveError.technicalDetails)
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.secondaryForeground))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                Label(saveError.explanation, systemImage: "exclamationmark.circle.fill")
                     .font(.caption)
-                    .tint(SwiftUI.Color(appearanceSettings.currentTheme.accentRed))
-                }
-                .accessibilityIdentifier("terminal.transport.fallback.saveError")
+                    .foregroundStyle(SwiftUI.Color(theme.accentRed))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("terminal.transport.fallback.saveError")
             }
 
-            DisclosureGroup("Technical details") {
-                Text(presentation.technicalDetails)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(SwiftUI.Color(appearanceSettings.currentTheme.secondaryForeground))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 16) {
+                if let onRetryMosh {
+                    actionButton("Retry Mosh", systemImage: "arrow.clockwise", id: "retryMosh", action: onRetryMosh)
+                        .accessibilityHint("Reconnects and tries Mosh again")
+                }
+                if onAlwaysUseSSH != nil, !preferenceSaved {
+                    actionButton("Always Use SSH", systemImage: nil, id: "alwaysSSH", action: saveSSHPreference)
+                        .accessibilityLabel("Always use SSH for \(serverName)")
+                        .accessibilityHint("Saves SSH for future connections to this server")
+                }
+                Spacer(minLength: 0)
+                actionButton("Details", systemImage: "chevron.right", id: "details") { showDetails = true }
             }
-            .font(.caption)
-            .tint(SwiftUI.Color(appearanceSettings.currentTheme.accentYellow))
         }
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(SwiftUI.Color(appearanceSettings.currentTheme.accentYellow).opacity(0.12))
+                .fill(SwiftUI.Color(theme.background))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(
-                            SwiftUI.Color(appearanceSettings.currentTheme.accentYellow).opacity(0.3),
-                            lineWidth: 0.5
-                        )
+                        .fill(SwiftUI.Color(theme.accentYellow).opacity(0.10))
                 )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(SwiftUI.Color(theme.accentYellow).opacity(0.45), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
         )
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("terminal.transport.fallback")
+        .sheet(isPresented: $showDetails) {
+            NavigationStack {
+                ScrollView {
+                    ErrorPresentationView(presentation: presentation)
+                        .padding()
+                }
+                .navigationTitle("Why Mosh Wasn't Used")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showDetails = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
+    }
+
+    private func actionButton(
+        _ title: String,
+        systemImage: String?,
+        id: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text(title)
+                if let systemImage {
+                    Image(systemName: systemImage).font(.caption2.weight(.bold))
+                }
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(SwiftUI.Color(theme.accentBlue))
+            .frame(minHeight: 32)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("terminal.transport.fallback.\(id)")
     }
 
     private func saveSSHPreference() {

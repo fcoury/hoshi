@@ -66,6 +66,8 @@ final class MoshSession: ObservableObject {
     /// SSP state for the current mosh-server; survives socket replacement during recovery.
     private var stateSync = MoshStateSync()
     private var consecutiveDatagramFailures = 0
+    /// Set by `disconnect()`, so output still being decoded never reaches the terminal.
+    private var outputClosed = false
 
     private var debugSendInstructionCount = 0
     private var debugSendDatagramCount = 0
@@ -331,6 +333,7 @@ final class MoshSession: ObservableObject {
 
     // Disconnect everything
     func disconnect() async {
+        outputClosed = true
         await requestServerShutdown()
         isAppActive = false
         recoveryTask?.cancel()
@@ -388,6 +391,7 @@ final class MoshSession: ObservableObject {
         transportGeneration = UUID()
         sessionEndedNormally = false
         stateSync = MoshStateSync()
+        outputClosed = false
         consecutiveDatagramFailures = 0
         debugSendInstructionCount = 0
         debugSendDatagramCount = 0
@@ -573,6 +577,7 @@ final class MoshSession: ObservableObject {
                 for (idx, output) in outputs.enumerated() {
                     if let rawHostString = output.hostString {
                         let processed = await processInboundOutput(rawHostString)
+                        guard !outputClosed else { return }
                         guard !processed.isEmpty else { continue }
                         let hostString = stateSync.terminalBytes(processed)
                         debugHostByteCount += hostString.count

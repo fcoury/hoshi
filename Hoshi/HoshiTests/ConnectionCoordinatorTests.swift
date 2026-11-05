@@ -244,6 +244,21 @@ final class ConnectionCoordinatorTests: XCTestCase {
         XCTAssertTrue(command.contains("TERM_PROGRAM_VERSION="))
     }
 
+    func testClosedSSHSessionNeverWritesToTheTerminal() async {
+        let session = SSHSession(server: Server(name: "SSH", hostname: "127.0.0.1", username: "user"))
+        var received: [[UInt8]] = []
+        session.onDataReceived = { received.append($0) }
+        await session.processInboundOutput(Data("before".utf8))
+
+        await session.disconnect()
+        // A view update may hand the old session the terminal again before it is released.
+        session.onDataReceived = { received.append($0) }
+        // Like tmux's last redraw as it detaches, ending on its status bar color.
+        await session.processInboundOutput(Data("\u{1b}[48;5;233mlate".utf8))
+
+        XCTAssertEqual(received, [Array("before".utf8)])
+    }
+
     func testRawMoshLaunchDoesNotInjectTmuxCommand() throws {
         let command = MoshBootstrapService.serverLaunchCommand(
             configuredServerPath: nil,
@@ -516,7 +531,7 @@ final class ConnectionCoordinatorTests: XCTestCase {
         }
 
         XCTAssertEqual(received, [
-            Array("\u{1b}[r\u{1b}[0m\u{1b}[H\u{1b}[2J".utf8) + Array(header),
+            Array(MoshStateSync.blankScreen) + Array(header),
             Array(partialRepaint),
             Array(appExit),
         ])
