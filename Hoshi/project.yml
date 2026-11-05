@@ -40,11 +40,12 @@ targets:
         INFOPLIST_KEY_NSSupportsLiveActivities: true
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         "INFOPLIST_KEY_UISupportedInterfaceOrientations~ipad": UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
-        # Preserve the existing release declaration; review export compliance before shipping.
-        ITSAppUsesNonExemptEncryption: "NO"
+        # Export compliance: Hoshi uses only exempt encryption (SSH and Mosh). As a plain
+        # build setting this never reached Info.plist, so each build needed a manual answer.
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         PRODUCT_BUNDLE_IDENTIFIER: app.gethoshi.ios
-        MARKETING_VERSION: "1.1.0"
-        CURRENT_PROJECT_VERSION: "4"
+        MARKETING_VERSION: "1.2.0"
+        CURRENT_PROJECT_VERSION: "5"
         DEVELOPMENT_TEAM: UXWHD5F6F4
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -74,8 +75,8 @@ targets:
         GENERATE_INFOPLIST_FILE: "YES"
         INFOPLIST_FILE: HoshiLiveActivity/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: app.gethoshi.ios.liveactivity
-        MARKETING_VERSION: "1.1.0"
-        CURRENT_PROJECT_VERSION: "4"
+        MARKETING_VERSION: "1.2.0"
+        CURRENT_PROJECT_VERSION: "5"
         DEVELOPMENT_TEAM: UXWHD5F6F4
         CODE_SIGN_STYLE: Automatic
         APPLICATION_EXTENSION_API_ONLY: "YES"
