@@ -2,6 +2,7 @@ import GhosttyKit
 import SwiftData
 import UIKit
 import XCTest
+import Network
 @testable import Hoshi
 
 @MainActor
@@ -433,6 +434,50 @@ final class ConnectionCoordinatorTests: XCTestCase {
         XCTAssertEqual(session.connectionState, .connected)
         XCTAssertFalse(session.sessionEndedNormally)
         await session.disconnect()
+    }
+
+    func testMoshUDPTargetsTheResolvedAddressMoshServerBoundTo() {
+        // A hostname resolving to IPv4 and a scoped link-local address: SSH arrived over IPv6,
+        // so mosh-server bound there and UDP must keep the client-side interface scope.
+        let candidates = ["192.168.1.20", "fe80::1c2:3%en0"]
+        XCTAssertEqual(
+            MoshBootstrapService.udpHost(serverIP: "fe80::1c2:3%en7", hostname: "mac.local", candidates: candidates),
+            "fe80::1c2:3%en0"
+        )
+        XCTAssertEqual(
+            MoshBootstrapService.udpHost(serverIP: "192.168.1.20", hostname: "mac.local", candidates: candidates),
+            "192.168.1.20"
+        )
+        // sshd on a dual-stack socket reports IPv4 clients as IPv4-mapped IPv6.
+        XCTAssertEqual(
+            MoshBootstrapService.udpHost(serverIP: "::ffff:192.168.1.20", hostname: "mac.local", candidates: candidates),
+            "192.168.1.20"
+        )
+    }
+
+    func testMoshUDPFallsBackToHostnameWhenServerAddressIsNotResolvable() {
+        // Behind NAT the server reports its private address; keep using the name.
+        XCTAssertEqual(
+            MoshBootstrapService.udpHost(serverIP: "10.0.0.5", hostname: "example.com", candidates: ["203.0.113.9"]),
+            "example.com"
+        )
+        XCTAssertEqual(
+            MoshBootstrapService.udpHost(serverIP: nil, hostname: "example.com", candidates: ["203.0.113.9"]),
+            "example.com"
+        )
+    }
+
+    func testMoshServerIPIsReadFromSSHConnectionLine() {
+        let output = "motd\nMOSH SSH_CONNECTION fe80::9%en0 51234 fe80::1c2:3%en0 22\n\nMOSH CONNECT 60001 abc\n"
+        XCTAssertEqual(MoshBootstrapService.parseServerIPFromSSHConnection(output), "fe80::1c2:3%en0")
+    }
+
+    func testNumericHostResolutionKeepsLiteralsAndScopes() throws {
+        XCTAssertEqual(MoshBootstrapService.resolveNumericHosts("127.0.0.1", port: 60001), ["127.0.0.1"])
+        XCTAssertEqual(MoshBootstrapService.resolveNumericHosts("fe80::1%lo0", port: 60001), ["fe80::1%lo0"])
+        // The scoped literal must survive into the UDP endpoint's interface.
+        let address = try XCTUnwrap(IPv6Address("fe80::1%lo0"))
+        XCTAssertEqual(address.interface?.name, "lo0")
     }
 
     func testUnauthenticatedResponseCannotMarkMoshConnected() async throws {

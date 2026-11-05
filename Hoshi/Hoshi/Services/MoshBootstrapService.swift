@@ -1,5 +1,6 @@
 import Foundation
 import Citadel
+import Network
 
 // Result of starting mosh-server over SSH
 struct MoshConnectionInfo: Sendable {
@@ -109,9 +110,15 @@ final class MoshBootstrapService {
 
         // Parse the MOSH CONNECT line
         let (port, keyString) = try MoshBootstrapService.parseMoshConnect(output)
-        // Use the user-provided host for UDP. In practice this is the route that
-        // succeeded for SSH from this client environment.
-        let serverIP = hostname
+        // mosh-server binds only to the address SSH arrived on (`new -s`). Aim UDP at
+        // that exact address instead of letting the socket resolve the name again, which
+        // can pick another address family or drop a link-local IPv6 interface scope.
+        let reportedServerIP = Self.parseServerIPFromSSHConnection(output)
+        let hostname = self.hostname
+        let candidates = await Task.detached {
+            Self.resolveNumericHosts(hostname, port: port)
+        }.value
+        let serverIP = Self.udpHost(serverIP: reportedServerIP, hostname: hostname, candidates: candidates)
 
         // mosh key on the wire is unpadded 22-char base64.
         guard let keyData = MoshBootstrapService.decodeMoshSessionKey(keyString) else {
@@ -153,6 +160,52 @@ final class MoshBootstrapService {
             return parts[4]
         }
         return nil
+    }
+
+    /// The resolved address of `hostname` that is the address mosh-server bound to,
+    /// keeping its client-side scope (`fe80::1%en0`). Falls back to `hostname` when the
+    /// server's address isn't one of them, such as behind NAT.
+    static func udpHost(serverIP: String?, hostname: String, candidates: [String]) -> String {
+        guard let serverIP, let target = normalizedAddress(serverIP) else { return hostname }
+        return candidates.first { normalizedAddress($0) == target } ?? hostname
+    }
+
+    /// The bytes of an IP literal, ignoring any `%scope` (the server reports its own
+    /// interface) and treating IPv4-mapped IPv6 as IPv4.
+    static func normalizedAddress(_ literal: String) -> Data? {
+        let bare = literal.split(separator: "%", maxSplits: 1).first.map(String.init) ?? literal
+        if let ipv4 = IPv4Address(bare) { return ipv4.rawValue }
+        if let ipv6 = IPv6Address(bare) { return ipv6.asIPv4?.rawValue ?? ipv6.rawValue }
+        return nil
+    }
+
+    /// Numeric forms of every UDP address `hostname` resolves to. Scoped IPv6 results
+    /// keep their interface (`fe80::1%en0`).
+    static func resolveNumericHosts(_ hostname: String, port: UInt16) -> [String] {
+        var hints = addrinfo()
+        hints.ai_family = AF_UNSPEC
+        hints.ai_socktype = SOCK_DGRAM
+        hints.ai_protocol = IPPROTO_UDP
+
+        var result: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(hostname, String(port), &hints, &result) == 0, let first = result else { return [] }
+        defer { freeaddrinfo(first) }
+
+        var hosts: [String] = []
+        var cursor: UnsafeMutablePointer<addrinfo>? = first
+        while let info = cursor {
+            var buffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            if getnameinfo(
+                info.pointee.ai_addr, info.pointee.ai_addrlen,
+                &buffer, socklen_t(buffer.count),
+                nil, 0, NI_NUMERICHOST
+            ) == 0 {
+                let host = String(cString: buffer)
+                if !hosts.contains(host) { hosts.append(host) }
+            }
+            cursor = info.pointee.ai_next
+        }
+        return hosts
     }
 
     static func decodeMoshSessionKey(_ key: String) -> Data? {
