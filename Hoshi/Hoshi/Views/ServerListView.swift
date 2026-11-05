@@ -595,6 +595,10 @@ struct ServerListView: View {
             onDismiss: { sessionManager.returnToServerList() },
             presentsHostKeyPrompts: !usesSplitView
         )
+        // One terminal view per session. Without this, the iPad split-view detail reuses the
+        // previous session's surface and coordinator, so a new card shows the old session's
+        // screen and keystrokes go to the old session's transport.
+        .id(session.id)
     }
 
     private func connectingOverlay(for session: ManagedSession) -> some View {
