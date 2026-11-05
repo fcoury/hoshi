@@ -42,7 +42,8 @@ final class MoshSession: ObservableObject {
     private let makeUDPConnection: @MainActor (String, UInt16) -> any MoshUDPTransport
 
     private var receiveTask: Task<Void, Never>?
-    private var heartbeatTask: Task<Void, Never>?
+    private var transmitTask: Task<Void, Never>?
+    private let transmitSignal = MoshTransmitSignal()
     private var networkWatchTask: Task<Void, Never>?
     private var startupProbeTask: Task<Void, Never>?
     private var startupReadinessContinuation: AsyncStream<Void>.Continuation?
@@ -54,24 +55,30 @@ final class MoshSession: ObservableObject {
     private var udpHost: String?
     private var udpPort: UInt16?
     private var pendingTerminalSize: (cols: Int, rows: Int)?
-    private var outboundTask: Task<Void, Never>?
-    private var outboundTaskID: UUID?
 
-    /// mosh-server sends its final state with this number when its shell exits.
-    static let shutdownStateNum = UInt64.max
+    /// mosh marks the last state of a session with this number, in either direction.
+    static let shutdownStateNum = MoshTransportSender.shutdownStateNum
 
     /// Set once the server reported that its shell exited, so the silence that
     /// follows isn't mistaken for a network drop and retried.
     private(set) var sessionEndedNormally = false
 
     // SSP state tracking
-    private var localStateNum: UInt64 = 0
+    /// User input not yet acknowledged by mosh-server; survives socket replacement.
+    private var sender = MoshTransportSender()
     private var remoteStateNum: UInt64 = 0
+    /// Set when mosh-server acknowledges our shutdown state.
+    private var clientShutdownAcknowledged = false
     private var consecutiveDatagramFailures = 0
     // When we skip diffs due to base mismatch, we send an immediate
     // ack so the server retransmits from our actual state quickly
     // (~100ms RTT) instead of waiting for the 3s heartbeat cycle.
-    private var needsImmediateAck = false
+    private var needsImmediateAck = false {
+        didSet { if needsImmediateAck { transmitSignal.fire() } }
+    }
+    private var lastTransmitAt: TimeInterval = 0
+    /// Keepalive interval for the NAT mapping and our acknowledgements, as in mosh.
+    private static let heartbeatInterval: TimeInterval = 3
 
     // Track whether a full-screen app (nvim, etc.) has enabled mouse
     // tracking. When it disables tracking on exit, we inject a screen
@@ -82,6 +89,7 @@ final class MoshSession: ObservableObject {
     private var debugSendInstructionCount = 0
     private var debugSendDatagramCount = 0
     private var debugReceiveDatagramCount = 0
+    private var debugUnauthenticatedDatagramCount = 0
     private var debugDecryptSuccessCount = 0
     private var debugInstructionDecodeCount = 0
     private var debugHostOutputCount = 0
@@ -275,12 +283,21 @@ final class MoshSession: ObservableObject {
         }
     }
 
-    // Send keystrokes via the SSP protocol over UDP
+    /// Queues keystrokes for mosh-server. Input typed while the UDP path is being restored
+    /// is kept and delivered once it is back, as mosh does.
     func send(_ data: Data) async {
-        guard connectionState == .connected, recoveryStatus == .idle else { return }
-        let userInput = MoshUserInput.encodeKeystroke(data)
-        let preview = data.prefix(4).map { String(format: "%02x", $0) }.joined(separator: " ")
-        _ = await sendStatefulDiff(userInput, context: "send keystroke", inputPreview: preview)
+        guard acceptsInput, !data.isEmpty else { return }
+        if Self.inputTraceEnabled {
+            let preview = data.prefix(4).map { String(format: "%02x", $0) }.joined(separator: " ")
+            print("[INPUT_TRACE] moshQueue state=\(sender.currentNum) bytes=\(data.count) preview=\(preview)")
+        }
+        sender.enqueue(MoshUserInput.encodeKeystroke(data))
+        transmitSignal.fire()
+    }
+
+    /// Connected, or temporarily restoring the UDP path.
+    private var acceptsInput: Bool {
+        !sessionEndedNormally && (connectionState == .connected || connectionState == .reconnecting)
     }
 
     // Send a string
@@ -291,15 +308,14 @@ final class MoshSession: ObservableObject {
 
     // Resize the remote terminal
     func resize(cols: Int, rows: Int) async {
-        pendingTerminalSize = (cols, rows)
-        guard connectionState == .connected, recoveryStatus == .idle else { return }
-        let userInput = MoshUserInput.encodeResize(width: Int32(cols), height: Int32(rows))
-        let sent = await sendStatefulDiff(userInput, context: "send resize")
-        if sent {
-            if pendingTerminalSize?.cols == cols, pendingTerminalSize?.rows == rows {
-                pendingTerminalSize = nil
-            }
+        guard acceptsInput else {
+            // Sent once the session connects.
+            pendingTerminalSize = (cols, rows)
+            return
         }
+        pendingTerminalSize = nil
+        sender.enqueue(MoshUserInput.encodeResize(width: Int32(cols), height: Int32(rows)))
+        transmitSignal.fire()
     }
 
     // Called when the app returns to foreground to ensure UDP connectivity
@@ -314,13 +330,13 @@ final class MoshSession: ObservableObject {
         isAppActive = false
         pauseRecoveryBudget()
         recoveryTask?.cancel()
-        outboundTask?.cancel()
         recoveryTask = nil
-        outboundTask = nil
-        outboundTaskID = nil
         receiveTask?.cancel()
-        heartbeatTask?.cancel()
+        receiveTask = nil
+        transmitTask?.cancel()
+        transmitTask = nil
         startupProbeTask?.cancel()
+        startupProbeTask = nil
     }
 
     func retryRecovery() async {
@@ -334,15 +350,16 @@ final class MoshSession: ObservableObject {
 
     // Disconnect everything
     func disconnect() async {
+        await requestServerShutdown()
         isAppActive = false
         recoveryTask?.cancel()
         receiveTask?.cancel()
-        heartbeatTask?.cancel()
+        transmitTask?.cancel()
         networkWatchTask?.cancel()
         startupProbeTask?.cancel()
         startupReadinessContinuation?.finish()
         receiveTask = nil
-        heartbeatTask = nil
+        transmitTask = nil
         networkWatchTask = nil
         startupProbeTask = nil
         startupReadinessContinuation = nil
@@ -389,7 +406,8 @@ final class MoshSession: ObservableObject {
         udpPort = info.udpPort
         transportGeneration = UUID()
         sessionEndedNormally = false
-        localStateNum = 0
+        clientShutdownAcknowledged = false
+        sender = MoshTransportSender()
         remoteStateNum = 0
         needsImmediateAck = false
         mouseTrackingActive = false
@@ -429,8 +447,10 @@ final class MoshSession: ObservableObject {
         recoveryElapsed = 0
         recoveryStartedAt = nil
 
-        // Start heartbeat to maintain NAT mapping
-        startHeartbeat()
+        startTransmitter()
+        if let size = pendingTerminalSize {
+            await resize(cols: size.cols, rows: size.rows)
+        }
 
         // Start network monitoring for auto-reconnect
         startNetworkWatch()
@@ -461,11 +481,7 @@ final class MoshSession: ObservableObject {
     }
 
     private func sendStartupProbe() async throws {
-        var instruction = MoshTransportInstruction()
-        instruction.oldNum = localStateNum
-        instruction.newNum = localStateNum
-        instruction.ackNum = remoteStateNum
-        try await sendTransportInstruction(instruction)
+        try await sendTransportInstruction(sender.acknowledgementInstruction(remoteAck: remoteStateNum))
     }
 
     private func startStartupProbeRetries() {
@@ -561,6 +577,11 @@ final class MoshSession: ObservableObject {
             recordRoundTripSample(decoded.roundTripSample)
             let instruction = decoded.instruction
             debugInstructionDecodeCount += 1
+            // Every authenticated instruction carries the server's ack, duplicates included.
+            sender.acknowledge(instruction.ackNum)
+            if instruction.ackNum == Self.shutdownStateNum {
+                clientShutdownAcknowledged = true
+            }
 
             startupReadinessContinuation?.yield(())
             startupReadinessContinuation?.finish()
@@ -683,6 +704,10 @@ final class MoshSession: ObservableObject {
             if remoteStateNum == Self.shutdownStateNum {
                 await finishRemoteShutdown()
             }
+        } catch MoshProtocolError.unauthenticated {
+            // Not from our mosh-server (or corrupted). Anyone who can reach the port can
+            // send these, so they must never affect the session.
+            debugUnauthenticatedDatagramCount += 1
         } catch {
             consecutiveDatagramFailures += 1
             reportNonFatalError(error, context: "process datagram")
@@ -703,10 +728,7 @@ final class MoshSession: ObservableObject {
         sessionEndedNormally = true
         recoveryLog.notice("Mosh server reported that the remote shell exited")
 
-        var instruction = MoshTransportInstruction()
-        instruction.oldNum = localStateNum
-        instruction.newNum = localStateNum
-        instruction.ackNum = Self.shutdownStateNum
+        let instruction = sender.acknowledgementInstruction(remoteAck: Self.shutdownStateNum)
         // UDP may drop one; mosh-server retransmits its shutdown until acked anyway.
         for _ in 0..<2 {
             do {
@@ -720,48 +742,87 @@ final class MoshSession: ObservableObject {
         await disconnect()
     }
 
-    // Send periodic keepalive datagrams to maintain NAT mapping.
-    // Also polls for needsImmediateAck to fast-ack skipped diffs,
-    // prompting the server to retransmit from our actual state
-    // within ~100ms instead of waiting for the 3-second cycle.
-    private func startHeartbeat() {
-        heartbeatTask = Task { [weak self] in
-            var ticksSinceLastHeartbeat = 0
-            let tickInterval = 50  // ms
-            let heartbeatTicks = 3000 / tickInterval  // 60 ticks = 3s
+    /// Asks mosh-server to exit when the user closes a live session; otherwise it would
+    /// keep the shell running forever. Waits briefly for the acknowledgement.
+    private func requestServerShutdown() async {
+        guard !sessionEndedNormally,
+              connectionState == .connected,
+              recoveryStatus == .idle,
+              receiveTask != nil,
+              udpConnection?.isReady == true else { return }
 
+        transmitTask?.cancel()
+        transmitTask = nil
+        let instruction = sender.shutdownInstruction(remoteAck: remoteStateNum)
+        for _ in 0..<3 {
+            do {
+                try await sendTransportInstruction(instruction)
+            } catch {
+                reportNonFatalError(error, context: "client shutdown")
+                return
+            }
+            let deadline = CACurrentMediaTime() + 0.15
+            while !clientShutdownAcknowledged, CACurrentMediaTime() < deadline {
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            if clientShutdownAcknowledged { return }
+        }
+    }
+
+    /// How long a sent state may go unacknowledged before it is resent from the
+    /// acknowledged base: mosh's RTO (bounded to 50 ms...1 s) plus its 100 ms ack delay.
+    private var retransmitTimeout: TimeInterval {
+        let rto = min(1, max(0.05, (roundTripEstimator.smoothed ?? 1) * 2))
+        return rto + 0.1
+    }
+
+    /// Sends new input, resends unacknowledged input, and keeps the path alive. Woken by
+    /// input and by received diffs that need a quick ack; otherwise sleeps until the next
+    /// resend or heartbeat is due.
+    private func startTransmitter() {
+        transmitTask?.cancel()
+        let generation = transportGeneration
+        lastTransmitAt = CACurrentMediaTime()
+        transmitTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(tickInterval))
-                guard let self, !Task.isCancelled else { break }
-                ticksSinceLastHeartbeat += 1
+                guard let self,
+                      self.transportGeneration == generation,
+                      self.connectionState == .connected,
+                      self.recoveryStatus == .idle else { return }
 
-                // Send ack when overdue or when the overlap guard
-                // flagged a base-mismatch skip.
-                let sendNow = self.needsImmediateAck
-                    || ticksSinceLastHeartbeat >= heartbeatTicks
-
-                guard sendNow else { continue }
-
-                if self.needsImmediateAck {
-                    self.needsImmediateAck = false
-                    if Self.sspTraceEnabled {
-                        sspLog.notice("[SSP] Sending immediate ack (remoteState=\(self.remoteStateNum))")
-                    }
-                }
-
-                ticksSinceLastHeartbeat = 0
-                var instruction = MoshTransportInstruction()
-                instruction.oldNum = self.localStateNum
-                instruction.newNum = self.localStateNum
-                instruction.ackNum = self.remoteStateNum
+                let timeout = self.retransmitTimeout
                 do {
-                    try await self.sendTransportInstruction(instruction)
+                    try await self.transmitDueInstruction(timeout: timeout)
                 } catch {
-                    self.reportNonFatalError(error, context: "heartbeat")
-                    self.requestRecovery(trigger: "heartbeat failure", underlyingError: error)
+                    guard !Task.isCancelled, self.transportGeneration == generation else { return }
+                    self.reportNonFatalError(error, context: "transmit")
+                    self.requestRecovery(trigger: "transmit failure", underlyingError: error)
                     return
                 }
+
+                let now = CACurrentMediaTime()
+                var wake = self.lastTransmitAt + Self.heartbeatInterval
+                if let resend = self.sender.retransmitDeadline(timeout: timeout) {
+                    wake = min(wake, resend)
+                }
+                await self.transmitSignal.wait(timeout: max(0.005, wake - now))
             }
+        }
+    }
+
+    private func transmitDueInstruction(timeout: TimeInterval) async throws {
+        let now = CACurrentMediaTime()
+        if let instruction = sender.nextInstruction(now: now, timeout: timeout, remoteAck: remoteStateNum) {
+            if Self.inputTraceEnabled {
+                print("[INPUT_TRACE] moshSend state=\(instruction.oldNum)→\(instruction.newNum) ack=\(instruction.ackNum) diffLen=\(instruction.diff.count)")
+            }
+            needsImmediateAck = false
+            try await sendTransportInstruction(instruction)
+            lastTransmitAt = now
+        } else if needsImmediateAck || now - lastTransmitAt >= Self.heartbeatInterval {
+            needsImmediateAck = false
+            try await sendTransportInstruction(sender.acknowledgementInstruction(remoteAck: remoteStateNum))
+            lastTransmitAt = now
         }
     }
 
@@ -807,15 +868,12 @@ final class MoshSession: ObservableObject {
 
     private func runRecoveryLoop() async {
         transportGeneration = UUID()
-        outboundTask?.cancel()
-        outboundTask = nil
-        outboundTaskID = nil
         receiveTask?.cancel()
-        heartbeatTask?.cancel()
+        transmitTask?.cancel()
         startupProbeTask?.cancel()
         startupReadinessContinuation?.finish()
         receiveTask = nil
-        heartbeatTask = nil
+        transmitTask = nil
         startupProbeTask = nil
         startupReadinessContinuation = nil
         udpConnection?.disconnect()
@@ -849,10 +907,9 @@ final class MoshSession: ObservableObject {
                 connectionError = nil
                 recoveryStatus = .idle
                 connectionState = .connected
-                startHeartbeat()
-                if let size = pendingTerminalSize {
-                    await resize(cols: size.cols, rows: size.rows)
-                }
+                // Whatever was in flight on the old socket may be gone.
+                sender.resendFromAcknowledgedState()
+                startTransmitter()
                 recoveryLog.notice("Mosh recovery authenticated successfully")
                 return
             } catch is CancellationError {
@@ -971,59 +1028,6 @@ final class MoshSession: ObservableObject {
         }
     }
 
-    /// Serializes SSP state transitions while dropping any work that belongs to
-    /// a socket generation that has entered recovery. State advances only after
-    /// every datagram for the instruction has been accepted by the UDP transport.
-    private func sendStatefulDiff(
-        _ diff: Data,
-        context: String,
-        inputPreview: String? = nil
-    ) async -> Bool {
-        guard connectionState == .connected, recoveryStatus == .idle else { return false }
-
-        let generation = transportGeneration
-        let previousTask = outboundTask
-        let taskID = UUID()
-        outboundTaskID = taskID
-
-        let task = Task { [weak self] in
-            await previousTask?.value
-            guard let self,
-                  !Task.isCancelled,
-                  self.transportGeneration == generation,
-                  self.connectionState == .connected,
-                  self.recoveryStatus == .idle else { return false }
-
-            var instruction = MoshTransportInstruction()
-            instruction.oldNum = self.localStateNum
-            instruction.newNum = self.localStateNum + 1
-            instruction.ackNum = self.remoteStateNum
-            instruction.diff = diff
-
-            if Self.inputTraceEnabled, let inputPreview {
-                print("[INPUT_TRACE] moshSend state=\(instruction.oldNum)→\(instruction.newNum) ack=\(instruction.ackNum) diffLen=\(diff.count) preview=\(inputPreview)")
-            }
-
-            do {
-                try await self.sendTransportInstruction(instruction)
-                guard self.transportGeneration == generation else { return false }
-                self.localStateNum = instruction.newNum
-                return true
-            } catch {
-                self.reportNonFatalError(error, context: context)
-                self.requestRecovery(trigger: "\(context) failure", underlyingError: error)
-                return false
-            }
-        }
-        outboundTask = Task { _ = await task.value }
-        let sent = await task.value
-        if outboundTaskID == taskID {
-            outboundTask = nil
-            outboundTaskID = nil
-        }
-        return sent
-    }
-
     private func reportNonFatalError(_ error: Error, context: String) {
         print("[MoshSession] \(context): \(ErrorRedactor.redact(error.localizedDescription))")
     }
@@ -1089,5 +1093,51 @@ enum MoshSessionError: LocalizedError {
         case .decompressionOverflow:
             return "Decompressed mosh instruction exceeded maximum buffer size"
         }
+    }
+}
+
+/// Wakes the transmit loop early. A fire with nobody waiting is remembered once.
+@MainActor
+private final class MoshTransmitSignal {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var pending = false
+    private var timer: Task<Void, Never>?
+
+    func fire() {
+        if let continuation {
+            self.continuation = nil
+            timer?.cancel()
+            timer = nil
+            continuation.resume()
+        } else {
+            pending = true
+        }
+    }
+
+    /// Returns when fired or after `timeout`, whichever is first, or when the task is cancelled.
+    func wait(timeout: TimeInterval) async {
+        if pending {
+            pending = false
+            return
+        }
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                self.continuation = continuation
+                timer = Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(timeout))
+                    guard !Task.isCancelled else { return }
+                    self?.timeOut()
+                }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.timeOut() }
+        }
+    }
+
+    private func timeOut() {
+        guard let continuation else { return }
+        self.continuation = nil
+        timer = nil
+        continuation.resume()
     }
 }

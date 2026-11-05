@@ -54,6 +54,7 @@
 		4A93DFBF6797B3660C74DC50 /* RemoteFileBrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3F0720A5583E1F8467C2B9D /* RemoteFileBrowserTests.swift */; };
 		4ADC915A6EB19698B22D581F /* MoshProtocolEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64BDC91C39D6AD7FE7E87ED1 /* MoshProtocolEngine.swift */; };
 		4C2254C1D1A0CE8B061B3048 /* FantasqueSansMNerdFontMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D77927DA3E7A9D232FB2AF6E /* FantasqueSansMNerdFontMono-Bold.ttf */; };
+		4F79FCFB7BBE56E127555F1D /* MoshTransportSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = D13DEECA2010985215D83F70 /* MoshTransportSender.swift */; };
 		4FEE466B17B76250B24EF2BE /* HerdrAgentMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C160320D83BA7CF9E1EB2D76 /* HerdrAgentMonitor.swift */; };
 		5248EE3B3EA2C454D927D269 /* CaskaydiaCoveNerdFontMono-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D59BA3DFAA3F29B0B2D61DD8 /* CaskaydiaCoveNerdFontMono-BoldItalic.ttf */; };
 		538D8E0977B2ACCA89F408C6 /* SessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 496577E7FB5E979F6E5DC1F8 /* SessionManager.swift */; };
@@ -151,6 +152,7 @@
 		E7563F76D35EDDB9B57B0F4F /* AgentLiveActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 801E48EA50FECC2FE52C74A3 /* AgentLiveActivityTests.swift */; };
 		E7604D7C358F7FA6A1BC2EF7 /* FantasqueSansMNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1FF91BC6BC483D5D7AFC61F3 /* FantasqueSansMNerdFontMono-Regular.ttf */; };
 		E9992B8F2A238088E9E8947C /* ConnectionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F557CBF23A18021FB572C1 /* ConnectionCoordinator.swift */; };
+		EB3EE6EDFD0FC3B585BF47C0 /* MoshTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8518B21685D4A9FB388CC3FE /* MoshTransportTests.swift */; };
 		EDBD3D7E5EE610CF4A15365B /* SplashScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AF94357516E9501585160AD /* SplashScreenView.swift */; };
 		F29BBD73F3073EB36F287223 /* AgentMonitoringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4528CF916BE2B99EED07F6C /* AgentMonitoringTests.swift */; };
 		F3916F8D9A261E1AEB1AF07A /* MesloLGSNerdFontMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = ECD6E3400C759BA2E5459CC7 /* MesloLGSNerdFontMono-Italic.ttf */; };
@@ -279,6 +281,7 @@
 		8170226DB82D210986010A32 /* VoicePromptComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePromptComposerView.swift; sourceTree = "<group>"; };
 		83584445F7F64462E791CA50 /* Server.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Server.swift; sourceTree = "<group>"; };
 		848D6A3E0373C1F3C67951BA /* KnownHostsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsService.swift; sourceTree = "<group>"; };
+		8518B21685D4A9FB388CC3FE /* MoshTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshTransportTests.swift; sourceTree = "<group>"; };
 		881C5E9A75631AA85261C1E3 /* HackNerdFontMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HackNerdFontMono-Bold.ttf"; sourceTree = "<group>"; };
 		89E70FBED6094022B4F5F8D4 /* MononokiNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MononokiNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
 		8DC00E889FC8C84F0BCCB38E /* HerdrReplyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrReplyView.swift; sourceTree = "<group>"; };
@@ -323,6 +326,7 @@
 		CC2A0942C17B7A59169DD26F /* DailyWorkflowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyWorkflowTests.swift; sourceTree = "<group>"; };
 		CD6FB75DC159A221A4041B52 /* JetBrainsMonoNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
 		D11B78874807368F1E546709 /* FantasqueSansMNerdFontPropo-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFontPropo-Italic.ttf"; sourceTree = "<group>"; };
+		D13DEECA2010985215D83F70 /* MoshTransportSender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshTransportSender.swift; sourceTree = "<group>"; };
 		D2A47D4DB71EA9D072DD91AE /* MoshSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshSession.swift; sourceTree = "<group>"; };
 		D493916FB8323A0BFDB051C4 /* MononokiNerdFontMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MononokiNerdFontMono-Italic.ttf"; sourceTree = "<group>"; };
 		D59BA3DFAA3F29B0B2D61DD8 /* CaskaydiaCoveNerdFontMono-BoldItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "CaskaydiaCoveNerdFontMono-BoldItalic.ttf"; sourceTree = "<group>"; };
@@ -385,6 +389,7 @@
 				C196748322C5769248D1E351 /* KeychainServiceTests.swift */,
 				2AF503734734CFDC89F78788 /* KnownHostsServiceTests.swift */,
 				41CF781D13ED19D76B0E662E /* MoshIntegrationTests.swift */,
+				8518B21685D4A9FB388CC3FE /* MoshTransportTests.swift */,
 				C3F0720A5583E1F8467C2B9D /* RemoteFileBrowserTests.swift */,
 				B2DF4C2856D88394B594133C /* ServerModelTests.swift */,
 				3175AF54B1CC78B801755FCF /* SessionManagerTests.swift */,
@@ -621,6 +626,7 @@
 				6B6C0D92DFAE29A99A64E6AF /* MoshCrypto.swift */,
 				64BDC91C39D6AD7FE7E87ED1 /* MoshProtocolEngine.swift */,
 				414AB1CB023F8485D188ED5A /* MoshTransport.swift */,
+				D13DEECA2010985215D83F70 /* MoshTransportSender.swift */,
 				308F44F8EECB3F7443B190ED /* MoshUDPConnection.swift */,
 			);
 			path = Mosh;
@@ -862,6 +868,7 @@
 				4ADC915A6EB19698B22D581F /* MoshProtocolEngine.swift in Sources */,
 				6673BE4456E9276448591DD4 /* MoshSession.swift in Sources */,
 				65F0E59F2EFC44654BF5B1D6 /* MoshTransport.swift in Sources */,
+				4F79FCFB7BBE56E127555F1D /* MoshTransportSender.swift in Sources */,
 				4870A95EBDA37102D6FCE1DD /* MoshUDPConnection.swift in Sources */,
 				D40D2600718331C91545FA29 /* NetworkMonitorService.swift in Sources */,
 				54470B019E32BCF7610DD864 /* RemoteFileBrowserService.swift in Sources */,
@@ -921,6 +928,7 @@
 				E293E5B88435EF600774A8DA /* KeychainServiceTests.swift in Sources */,
 				D03DF791305A2316AA36EEB0 /* KnownHostsServiceTests.swift in Sources */,
 				D5DE239A88348AB2CC5EB72D /* MoshIntegrationTests.swift in Sources */,
+				EB3EE6EDFD0FC3B585BF47C0 /* MoshTransportTests.swift in Sources */,
 				4A93DFBF6797B3660C74DC50 /* RemoteFileBrowserTests.swift in Sources */,
 				539569A7ADAF63A743137D9A /* SSHKeyServiceTests.swift in Sources */,
 				0F89014F48A47FBA641177C6 /* ServerModelTests.swift in Sources */,

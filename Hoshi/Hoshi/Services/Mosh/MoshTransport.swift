@@ -60,45 +60,43 @@ struct MoshFragment: Sendable {
     }
 }
 
-// Reassembles fragments into complete transport instructions
+// Reassembles fragments into complete transport instructions.
+//
+// Like mosh, only the instruction currently being assembled is kept: a fragment of a
+// different instruction replaces it. The sender always moves on to newer instructions,
+// so an incomplete older one will never finish and would otherwise be kept forever.
 final class MoshFragmentAssembly {
-    // Pending fragments keyed by instruction ID
-    private var pending: [UInt64: [UInt16: Data]] = [:]
-    private var finalCounts: [UInt64: UInt16] = [:]
+    private var currentID: UInt64?
+    private var fragments: [UInt16: Data] = [:]
+    private var finalFragmentNumber: UInt16?
 
     // Add a fragment. Returns the complete instruction if all fragments arrived.
     func addFragment(_ fragment: MoshFragment) -> Data? {
-        let id = fragment.instructionID
-        if pending[id] == nil { pending[id] = [:] }
-        pending[id]![fragment.fragmentNumber] = fragment.contents
-
+        if currentID != fragment.instructionID {
+            reset()
+            currentID = fragment.instructionID
+        }
+        fragments[fragment.fragmentNumber] = fragment.contents
         if fragment.isFinal {
-            finalCounts[id] = fragment.fragmentNumber
+            finalFragmentNumber = fragment.fragmentNumber
         }
 
-        // Check if we have all fragments (0 through finalFragNum)
-        guard let finalNum = finalCounts[id] else { return nil }
-        let expectedCount = Int(finalNum) + 1
-        guard pending[id]!.count == expectedCount else { return nil }
+        guard let finalNumber = finalFragmentNumber,
+              fragments.count == Int(finalNumber) + 1 else { return nil }
 
-        // Reassemble in order
         var result = Data()
-        for i in 0..<expectedCount {
-            if let fragmentData = pending[id]![UInt16(i)] {
-                result.append(fragmentData)
-            }
+        for number in 0...finalNumber {
+            guard let contents = fragments[number] else { return nil }
+            result.append(contents)
         }
-
-        // Clean up
-        pending.removeValue(forKey: id)
-        finalCounts.removeValue(forKey: id)
-
+        reset()
         return result
     }
 
     func reset() {
-        pending.removeAll()
-        finalCounts.removeAll()
+        currentID = nil
+        fragments.removeAll()
+        finalFragmentNumber = nil
     }
 }
 
@@ -244,35 +242,18 @@ struct MoshTransportInstruction: Sendable {
 
             case 0x32: // diff (length-delimited)
                 let (length, newOffset) = try readVarint(bytes, offset: offset)
-                let end = newOffset + Int(length)
-                guard end <= bytes.count else {
-                    throw MoshTransportError.invalidInstruction
-                }
+                let end = try checkedEnd(newOffset, length, in: bytes)
                 instruction.diff = Data(bytes[newOffset..<end])
                 offset = end
 
             case 0x3A: // chaff (field 7, length-delimited) - skip
                 let (length, newOffset) = try readVarint(bytes, offset: offset)
-                let end = newOffset + Int(length)
-                guard end <= bytes.count else {
-                    throw MoshTransportError.invalidInstruction
-                }
+                let end = try checkedEnd(newOffset, length, in: bytes)
                 instruction.chaff = Data(bytes[newOffset..<end])
                 offset = end
 
             default:
-                // Skip unknown fields based on wire type
-                let wireType = tag & 0x07
-                switch wireType {
-                case 0: // varint
-                    let (_, newOffset) = try readVarint(bytes, offset: offset)
-                    offset = newOffset
-                case 2: // length-delimited
-                    let (length, newOffset) = try readVarint(bytes, offset: offset)
-                    offset = newOffset + Int(length)
-                default:
-                    throw MoshTransportError.invalidInstruction
-                }
+                offset = try skipField(tag: tag, bytes, offset: offset)
             }
         }
 
@@ -344,25 +325,13 @@ struct MoshHostOutput: Sendable {
             if tag == 0x0A {
                 // HostMessage.instruction (field 1, length-delimited)
                 let (length, newOffset) = try readVarint(bytes, offset: offset)
-                let end = newOffset + Int(length)
-                guard end <= bytes.count else { break }
+                let end = try checkedEnd(newOffset, length, in: bytes)
                 let instructionBytes = Array(bytes[newOffset..<end])
                 let output = try decodeInstruction(instructionBytes)
                 results.append(output)
                 offset = end
             } else {
-                // Skip unknown field
-                let wireType = tag & 0x07
-                switch wireType {
-                case 0:
-                    let (_, newOffset) = try readVarint(bytes, offset: offset)
-                    offset = newOffset
-                case 2:
-                    let (length, newOffset) = try readVarint(bytes, offset: offset)
-                    offset = newOffset + Int(length)
-                default:
-                    break
-                }
+                offset = try skipField(tag: tag, bytes, offset: offset)
             }
         }
 
@@ -382,37 +351,25 @@ struct MoshHostOutput: Sendable {
             switch tag {
             case 0x12: // Instruction.hostbytes extension (field 2, length-delimited)
                 let (length, start) = try readVarint(bytes, offset: offset)
-                let end = start + Int(length)
-                guard end <= bytes.count else { break }
-                hostString = decodeHostBytes(Array(bytes[start..<end]))
+                let end = try checkedEnd(start, length, in: bytes)
+                hostString = try decodeHostBytes(Array(bytes[start..<end]))
                 offset = end
 
             case 0x3A: // Instruction.echoack extension (field 7, length-delimited)
                 let (length, start) = try readVarint(bytes, offset: offset)
-                let end = start + Int(length)
-                guard end <= bytes.count else { break }
-                echoAck = decodeEchoAck(Array(bytes[start..<end]))
+                let end = try checkedEnd(start, length, in: bytes)
+                echoAck = try decodeEchoAck(Array(bytes[start..<end]))
                 offset = end
 
             default:
-                let wireType = tag & 0x07
-                switch wireType {
-                case 0:
-                    let (_, newOffset) = try readVarint(bytes, offset: offset)
-                    offset = newOffset
-                case 2:
-                    let (length, newOffset) = try readVarint(bytes, offset: offset)
-                    offset = newOffset + Int(length)
-                default:
-                    offset = bytes.count
-                }
+                offset = try skipField(tag: tag, bytes, offset: offset)
             }
         }
 
         return MoshHostOutput(hostString: hostString, echoAck: echoAck)
     }
 
-    private static func decodeHostBytes(_ bytes: [UInt8]) -> Data? {
+    private static func decodeHostBytes(_ bytes: [UInt8]) throws -> Data? {
         var offset = 0
         while offset < bytes.count {
             let tag = bytes[offset]
@@ -420,29 +377,17 @@ struct MoshHostOutput: Sendable {
 
             switch tag {
             case 0x22: // HostBytes.hoststring (field 4, length-delimited)
-                let lengthResult = try? readVarint(bytes, offset: offset)
-                guard let (length, start) = lengthResult else { return nil }
-                let end = start + Int(length)
-                guard end <= bytes.count else { return nil }
+                let (length, start) = try readVarint(bytes, offset: offset)
+                let end = try checkedEnd(start, length, in: bytes)
                 return Data(bytes[start..<end])
             default:
-                let wireType = tag & 0x07
-                switch wireType {
-                case 0:
-                    guard let (_, newOffset) = try? readVarint(bytes, offset: offset) else { return nil }
-                    offset = newOffset
-                case 2:
-                    guard let (length, newOffset) = try? readVarint(bytes, offset: offset) else { return nil }
-                    offset = newOffset + Int(length)
-                default:
-                    return nil
-                }
+                offset = try skipField(tag: tag, bytes, offset: offset)
             }
         }
         return nil
     }
 
-    private static func decodeEchoAck(_ bytes: [UInt8]) -> Int64? {
+    private static func decodeEchoAck(_ bytes: [UInt8]) throws -> Int64? {
         var offset = 0
         while offset < bytes.count {
             let tag = bytes[offset]
@@ -450,20 +395,10 @@ struct MoshHostOutput: Sendable {
 
             switch tag {
             case 0x40: // EchoAck.echo_ack_num (field 8, varint)
-                guard let (value, _) = try? readVarint(bytes, offset: offset) else { return nil }
+                let (value, _) = try readVarint(bytes, offset: offset)
                 return Int64(bitPattern: value)
             default:
-                let wireType = tag & 0x07
-                switch wireType {
-                case 0:
-                    guard let (_, newOffset) = try? readVarint(bytes, offset: offset) else { return nil }
-                    offset = newOffset
-                case 2:
-                    guard let (length, newOffset) = try? readVarint(bytes, offset: offset) else { return nil }
-                    offset = newOffset + Int(length)
-                default:
-                    return nil
-                }
+                offset = try skipField(tag: tag, bytes, offset: offset)
             }
         }
         return nil
@@ -498,6 +433,28 @@ private func readVarint(_ bytes: [UInt8], offset: Int) throws -> (UInt64, Int) {
     }
 
     throw MoshTransportError.invalidVarint
+}
+
+/// The end of a length-delimited field that starts at `start`, or an error if the length
+/// runs past the buffer. Lengths come off the wire, so they must never trap.
+private func checkedEnd(_ start: Int, _ length: UInt64, in bytes: [UInt8]) throws -> Int {
+    guard start <= bytes.count, length <= UInt64(bytes.count - start) else {
+        throw MoshTransportError.invalidInstruction
+    }
+    return start + Int(length)
+}
+
+/// Skips one field of an unknown tag and returns the offset after it.
+private func skipField(tag: UInt8, _ bytes: [UInt8], offset: Int) throws -> Int {
+    switch tag & 0x07 {
+    case 0:
+        return try readVarint(bytes, offset: offset).1
+    case 2:
+        let (length, start) = try readVarint(bytes, offset: offset)
+        return try checkedEnd(start, length, in: bytes)
+    default:
+        throw MoshTransportError.invalidInstruction
+    }
 }
 
 enum MoshTransportError: LocalizedError {

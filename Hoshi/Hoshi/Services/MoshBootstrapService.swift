@@ -216,6 +216,10 @@ final class MoshBootstrapService {
         return Data(base64Encoded: key + "==")
     }
 
+    /// Seconds mosh-server keeps running without hearing from Hoshi: long enough to resume
+    /// after a weekend in the background, short enough that abandoned shells go away.
+    static let orphanedServerTimeout = 72 * 60 * 60
+
     static func serverLaunchCommand(
         configuredServerPath: String?,
         portRange: MoshPortRange?,
@@ -228,7 +232,10 @@ final class MoshBootstrapService {
         let terminalEnvironment = TerminalIdentity.environment
             .map { " -l \(shellEscape("\($0.name)=\($0.value)"))" }
             .joined()
-        let command = "[ -n \"$SSH_CONNECTION\" ] && printf \"\\nMOSH SSH_CONNECTION %s\\n\" \"$SSH_CONNECTION\"; \(executable) new -s -c 256 -l LANG=en_US.UTF-8\(terminalEnvironment)\(rangeArgument)\(commandArgument)"
+        // A client that vanishes without shutting down (the app was killed in the background)
+        // must not leave the shell running forever. Respect a timeout the user already set.
+        let networkTimeout = "MOSH_SERVER_NETWORK_TMOUT=\"${MOSH_SERVER_NETWORK_TMOUT:-\(orphanedServerTimeout)}\""
+        let command = "[ -n \"$SSH_CONNECTION\" ] && printf \"\\nMOSH SSH_CONNECTION %s\\n\" \"$SSH_CONNECTION\"; \(networkTimeout) \(executable) new -s -c 256 -l LANG=en_US.UTF-8\(terminalEnvironment)\(rangeArgument)\(commandArgument)"
         return "sh -lc \(shellEscape(command)) 2>&1"
     }
 

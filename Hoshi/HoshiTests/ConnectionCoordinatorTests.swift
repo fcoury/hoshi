@@ -244,7 +244,7 @@ final class ConnectionCoordinatorTests: XCTestCase {
         XCTAssertTrue(command.contains("TERM_PROGRAM_VERSION="))
     }
 
-    func testRawMoshLaunchDoesNotInjectTmuxCommand() {
+    func testRawMoshLaunchDoesNotInjectTmuxCommand() throws {
         let command = MoshBootstrapService.serverLaunchCommand(
             configuredServerPath: nil,
             portRange: nil,
@@ -253,6 +253,11 @@ final class ConnectionCoordinatorTests: XCTestCase {
 
         XCTAssertTrue(command.contains("mosh-server"))
         XCTAssertFalse(command.contains(" -- sh -lc "))
+        // An abandoned server exits on its own, unless the user configured their own timeout.
+        XCTAssertTrue(command.contains("MOSH_SERVER_NETWORK_TMOUT=\"${MOSH_SERVER_NETWORK_TMOUT:-259200}\""))
+        let timeout = try XCTUnwrap(command.range(of: "MOSH_SERVER_NETWORK_TMOUT="))
+        let server = try XCTUnwrap(command.range(of: " new -s"))
+        XCTAssertLessThan(timeout.lowerBound, server.lowerBound, "The timeout must be in mosh-server's environment")
         XCTAssertTrue(command.contains("TERM_PROGRAM=ghostty"))
         XCTAssertTrue(command.contains("TERM_PROGRAM_VERSION="))
     }
@@ -411,6 +416,74 @@ final class ConnectionCoordinatorTests: XCTestCase {
             }
         }
         XCTAssertTrue(acks.contains(MoshSession.shutdownStateNum), "mosh-server needs the shutdown acked to exit")
+    }
+
+    func testLostKeystrokeIsResentUntilAcknowledged() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        try await connect(session, transport: transport, info: info)
+
+        await session.send(Data("a".utf8))
+        // No server ack arrives: the state must go again after the retransmit timeout.
+        var inputs = try await sentInputInstructions(transport, key: info.sessionKey)
+        let deadline = Date().addingTimeInterval(3)
+        while inputs.count < 2, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+            inputs = try await sentInputInstructions(transport, key: info.sessionKey)
+        }
+        XCTAssertGreaterThanOrEqual(inputs.count, 2, "An unacknowledged keystroke must be retransmitted")
+        XCTAssertTrue(inputs.allSatisfy { $0.oldNum == 0 && $0.newNum == 1 })
+
+        // Once acknowledged, the next keystroke builds on it and lets the server discard state 0.
+        var ack = MoshTransportInstruction()
+        ack.ackNum = 1
+        for datagram in try await makeServerDatagrams(key: info.sessionKey, instruction: ack, firstSequence: 2) {
+            transport.yield(datagram)
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        await session.send(Data("b".utf8))
+        try await Task.sleep(for: .milliseconds(50))
+        let sentInputs = try await sentInputInstructions(transport, key: info.sessionKey)
+        let latest = try XCTUnwrap(sentInputs.last)
+        XCTAssertEqual(latest.oldNum, 1)
+        XCTAssertEqual(latest.newNum, 2)
+        XCTAssertEqual(latest.throwawayNum, 1)
+        await session.disconnect()
+    }
+
+    func testForgedDatagramsNeverEndTheSession() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        try await connect(session, transport: transport, info: info)
+
+        for _ in 0..<20 {
+            transport.yield(Data(repeating: 0xAB, count: 48))
+        }
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertEqual(session.connectionState, .connected)
+        await session.disconnect()
+    }
+
+    func testClosingALiveSessionAsksMoshServerToExit() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        try await connect(session, transport: transport, info: info)
+
+        await session.disconnect()
+
+        let serverSide = try MoshProtocolEngine(key: info.sessionKey)
+        var newNums: [UInt64] = []
+        for datagram in transport.sentDatagrams {
+            if let decoded = try await serverSide.decode(datagram, direction: .toServer) {
+                newNums.append(decoded.instruction.newNum)
+            }
+        }
+        XCTAssertTrue(newNums.contains(MoshSession.shutdownStateNum), "mosh-server must be told to exit")
+        XCTAssertEqual(session.connectionState, .disconnected)
     }
 
     func testShutdownStateWithUnknownBaseIsNotTreatedAsSessionEnd() async throws {
@@ -1117,6 +1190,33 @@ final class ConnectionCoordinatorTests: XCTestCase {
             reconnectionPolicy: policy,
             makeUDPConnection: { _, _ in transport }
         )
+    }
+
+    private func connect(
+        _ session: MoshSession,
+        transport: FakeMoshUDPTransport,
+        info: MoshConnectionInfo
+    ) async throws {
+        let response = try await makeServerDatagrams(key: info.sessionKey).first!
+        transport.onSend = { transport.yield(response) }
+        try await session.establishUDP(info: info, timeout: 1)
+        transport.onSend = nil
+    }
+
+    /// Instructions Hoshi sent that carry user input.
+    private func sentInputInstructions(
+        _ transport: FakeMoshUDPTransport,
+        key: Data
+    ) async throws -> [MoshTransportInstruction] {
+        let serverSide = try MoshProtocolEngine(key: key)
+        var instructions: [MoshTransportInstruction] = []
+        for datagram in transport.sentDatagrams {
+            if let decoded = try await serverSide.decode(datagram, direction: .toServer),
+               !decoded.instruction.diff.isEmpty {
+                instructions.append(decoded.instruction)
+            }
+        }
+        return instructions
     }
 
     private func makeMoshConnectionInfo() -> MoshConnectionInfo {
