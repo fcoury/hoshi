@@ -57,31 +57,15 @@ final class MoshSession: ObservableObject {
     private var pendingTerminalSize: (cols: Int, rows: Int)?
 
     /// mosh marks the last state of a session with this number, in either direction.
-    static let shutdownStateNum = MoshTransportSender.shutdownStateNum
+    static let shutdownStateNum = MoshStateSync.shutdownStateNum
 
     /// Set once the server reported that its shell exited, so the silence that
     /// follows isn't mistaken for a network drop and retried.
     private(set) var sessionEndedNormally = false
 
-    // SSP state tracking
-    /// User input not yet acknowledged by mosh-server; survives socket replacement.
-    private var sender = MoshTransportSender()
-    private var remoteStateNum: UInt64 = 0
-    /// mosh-server draws its first frame as a diff against a blank screen, so the terminal
-    /// is cleared right before the first host bytes of each server session.
-    private var terminalNeedsBlankScreen = false
-    /// Set when mosh-server acknowledges our shutdown state.
-    private var clientShutdownAcknowledged = false
+    /// SSP state for the current mosh-server; survives socket replacement during recovery.
+    private var stateSync = MoshStateSync()
     private var consecutiveDatagramFailures = 0
-    // When we skip diffs due to base mismatch, we send an immediate
-    // ack so the server retransmits from our actual state quickly
-    // (~100ms RTT) instead of waiting for the 3s heartbeat cycle.
-    private var needsImmediateAck = false {
-        didSet { if needsImmediateAck { transmitSignal.fire() } }
-    }
-    private var lastTransmitAt: TimeInterval = 0
-    /// Keepalive interval for the NAT mapping and our acknowledgements, as in mosh.
-    private static let heartbeatInterval: TimeInterval = 3
 
     private var debugSendInstructionCount = 0
     private var debugSendDatagramCount = 0
@@ -286,9 +270,9 @@ final class MoshSession: ObservableObject {
         guard acceptsInput, !data.isEmpty else { return }
         if Self.inputTraceEnabled {
             let preview = data.prefix(4).map { String(format: "%02x", $0) }.joined(separator: " ")
-            print("[INPUT_TRACE] moshQueue state=\(sender.currentNum) bytes=\(data.count) preview=\(preview)")
+            print("[INPUT_TRACE] moshQueue state=\(stateSync.sender.currentNum) bytes=\(data.count) preview=\(preview)")
         }
-        sender.enqueue(MoshUserInput.encodeKeystroke(data))
+        stateSync.enqueue(MoshUserInput.encodeKeystroke(data))
         transmitSignal.fire()
     }
 
@@ -311,7 +295,7 @@ final class MoshSession: ObservableObject {
             return
         }
         pendingTerminalSize = nil
-        sender.enqueue(MoshUserInput.encodeResize(width: Int32(cols), height: Int32(rows)))
+        stateSync.enqueue(MoshUserInput.encodeResize(width: Int32(cols), height: Int32(rows)))
         transmitSignal.fire()
     }
 
@@ -403,11 +387,7 @@ final class MoshSession: ObservableObject {
         udpPort = info.udpPort
         transportGeneration = UUID()
         sessionEndedNormally = false
-        clientShutdownAcknowledged = false
-        sender = MoshTransportSender()
-        remoteStateNum = 0
-        terminalNeedsBlankScreen = true
-        needsImmediateAck = false
+        stateSync = MoshStateSync()
         consecutiveDatagramFailures = 0
         debugSendInstructionCount = 0
         debugSendDatagramCount = 0
@@ -478,7 +458,7 @@ final class MoshSession: ObservableObject {
     }
 
     private func sendStartupProbe() async throws {
-        try await sendTransportInstruction(sender.acknowledgementInstruction(remoteAck: remoteStateNum))
+        try await sendTransportInstruction(stateSync.acknowledgementInstruction())
     }
 
     private func startStartupProbeRetries() {
@@ -574,95 +554,48 @@ final class MoshSession: ObservableObject {
             recordRoundTripSample(decoded.roundTripSample)
             let instruction = decoded.instruction
             debugInstructionDecodeCount += 1
-            // Every authenticated instruction carries the server's ack, duplicates included.
-            sender.acknowledge(instruction.ackNum)
-            if instruction.ackNum == Self.shutdownStateNum {
-                clientShutdownAcknowledged = true
-            }
+            let prevRemote = stateSync.remoteStateNum
+            let receipt = stateSync.receive(instruction)
+            // Ack right away so mosh-server sends its next diff from our state.
+            transmitSignal.fire()
 
             startupReadinessContinuation?.yield(())
             startupReadinessContinuation?.finish()
             startupReadinessContinuation = nil
 
-            // SSP overlap guard with exact-base matching.
-            //
-            // Only deliver diffs whose oldNum matches our current
-            // remoteStateNum exactly. This safely skips:
-            //  - Overlapping diffs (oldNum < remoteStateNum)
-            //  - Gap diffs (oldNum > remoteStateNum from an intermediate
-            //    base we never reached)
-            //  - Stale diffs (newNum <= remoteStateNum)
-            //
-            // When we skip, we flag needsImmediateAck so the heartbeat
-            // loop sends our acked state right away (~100ms RTT) instead
-            // of waiting for the normal 3-second heartbeat cycle.
-            let prevRemote = remoteStateNum
-            let isNewRemoteState = instruction.newNum > remoteStateNum
-            let isExactBase = instruction.oldNum == prevRemote
-
             if Self.sspTraceEnabled {
-                sspLog.notice("[SSP] old=\(instruction.oldNum)→\(instruction.newNum) prevRemote=\(prevRemote) new=\(isNewRemoteState) exact=\(isExactBase) diffBytes=\(instruction.diff.count)")
+                sspLog.notice("[SSP] old=\(instruction.oldNum)→\(instruction.newNum) prevRemote=\(prevRemote) receipt=\(String(describing: receipt)) diffBytes=\(instruction.diff.count)")
             }
 
-            if isNewRemoteState, isExactBase {
-                // Base matches our state exactly — deliver all bytes.
-                remoteStateNum = instruction.newNum
-                // Tell the server our new state immediately so it can
-                // send the next diff from the correct base without
-                // waiting for the 3-second heartbeat.
-                needsImmediateAck = true
+            if receipt == .applied, !instruction.diff.isEmpty {
+                let outputs = decoded.outputs
+                debugHostOutputCount += outputs.count
+                for (idx, output) in outputs.enumerated() {
+                    if let rawHostString = output.hostString {
+                        let processed = await processInboundOutput(rawHostString)
+                        guard !processed.isEmpty else { continue }
+                        let hostString = stateSync.terminalBytes(processed)
+                        debugHostByteCount += hostString.count
 
-                if !instruction.diff.isEmpty {
-                    let outputs = decoded.outputs
-                    debugHostOutputCount += outputs.count
-                    for (idx, output) in outputs.enumerated() {
-                        if let rawHostString = output.hostString {
-                            var hostString = await processInboundOutput(rawHostString)
-                            guard !hostString.isEmpty else { continue }
-                            // Each frame is a diff against the one before, so the terminal must
-                            // start from mosh's blank frame; mosh repaints fully on resize itself.
-                            if terminalNeedsBlankScreen {
-                                hostString = Self.blankScreen + hostString
-                                terminalNeedsBlankScreen = false
-                            }
-                            debugHostByteCount += hostString.count
-
-                            if Self.sspTraceEnabled {
-                                let hex = hostString.prefix(64).map { String(format: "%02x", $0) }.joined(separator: " ")
-                                sspLog.notice("[SSP]   output[\(idx)] \(hostString.count)B hex=\(hex, privacy: .public)")
-                            }
-
-                            if let callback = onDataReceived {
-                                callback(Array(hostString))
-                            } else {
-                                bufferTerminalOutput(hostString)
-                            }
-                        } else if Self.sspTraceEnabled {
-                            sspLog.notice("[SSP]   output[\(idx)] nil hostString (echoAck=\(output.echoAck ?? -1))")
+                        if Self.sspTraceEnabled {
+                            let hex = hostString.prefix(64).map { String(format: "%02x", $0) }.joined(separator: " ")
+                            sspLog.notice("[SSP]   output[\(idx)] \(hostString.count)B hex=\(hex, privacy: .public)")
                         }
+
+                        if let callback = onDataReceived {
+                            callback(Array(hostString))
+                        } else {
+                            bufferTerminalOutput(hostString)
+                        }
+                    } else if Self.sspTraceEnabled {
+                        sspLog.notice("[SSP]   output[\(idx)] nil hostString (echoAck=\(output.echoAck ?? -1))")
                     }
-                    if Self.sspTraceEnabled {
-                        sspLog.notice("[SSP]   → DELIVER \(outputs.count) outputs (new state \(self.remoteStateNum))")
-                    }
-                }
-            } else if isNewRemoteState {
-                // Base mismatch — skip and request immediate retransmit.
-                needsImmediateAck = true
-                if Self.sspTraceEnabled {
-                    sspLog.notice("[SSP]   → SKIP base≠ oldNum=\(instruction.oldNum) prevRemote=\(prevRemote), ack queued")
-                }
-            } else {
-                // Stale diff: server is retransmitting because it
-                // doesn't know our current state yet. Ack immediately.
-                needsImmediateAck = true
-                if Self.sspTraceEnabled {
-                    sspLog.notice("[SSP]   → SKIP stale newNum=\(instruction.newNum) <= remoteStateNum=\(self.remoteStateNum)")
                 }
             }
             consecutiveDatagramFailures = 0
 
             // Only a shutdown state we actually applied counts, so its final output was shown.
-            if remoteStateNum == Self.shutdownStateNum {
+            if stateSync.remoteEnded {
                 await finishRemoteShutdown()
             }
         } catch MoshProtocolError.unauthenticated {
@@ -689,7 +622,7 @@ final class MoshSession: ObservableObject {
         sessionEndedNormally = true
         recoveryLog.notice("Mosh server reported that the remote shell exited")
 
-        let instruction = sender.acknowledgementInstruction(remoteAck: Self.shutdownStateNum)
+        let instruction = stateSync.acknowledgementInstruction()
         // UDP may drop one; mosh-server retransmits its shutdown until acked anyway.
         for _ in 0..<2 {
             do {
@@ -714,7 +647,7 @@ final class MoshSession: ObservableObject {
 
         transmitTask?.cancel()
         transmitTask = nil
-        let instruction = sender.shutdownInstruction(remoteAck: remoteStateNum)
+        let instruction = stateSync.shutdownInstruction()
         for _ in 0..<3 {
             do {
                 try await sendTransportInstruction(instruction)
@@ -723,18 +656,15 @@ final class MoshSession: ObservableObject {
                 return
             }
             let deadline = CACurrentMediaTime() + 0.15
-            while !clientShutdownAcknowledged, CACurrentMediaTime() < deadline {
+            while !stateSync.clientShutdownAcknowledged, CACurrentMediaTime() < deadline {
                 try? await Task.sleep(for: .milliseconds(10))
             }
-            if clientShutdownAcknowledged { return }
+            if stateSync.clientShutdownAcknowledged { return }
         }
     }
 
-    /// How long a sent state may go unacknowledged before it is resent from the
-    /// acknowledged base: mosh's RTO (bounded to 50 ms...1 s) plus its 100 ms ack delay.
     private var retransmitTimeout: TimeInterval {
-        let rto = min(1, max(0.05, (roundTripEstimator.smoothed ?? 1) * 2))
-        return rto + 0.1
+        MoshStateSync.retransmitTimeout(smoothedRoundTrip: roundTripEstimator.smoothed)
     }
 
     /// Sends new input, resends unacknowledged input, and keeps the path alive. Woken by
@@ -743,7 +673,7 @@ final class MoshSession: ObservableObject {
     private func startTransmitter() {
         transmitTask?.cancel()
         let generation = transportGeneration
-        lastTransmitAt = CACurrentMediaTime()
+        stateSync.resetHeartbeat(now: CACurrentMediaTime())
         transmitTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self,
@@ -761,30 +691,18 @@ final class MoshSession: ObservableObject {
                     return
                 }
 
-                let now = CACurrentMediaTime()
-                var wake = self.lastTransmitAt + Self.heartbeatInterval
-                if let resend = self.sender.retransmitDeadline(timeout: timeout) {
-                    wake = min(wake, resend)
-                }
-                await self.transmitSignal.wait(timeout: max(0.005, wake - now))
+                let wake = self.stateSync.nextTransmissionDue(timeout: timeout)
+                await self.transmitSignal.wait(timeout: max(0.005, wake - CACurrentMediaTime()))
             }
         }
     }
 
     private func transmitDueInstruction(timeout: TimeInterval) async throws {
-        let now = CACurrentMediaTime()
-        if let instruction = sender.nextInstruction(now: now, timeout: timeout, remoteAck: remoteStateNum) {
-            if Self.inputTraceEnabled {
-                print("[INPUT_TRACE] moshSend state=\(instruction.oldNum)→\(instruction.newNum) ack=\(instruction.ackNum) diffLen=\(instruction.diff.count)")
-            }
-            needsImmediateAck = false
-            try await sendTransportInstruction(instruction)
-            lastTransmitAt = now
-        } else if needsImmediateAck || now - lastTransmitAt >= Self.heartbeatInterval {
-            needsImmediateAck = false
-            try await sendTransportInstruction(sender.acknowledgementInstruction(remoteAck: remoteStateNum))
-            lastTransmitAt = now
+        guard let instruction = stateSync.nextTransmission(now: CACurrentMediaTime(), timeout: timeout) else { return }
+        if Self.inputTraceEnabled, !instruction.diff.isEmpty {
+            print("[INPUT_TRACE] moshSend state=\(instruction.oldNum)→\(instruction.newNum) ack=\(instruction.ackNum) diffLen=\(instruction.diff.count)")
         }
+        try await sendTransportInstruction(instruction)
     }
 
     // Watch for network changes and trigger UDP reconnection
@@ -869,7 +787,7 @@ final class MoshSession: ObservableObject {
                 recoveryStatus = .idle
                 connectionState = .connected
                 // Whatever was in flight on the old socket may be gone.
-                sender.resendFromAcknowledgedState()
+                stateSync.resendUnacknowledgedInput()
                 startTransmitter()
                 recoveryLog.notice("Mosh recovery authenticated successfully")
                 return
@@ -950,9 +868,6 @@ final class MoshSession: ObservableObject {
         }
         recoveryStartedAt = nil
     }
-
-    /// Resets scrolling region and attributes and clears the screen: mosh's blank frame.
-    private static let blankScreen = Data("\u{1b}[r\u{1b}[0m\u{1b}[H\u{1b}[2J".utf8)
 
     private func sendTransportInstruction(_ instruction: MoshTransportInstruction) async throws {
         guard let protocolEngine, let udpConnection, udpConnection.isReady else {

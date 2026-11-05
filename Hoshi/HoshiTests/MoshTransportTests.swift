@@ -244,3 +244,99 @@ private final class TestClock: @unchecked Sendable {
     var now: TimeInterval
     init(_ now: TimeInterval) { self.now = now }
 }
+
+final class MoshStateSyncTests: XCTestCase {
+    private func instruction(old: UInt64, new: UInt64, ack: UInt64 = 0) -> MoshTransportInstruction {
+        var instruction = MoshTransportInstruction()
+        instruction.oldNum = old
+        instruction.newNum = new
+        instruction.ackNum = ack
+        return instruction
+    }
+
+    func testOnlyDiffsFromOurExactStateApply() {
+        var sync = MoshStateSync()
+        XCTAssertEqual(sync.receive(instruction(old: 0, new: 2)), .applied)
+        XCTAssertEqual(sync.receive(instruction(old: 0, new: 2)), .stale)
+        XCTAssertEqual(sync.receive(instruction(old: 1, new: 3)), .unknownBase, "built on a state we never reached")
+        XCTAssertEqual(sync.receive(instruction(old: 0, new: 4)), .unknownBase, "overlaps what we already applied")
+        XCTAssertEqual(sync.remoteStateNum, 2)
+        XCTAssertEqual(sync.receive(instruction(old: 2, new: 5)), .applied)
+        XCTAssertEqual(sync.remoteStateNum, 5)
+        XCTAssertFalse(sync.remoteEnded)
+    }
+
+    func testAppliedShutdownStateEndsTheSessionButAnUnknownBaseDoesNot() {
+        var sync = MoshStateSync()
+        _ = sync.receive(instruction(old: 0, new: 3))
+        XCTAssertEqual(sync.receive(instruction(old: 1, new: MoshStateSync.shutdownStateNum)), .unknownBase)
+        XCTAssertFalse(sync.remoteEnded)
+        XCTAssertEqual(sync.receive(instruction(old: 3, new: MoshStateSync.shutdownStateNum)), .applied)
+        XCTAssertTrue(sync.remoteEnded)
+    }
+
+    func testEveryInstructionCarriesTheServerAck() {
+        var sync = MoshStateSync()
+        sync.enqueue(MoshUserInput.encodeKeystroke(Data("a".utf8)))
+        _ = sync.nextTransmission(now: 0, timeout: 1)
+        // Even a stale state acknowledges our input.
+        _ = sync.receive(instruction(old: 0, new: 0, ack: 1))
+        XCTAssertFalse(sync.sender.hasUnacknowledgedInput)
+        XCTAssertFalse(sync.clientShutdownAcknowledged)
+        _ = sync.receive(instruction(old: 0, new: 0, ack: MoshStateSync.shutdownStateNum))
+        XCTAssertTrue(sync.clientShutdownAcknowledged)
+    }
+
+    func testTerminalStartsFromABlankScreenOnce() {
+        var sync = MoshStateSync()
+        XCTAssertEqual(sync.terminalBytes(Data()), Data(), "an empty first frame doesn't use up the reset")
+        XCTAssertEqual(sync.terminalBytes(Data("a".utf8)), MoshStateSync.blankScreen + Data("a".utf8))
+        XCTAssertEqual(sync.terminalBytes(Data("b".utf8)), Data("b".utf8))
+    }
+
+    func testReceivedStateIsAcknowledgedRightAway() {
+        var sync = MoshStateSync()
+        sync.resetHeartbeat(now: 100)
+        XCTAssertNil(sync.nextTransmission(now: 100.5, timeout: 1))
+
+        _ = sync.receive(instruction(old: 0, new: 7))
+        let ack = sync.nextTransmission(now: 100.6, timeout: 1)
+        XCTAssertEqual(ack?.ackNum, 7)
+        XCTAssertEqual(ack?.diff, Data())
+        XCTAssertNil(sync.nextTransmission(now: 100.7, timeout: 1), "one ack per received state")
+    }
+
+    func testHeartbeatAfterThreeQuietSeconds() {
+        var sync = MoshStateSync()
+        sync.resetHeartbeat(now: 10)
+        XCTAssertEqual(sync.nextTransmissionDue(timeout: 1), 13)
+        XCTAssertNil(sync.nextTransmission(now: 12.9, timeout: 1))
+        XCTAssertNotNil(sync.nextTransmission(now: 13, timeout: 1))
+        XCTAssertNil(sync.nextTransmission(now: 13.1, timeout: 1))
+    }
+
+    func testInputGoesOutBeforeAcksAndIsResentWhenDue() throws {
+        var sync = MoshStateSync()
+        sync.resetHeartbeat(now: 0)
+        _ = sync.receive(instruction(old: 0, new: 4))
+        sync.enqueue(MoshUserInput.encodeKeystroke(Data("x".utf8)))
+
+        let first = try XCTUnwrap(sync.nextTransmission(now: 1, timeout: 0.5))
+        XCTAssertEqual(first.newNum, 1)
+        XCTAssertEqual(first.ackNum, 4, "input carries the ack too")
+        XCTAssertNil(sync.nextTransmission(now: 1.1, timeout: 0.5), "the ack was already sent with the input")
+        XCTAssertEqual(sync.nextTransmissionDue(timeout: 0.5), 1.5)
+
+        let resend = try XCTUnwrap(sync.nextTransmission(now: 1.5, timeout: 0.5))
+        XCTAssertEqual(resend.oldNum, 0)
+        XCTAssertEqual(resend.newNum, 1)
+        XCTAssertEqual(resend.diff, first.diff)
+    }
+
+    func testRetransmitTimeoutFollowsMoshBounds() {
+        XCTAssertEqual(MoshStateSync.retransmitTimeout(smoothedRoundTrip: nil), 1.1, accuracy: 1e-9)
+        XCTAssertEqual(MoshStateSync.retransmitTimeout(smoothedRoundTrip: 0.001), 0.15, accuracy: 1e-9)
+        XCTAssertEqual(MoshStateSync.retransmitTimeout(smoothedRoundTrip: 0.2), 0.5, accuracy: 1e-9)
+        XCTAssertEqual(MoshStateSync.retransmitTimeout(smoothedRoundTrip: 5), 1.1, accuracy: 1e-9)
+    }
+}

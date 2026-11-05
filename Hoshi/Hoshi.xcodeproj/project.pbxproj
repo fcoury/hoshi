@@ -114,6 +114,7 @@
 		A76106382C408772C273C373 /* AgentLiveActivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A6E25BF79345CDE50472654 /* AgentLiveActivityService.swift */; };
 		AA960FEEACDD73F7D7DC36F3 /* MoshBootstrapService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2B9B11940723B9C53B4410C /* MoshBootstrapService.swift */; };
 		AC48C12B2115A175C1467711 /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = D93629C5FA7BBEDDD78D5478 /* OFL.txt */; };
+		ACCBD278EBD3EFC86E5D8D8F /* MoshStateSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = B92A9589C0C35C45D9BD1CDA /* MoshStateSync.swift */; };
 		ACF79F5678607650120AF1F2 /* TmuxConfigurationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FFB21F11FD5AD284E2064AB /* TmuxConfigurationService.swift */; };
 		AE6A859A8E7ED9210A37428C /* MononokiNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 89E70FBED6094022B4F5F8D4 /* MononokiNerdFontMono-Regular.ttf */; };
 		AF9EE0A1C454D8C738E075E4 /* ToolbarButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74C7E92165EDFEF3678813D9 /* ToolbarButton.swift */; };
@@ -311,6 +312,7 @@
 		B73D4FAFF8219BC7CB25BA12 /* SSHService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHService.swift; sourceTree = "<group>"; };
 		B82B7E9022DF81F3E5DDD245 /* HerdrIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrIntegrationTests.swift; sourceTree = "<group>"; };
 		B88762DDB3E3AFB6292E4A50 /* AgentInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentInboxView.swift; sourceTree = "<group>"; };
+		B92A9589C0C35C45D9BD1CDA /* MoshStateSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoshStateSync.swift; sourceTree = "<group>"; };
 		BB95500B7D399772F2FB8BD8 /* SessionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCardView.swift; sourceTree = "<group>"; };
 		BCD0BDA1F9E260CA9BF0B371 /* FantasqueSansMNerdFont-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FantasqueSansMNerdFont-Italic.ttf"; sourceTree = "<group>"; };
 		BE3030110D13057C76D1F552 /* HoshiLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoshiLiveActivityWidget.swift; sourceTree = "<group>"; };
@@ -625,6 +627,7 @@
 			children = (
 				6B6C0D92DFAE29A99A64E6AF /* MoshCrypto.swift */,
 				64BDC91C39D6AD7FE7E87ED1 /* MoshProtocolEngine.swift */,
+				B92A9589C0C35C45D9BD1CDA /* MoshStateSync.swift */,
 				414AB1CB023F8485D188ED5A /* MoshTransport.swift */,
 				D13DEECA2010985215D83F70 /* MoshTransportSender.swift */,
 				308F44F8EECB3F7443B190ED /* MoshUDPConnection.swift */,
@@ -867,6 +870,7 @@
 				6C4011DD0427000483B9DC76 /* MoshCrypto.swift in Sources */,
 				4ADC915A6EB19698B22D581F /* MoshProtocolEngine.swift in Sources */,
 				6673BE4456E9276448591DD4 /* MoshSession.swift in Sources */,
+				ACCBD278EBD3EFC86E5D8D8F /* MoshStateSync.swift in Sources */,
 				65F0E59F2EFC44654BF5B1D6 /* MoshTransport.swift in Sources */,
 				4F79FCFB7BBE56E127555F1D /* MoshTransportSender.swift in Sources */,
 				4870A95EBDA37102D6FCE1DD /* MoshUDPConnection.swift in Sources */,
