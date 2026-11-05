@@ -1080,8 +1080,14 @@ struct HostKeyChange: Equatable, Sendable {
     }
 
     /// Removes the stale key; the next connection shows the normal verification prompt.
+    @MainActor
     func forgetTrustedKey(using knownHosts: KnownHostsService = .shared) throws {
         try knownHosts.forgetHostKeys(hostname: hostname, port: port)
+        HostKeyTrustCoordinator.shared.noteReplacedKey(
+            hostname: hostname,
+            port: port,
+            fingerprint: expectedFingerprint
+        )
     }
 }
 

@@ -50,6 +50,13 @@ struct SSHHostKeyIdentity: Equatable, Sendable {
     }
 }
 
+struct TrustedHostKey: Identifiable, Equatable, Sendable {
+    let identity: SSHHostKeyIdentity
+    let trustedAt: Date?
+
+    var id: String { "\(identity.endpoint.lowercased()):\(identity.algorithm)" }
+}
+
 enum KnownHostStatus: Equatable {
     case unknown
     case trusted
@@ -172,6 +179,39 @@ final class KnownHostsService: @unchecked Sendable {
         }
     }
 
+    /// All trusted host keys, sorted by endpoint.
+    func trustedHostKeys() throws -> [TrustedHostKey] {
+        try keychain.listKnownHostKeys().compactMap { entry in
+            guard let parsed = Self.parseAccount(entry.account) else { return nil }
+            let parts = entry.publicKey.split(separator: " ", maxSplits: 2)
+            guard parts.count >= 2, let data = Data(base64Encoded: String(parts[1])) else { return nil }
+            return TrustedHostKey(
+                identity: SSHHostKeyIdentity(
+                    hostname: parsed.hostname,
+                    port: parsed.port,
+                    algorithm: String(parts[0]),
+                    publicKeyData: data
+                ),
+                trustedAt: entry.createdAt
+            )
+        }
+        .sorted { ($0.identity.hostname, $0.identity.port) < ($1.identity.hostname, $1.identity.port) }
+    }
+
+    /// Splits `hostkey-<host>:<port>:<algorithm>` from the right so IPv6 hosts survive.
+    static func parseAccount(_ account: String) -> (hostname: String, port: Int, algorithm: String)? {
+        guard account.hasPrefix("hostkey-") else { return nil }
+        let body = account.dropFirst("hostkey-".count)
+        guard let algorithmSeparator = body.lastIndex(of: ":") else { return nil }
+        let algorithm = body[body.index(after: algorithmSeparator)...]
+        let rest = body[..<algorithmSeparator]
+        guard let portSeparator = rest.lastIndex(of: ":"),
+              let port = Int(rest[rest.index(after: portSeparator)...]) else { return nil }
+        let hostname = rest[..<portSeparator]
+        guard !hostname.isEmpty, !algorithm.isEmpty else { return nil }
+        return (String(hostname), port, String(algorithm))
+    }
+
     func validator(hostname: String, port: Int) -> SSHHostKeyValidator {
         .custom(SSHKnownHostValidator(hostname: hostname, port: port, knownHosts: self))
     }
@@ -184,17 +224,24 @@ final class HostKeyTrustCoordinator {
     static let shared = HostKeyTrustCoordinator()
 
     private(set) var pendingIdentity: SSHHostKeyIdentity?
+    /// Distinguishes repeated prompts for the same identity, so a stale dismissal cannot answer a newer one.
+    private(set) var pendingRequestID: UUID?
+
+    /// Fingerprints the user chose to forget, keyed by endpoint, so the next prompt can show old vs new.
+    private(set) var replacedFingerprints: [String: String] = [:]
 
     @ObservationIgnored
-    private var pendingRequests: [(identity: SSHHostKeyIdentity, continuation: CheckedContinuation<Bool, Never>)] = []
+    private var pendingRequests: [(id: UUID, identity: SSHHostKeyIdentity, continuation: CheckedContinuation<Bool, Never>)] = []
 
     private init() {}
 
     func requestTrust(for identity: SSHHostKeyIdentity) async -> Bool {
         await withCheckedContinuation { continuation in
-            pendingRequests.append((identity: identity, continuation: continuation))
+            let id = UUID()
+            pendingRequests.append((id: id, identity: identity, continuation: continuation))
             if pendingIdentity == nil {
                 pendingIdentity = identity
+                pendingRequestID = id
             }
         }
     }
@@ -203,13 +250,37 @@ final class HostKeyTrustCoordinator {
         guard !pendingRequests.isEmpty else { return }
         let request = pendingRequests.removeFirst()
         pendingIdentity = nil
+        pendingRequestID = nil
+        if trusted {
+            replacedFingerprints[Self.key(request.identity.hostname, request.identity.port)] = nil
+        }
         request.continuation.resume(returning: trusted)
 
-        if let nextIdentity = pendingRequests.first?.identity {
+        if let next = pendingRequests.first {
             Task { @MainActor [weak self] in
-                self?.pendingIdentity = nextIdentity
+                guard let self, self.pendingRequests.first?.id == next.id else { return }
+                self.pendingIdentity = next.identity
+                self.pendingRequestID = next.id
             }
         }
+    }
+
+    /// Answers a specific prompt; ignored when that prompt was already resolved.
+    func resolve(requestID: UUID, trusted: Bool) {
+        guard pendingRequests.first?.id == requestID else { return }
+        resolvePendingIdentity(trusted: trusted)
+    }
+
+    func noteReplacedKey(hostname: String, port: Int, fingerprint: String) {
+        replacedFingerprints[Self.key(hostname, port)] = fingerprint
+    }
+
+    func replacedFingerprint(for identity: SSHHostKeyIdentity) -> String? {
+        replacedFingerprints[Self.key(identity.hostname, identity.port)]
+    }
+
+    private static func key(_ hostname: String, _ port: Int) -> String {
+        "\(hostname.lowercased()):\(port)"
     }
 }
 

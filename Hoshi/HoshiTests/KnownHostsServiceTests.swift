@@ -134,6 +134,40 @@ final class KnownHostsServiceTests: XCTestCase {
         XCTAssertNil(HostKeyChange(in: SSHHostKeyTrustError.declined(hostname: hostname, port: port)))
     }
 
+    func testKnownHostAccountsParseFromTheRightSoIPv6HostsSurvive() {
+        let plain = KnownHostsService.parseAccount("hostkey-example.com:22:ssh-ed25519")
+        XCTAssertEqual(plain?.hostname, "example.com")
+        XCTAssertEqual(plain?.port, 22)
+        XCTAssertEqual(plain?.algorithm, "ssh-ed25519")
+
+        let ipv6 = KnownHostsService.parseAccount("hostkey-fe80::1:2222:ecdsa-sha2-nistp256")
+        XCTAssertEqual(ipv6?.hostname, "fe80::1")
+        XCTAssertEqual(ipv6?.port, 2222)
+
+        XCTAssertNil(KnownHostsService.parseAccount("sshkey-mine"))
+        XCTAssertNil(KnownHostsService.parseAccount("hostkey-example.com:notaport:ssh-rsa"))
+    }
+
+    func testTrustedHostKeysListsStoredIdentities() throws {
+        let identity = makeIdentity()
+        try knownHosts.trust(identity)
+
+        // Keychain accounts store hostnames lowercased, matching case-insensitive lookups.
+        let listed = try knownHosts.trustedHostKeys().first { $0.identity.hostname == hostname.lowercased() }
+        XCTAssertEqual(listed?.identity.port, port)
+        XCTAssertEqual(listed?.identity.algorithm, algorithm)
+        XCTAssertEqual(listed?.identity.fingerprint, identity.fingerprint)
+    }
+
+    func testVerificationCommandNamesTheMatchingHostKeyFile() {
+        XCTAssertEqual(
+            HostKeyVerification.verificationCommand(for: "ssh-ed25519"),
+            "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub"
+        )
+        XCTAssertEqual(HostKeyVerification.hostKeyFile(for: "ecdsa-sha2-nistp256"), "ssh_host_ecdsa_key.pub")
+        XCTAssertEqual(HostKeyVerification.hostKeyFile(for: "rsa-sha2-512"), "ssh_host_rsa_key.pub")
+    }
+
     func testValidatorRejectsUnknownHostBeforeUserTrust() throws {
         let hostKey = try makeHostKey()
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
