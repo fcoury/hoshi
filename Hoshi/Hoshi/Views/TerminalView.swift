@@ -330,8 +330,9 @@ struct TerminalView: View {
                 }
                 if let server = clipboardServer, canRememberClipboardApproval(for: request.kind, on: server) {
                     Button("Always Allow for \(server.name)") {
-                        rememberClipboardApproval(for: request.kind, on: server)
+                        // Resolve first so a save-failure notice isn't replaced by the "allowed" one.
                         resolveClipboardRequest(request, approved: true)
+                        rememberClipboardApproval(for: request.kind, on: server)
                     }
                 }
             } message: { request in
@@ -482,15 +483,22 @@ struct TerminalView: View {
     private func rememberClipboardApproval(for kind: TerminalClipboardRequestKind, on server: Server) {
         // Sessions run on a detached copy of the server; update it and the stored record.
         let serverID = server.id
-        let stored = try? modelContext.fetch(FetchDescriptor<Server>(predicate: #Predicate { $0.id == serverID })).first
-        for target in [server, stored].compactMap({ $0 }) {
-            switch kind {
-            case .remoteRead: target.remoteClipboardReadPolicy = .allow
-            case .remoteWrite: target.remoteClipboardWritePolicy = .allow
-            case .paste: return
+        do {
+            let stored = try modelContext.fetch(FetchDescriptor<Server>(predicate: #Predicate { $0.id == serverID })).first
+            for target in [server, stored].compactMap({ $0 }) {
+                switch kind {
+                case .remoteRead: target.remoteClipboardReadPolicy = .allow
+                case .remoteWrite: target.remoteClipboardWritePolicy = .allow
+                case .paste: return
+                }
             }
+            try modelContext.save()
+        } catch {
+            // The detached session copy may already allow it; tell the user it won't survive a reconnect.
+            presentClipboardNotice(
+                TerminalClipboardNotice(kind: .policySaveFailed, serverName: server.name, byteCount: nil)
+            )
         }
-        try? modelContext.save()
     }
 
     private func cancelClipboardRequests() {
