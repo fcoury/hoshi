@@ -18,6 +18,7 @@ final class AppearanceSettings {
         static let scrollMultiplier = "com.hoshi.appearance.scrollMultiplier"
         static let doubleTapAction = "com.hoshi.terminal.doubleTapAction"
         static let twoFingerTapAction = "com.hoshi.terminal.twoFingerTapAction"
+        static let longPressAction = "com.hoshi.terminal.longPressAction"
         static let autoHideTerminalHeader = "com.hoshi.terminal.autoHideHeader"
     }
 
@@ -55,6 +56,10 @@ final class AppearanceSettings {
 
     var twoFingerTapAction: TerminalTwoFingerTapAction {
         didSet { defaults.set(twoFingerTapAction.rawValue, forKey: Key.twoFingerTapAction) }
+    }
+
+    var longPressAction: TerminalLongPressAction {
+        didSet { defaults.set(longPressAction.rawValue, forKey: Key.longPressAction) }
     }
 
     /// Collapse the terminal header to a slim strip while typing.
@@ -115,6 +120,9 @@ final class AppearanceSettings {
         } else {
             self.doubleTapAction = .selectWord
         }
+
+        self.longPressAction = defaults.string(forKey: Key.longPressAction)
+            .flatMap(TerminalLongPressAction.init(rawValue:)) ?? .arrowKeys
 
         if let raw = defaults.string(forKey: Key.twoFingerTapAction),
            let action = TerminalTwoFingerTapAction(rawValue: raw) {

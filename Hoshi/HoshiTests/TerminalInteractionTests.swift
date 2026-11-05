@@ -196,6 +196,60 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertGreaterThan(byteCount, TerminalClipboardPayload.maximumBytes)
     }
 
+    // MARK: - Arrow joystick
+
+    func testArrowJoystickIgnoresDeadZoneAndFillsTowardThreshold() {
+        var joystick = TerminalArrowJoystick()
+        XCTAssertEqual(joystick.update(translation: CGPoint(x: 5, y: 3)), .idle)
+
+        let half = joystick.update(translation: CGPoint(x: 18, y: 2))
+        XCTAssertEqual(half.direction, .right)
+        XCTAssertEqual(half.fill, 0.5, accuracy: 0.001)
+        XCTAssertEqual(half.gear, 0)
+
+        let armed = joystick.update(translation: CGPoint(x: 0, y: -40))
+        XCTAssertEqual(armed.direction, .up)
+        XCTAssertEqual(armed.fill, 1)
+        XCTAssertEqual(armed.gear, 1)
+    }
+
+    func testArrowJoystickGearsRiseWithDistancePastThreshold() {
+        var joystick = TerminalArrowJoystick()
+        XCTAssertEqual(joystick.update(translation: CGPoint(x: -36 - 39, y: 0)).gear, 1)
+        XCTAssertEqual(joystick.update(translation: CGPoint(x: -36 - 40, y: 0)).gear, 2)
+        XCTAssertEqual(joystick.update(translation: CGPoint(x: -36 - 90, y: 0)).gear, 3)
+        XCTAssertEqual(joystick.state.direction, .left)
+        XCTAssertLessThan(TerminalArrowJoystick.repeatInterval(gear: 3), TerminalArrowJoystick.repeatInterval(gear: 1))
+    }
+
+    func testArrowJoystickNeedsAClearLeadToSwitchAxes() {
+        var joystick = TerminalArrowJoystick()
+        _ = joystick.update(translation: CGPoint(x: 40, y: 0))
+        // A near-diagonal drag keeps the current axis...
+        XCTAssertEqual(joystick.update(translation: CGPoint(x: 40, y: 48)).direction, .right)
+        // ...until the other axis clearly leads.
+        XCTAssertEqual(joystick.update(translation: CGPoint(x: 40, y: 60)).direction, .down)
+    }
+
+    func testArrowRepeaterFiresOnceThenRepeatsAfterDelay() {
+        var repeater = TerminalArrowRepeater()
+        let armed = TerminalArrowJoystick.State(direction: .right, fill: 1, gear: 1)
+
+        XCTAssertEqual(repeater.advance(armed, now: 0), .right)
+        XCTAssertNil(repeater.advance(armed, now: 0.2))
+        XCTAssertEqual(repeater.advance(armed, now: 0.36), .right)
+        XCTAssertNil(repeater.advance(armed, now: 0.40))
+        XCTAssertEqual(repeater.advance(armed, now: 0.52), .right)
+
+        // Dropping below the threshold stops; re-arming fires immediately.
+        XCTAssertNil(repeater.advance(.idle, now: 0.6))
+        XCTAssertEqual(repeater.advance(armed, now: 0.61), .right)
+
+        // A new direction fires right away.
+        let down = TerminalArrowJoystick.State(direction: .down, fill: 1, gear: 1)
+        XCTAssertEqual(repeater.advance(down, now: 0.62), .down)
+    }
+
     func testRemoteClipboardApprovalMessagesHidePrivateContents() {
         let secret = "private-token-never-display"
         let assessment = TerminalPastePolicy.assess(secret, bracketedPasteEnabled: false)

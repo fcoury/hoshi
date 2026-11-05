@@ -729,3 +729,145 @@ enum ConnectionLatencyQuality: Equatable {
         return "\(milliseconds)ms"
     }
 }
+
+// MARK: - Long-press arrow joystick
+
+enum TerminalLongPressAction: String, CaseIterable, Identifiable {
+    case arrowKeys
+    case selectText
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .arrowKeys: "Arrow Keys"
+        case .selectText: "Select Text"
+        }
+    }
+}
+
+enum TerminalArrowDirection: CaseIterable, Equatable {
+    case up, down, left, right
+
+    var bytes: [UInt8] {
+        switch self {
+        case .up: [0x1B, 0x5B, 0x41]
+        case .down: [0x1B, 0x5B, 0x42]
+        case .right: [0x1B, 0x5B, 0x43]
+        case .left: [0x1B, 0x5B, 0x44]
+        }
+    }
+
+    var isHorizontal: Bool { self == .left || self == .right }
+}
+
+/// Turns a hold-and-drag offset into an arrow direction, a fill amount for the
+/// on-screen pad, and a repeat speed ("gear") once the drag passes the threshold.
+struct TerminalArrowJoystick {
+    struct State: Equatable {
+        var direction: TerminalArrowDirection?
+        /// 0...1 progress toward the threshold along the chosen direction.
+        var fill: CGFloat
+        /// 0 below the threshold; 1...3 picks the repeat speed.
+        var gear: Int
+
+        static let idle = State(direction: nil, fill: 0, gear: 0)
+    }
+
+    var deadZone: CGFloat = 8
+    var threshold: CGFloat = 36
+    /// Distances past the threshold where the second and third gears start.
+    var gearSteps: (CGFloat, CGFloat) = (40, 90)
+    /// How much the other axis must lead before the direction switches axes,
+    /// so diagonal drags don't flicker between arrows.
+    var axisHysteresis: CGFloat = 1.3
+
+    private(set) var state = State.idle
+
+    mutating func update(translation: CGPoint) -> State {
+        let absX = abs(translation.x)
+        let absY = abs(translation.y)
+        guard max(absX, absY) >= deadZone else {
+            state = .idle
+            return state
+        }
+
+        let horizontal: Bool
+        if let current = state.direction {
+            horizontal = current.isHorizontal
+                ? !(absY > absX * axisHysteresis)
+                : absX > absY * axisHysteresis
+        } else {
+            horizontal = absX >= absY
+        }
+
+        let direction: TerminalArrowDirection
+        let distance: CGFloat
+        if horizontal {
+            direction = translation.x >= 0 ? .right : .left
+            distance = absX
+        } else {
+            direction = translation.y >= 0 ? .down : .up
+            distance = absY
+        }
+
+        let gear: Int
+        if distance < threshold {
+            gear = 0
+        } else if distance - threshold < gearSteps.0 {
+            gear = 1
+        } else if distance - threshold < gearSteps.1 {
+            gear = 2
+        } else {
+            gear = 3
+        }
+
+        state = State(direction: direction, fill: min(1, distance / threshold), gear: gear)
+        return state
+    }
+
+    mutating func reset() {
+        state = .idle
+    }
+
+    static func repeatInterval(gear: Int) -> TimeInterval {
+        switch gear {
+        case ...1: 0.15
+        case 2: 0.08
+        default: 0.035
+        }
+    }
+}
+
+/// Decides when to send arrow keys: once when the threshold is reached, then
+/// repeatedly after a short delay, at the interval of the current gear.
+struct TerminalArrowRepeater {
+    var initialDelay: TimeInterval = 0.35
+
+    private var armedDirection: TerminalArrowDirection?
+    private var nextFire: TimeInterval?
+
+    /// Returns the arrow to send now, if any. Call on every drag update and frame tick.
+    mutating func advance(_ state: TerminalArrowJoystick.State, now: TimeInterval) -> TerminalArrowDirection? {
+        guard state.gear > 0, let direction = state.direction else {
+            armedDirection = nil
+            nextFire = nil
+            return nil
+        }
+
+        if armedDirection != direction {
+            armedDirection = direction
+            nextFire = now + initialDelay
+            return direction
+        }
+
+        guard let next = nextFire, now >= next else { return nil }
+        nextFire = now + TerminalArrowJoystick.repeatInterval(gear: state.gear)
+        return direction
+    }
+
+    mutating func reset() {
+        armedDirection = nil
+        nextFire = nil
+    }
+}
