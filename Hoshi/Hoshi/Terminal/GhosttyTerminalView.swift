@@ -535,6 +535,7 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
         pendingKeyboardLayoutWorkItems.removeAll()
         NotificationCenter.default.removeObserver(self)
         scrollbarFadeTimer?.invalidate()
+        arrowDisplayLink?.invalidate()
         scrollbarOverlay.removeFromSuperview()
         Self.unregisterUserdata(of: self)
         if let surface {
@@ -728,6 +729,9 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        if window == nil {
+            endArrowJoystick()
+        }
         guard let surface else { return }
 
         ghostty_surface_set_occlusion(surface, window != nil)
@@ -2125,7 +2129,13 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
         pad.show(at: point, in: bounds)
         HapticService.mediumTap()
 
-        let link = CADisplayLink(target: self, selector: #selector(arrowJoystickTick))
+        // CADisplayLink retains its target; a weak trampoline keeps a teardown mid-drag from
+        // pinning this view (and its Ghostty surface) alive.
+        arrowDisplayLink?.invalidate()
+        let link = CADisplayLink(
+            target: WeakDisplayLinkTarget { [weak self] in self?.arrowJoystickTick() },
+            selector: #selector(WeakDisplayLinkTarget.tick)
+        )
         link.add(to: .main, forMode: .common)
         arrowDisplayLink = link
     }
@@ -2141,7 +2151,7 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
         fireArrowIfDue()
     }
 
-    @objc private func arrowJoystickTick() {
+    private func arrowJoystickTick() {
         fireArrowIfDue()
     }
 
@@ -2534,5 +2544,18 @@ private extension CGPoint {
 private extension Comparable {
     func clamped(to range: ClosedRange<Self>) -> Self {
         min(max(self, range.lowerBound), range.upperBound)
+    }
+}
+
+/// Forwards CADisplayLink ticks without the link retaining the real owner.
+private final class WeakDisplayLinkTarget: NSObject {
+    private let onTick: () -> Void
+
+    init(_ onTick: @escaping () -> Void) {
+        self.onTick = onTick
+    }
+
+    @objc func tick() {
+        onTick()
     }
 }
