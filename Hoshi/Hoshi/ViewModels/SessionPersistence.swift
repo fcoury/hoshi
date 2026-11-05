@@ -11,6 +11,8 @@ struct PersistedSessionDescriptor: Codable, Equatable, Sendable {
     let lastAccessedAt: Date
     /// Absent in descriptors saved before Herdr support.
     var herdrAttachment: HerdrAttachment? = nil
+    /// The mosh-server still running for this session, stopped when it is restored.
+    var moshServerPID: Int32? = nil
 }
 
 final class SessionPersistenceStore {

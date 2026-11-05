@@ -984,6 +984,58 @@ final class ConnectionCoordinatorTests: XCTestCase {
         XCTAssertEqual(restored.first?.lastAccessedAt, descriptor.lastAccessedAt)
     }
 
+    func testRestoredSessionStopsTheMoshServerItLeftRunning() {
+        let server = makeServer()
+        var descriptor = makeDescriptor(serverID: server.id)
+        descriptor.moshServerPID = 4980
+        let store = SessionPersistenceStore(defaults: defaults)
+        store.save([descriptor])
+        let manager = SessionManager(persistenceStore: store)
+
+        let restored = manager.restoreSessions(using: [server])
+
+        XCTAssertEqual(restored.first?.connectionVM.moshServerPIDToReplace, 4980)
+        // Saved again until a new connection replaces it, so a second kill still finds it.
+        XCTAssertEqual(store.load().first?.moshServerPID, 4980)
+    }
+
+    func testDescriptorsSavedBeforeMoshPIDsStillDecode() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","serverID":"\(UUID().uuidString)","serverName":"mac",
+         "transportPolicy":"auto","createdAt":1,"lastAccessedAt":2}
+        """
+        let decoded = try JSONDecoder().decode(PersistedSessionDescriptor.self, from: Data(json.utf8))
+        XCTAssertNil(decoded.moshServerPID)
+    }
+
+    func testMoshLaunchStopsOnlyTheMoshServerItReplaces() throws {
+        let plain = MoshBootstrapService.serverLaunchCommand(configuredServerPath: nil, portRange: nil, initialCommand: nil)
+        XCTAssertFalse(plain.contains("kill"))
+
+        let command = MoshBootstrapService.serverLaunchCommand(
+            configuredServerPath: nil,
+            portRange: nil,
+            initialCommand: nil,
+            replacingServerPID: 4980
+        )
+        XCTAssertTrue(command.contains("ps -p 4980 -o comm="), command)
+        XCTAssertTrue(command.contains("*mosh-server*) kill 4980"), command)
+        let kill = try XCTUnwrap(command.range(of: "kill 4980"))
+        let server = try XCTUnwrap(command.range(of: " new -s"))
+        XCTAssertLessThan(kill.lowerBound, server.lowerBound)
+    }
+
+    func testMoshServerPIDIsReadFromItsLaunchOutput() {
+        let output = """
+        MOSH CONNECT 60001 4NeCCgvZFe2RnPgrcU1PQw
+
+        mosh-server (mosh 1.4.0) [build mosh 1.4.0]
+        [mosh-server detached, pid = 86585]
+        """
+        XCTAssertEqual(MoshBootstrapService.parseServerPID(output), 86585)
+        XCTAssertNil(MoshBootstrapService.parseServerPID("MOSH CONNECT 60001 4NeCCgvZFe2RnPgrcU1PQw"))
+    }
+
     func testSessionManagerIgnoresRemovedServerProfiles() {
         let store = SessionPersistenceStore(defaults: defaults)
         store.save([makeDescriptor(serverID: UUID())])
