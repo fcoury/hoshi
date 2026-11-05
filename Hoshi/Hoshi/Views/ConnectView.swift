@@ -11,6 +11,9 @@ struct ConnectView: View {
     }
 
     @State private var password = ""
+    @State private var rememberPassword = true
+    @State private var hadStoredPassword = false
+    @State private var credentialsSaved = false
     @State private var selectedKeyTag: String?
     @FocusState private var focusedField: Field?
 
@@ -44,10 +47,19 @@ struct ConnectView: View {
                 }
 
                 if server.authMethod == .password {
-                    Section("Credentials") {
+                    Section {
                         SecureField("Password", text: $password)
                             .textContentType(.password)
                             .focused($focusedField, equals: .credentials)
+                            .submitLabel(.go)
+                            .onSubmit(startConnection)
+                            .accessibilityIdentifier("connect.password")
+                        Toggle("Remember Password", isOn: $rememberPassword)
+                            .accessibilityIdentifier("connect.remember-password")
+                    } header: {
+                        Text("Credentials")
+                    } footer: {
+                        Text("Saved passwords stay in this device's Keychain and let you connect with one tap.")
                     }
                 } else {
                     Section("SSH Key") {
@@ -98,19 +110,8 @@ struct ConnectView: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Connect") {
-                        Task {
-                            await connectionVM.connect(
-                                server: server,
-                                password: server.authMethod == .password ? password : nil,
-                                keyTag: server.authMethod == .key ? selectedKeyTag : nil
-                            )
-                            if connectionVM.connectionState == .connected {
-                                dismiss()
-                            }
-                        }
-                    }
-                    .disabled(connectionVM.isConnecting || !isReady)
+                    Button("Connect", action: startConnection)
+                        .disabled(connectionVM.isConnecting || !isReady)
                 }
             }
             // Mosh-server installation offer
@@ -133,6 +134,7 @@ struct ConnectView: View {
                 case .password:
                     do {
                         password = try KeychainService.shared.retrievePassword(forServer: server.id) ?? ""
+                        hadStoredPassword = !password.isEmpty
                     } catch {
                         connectionVM.presentConnectionError(error, server: server, operation: .credentials)
                     }
@@ -152,16 +154,49 @@ struct ConnectView: View {
             // Auto-dismiss when connected (e.g. after install)
             .onChange(of: connectionVM.connectionState) { _, newState in
                 if newState == .connected {
+                    saveCredentialsIfNeeded()
                     dismiss()
                 }
             }
             // Dismiss when tmux picker should appear
             .onChange(of: connectionVM.showTmuxPicker) { _, show in
                 if show {
+                    saveCredentialsIfNeeded()
                     dismiss()
                 }
             }
             .hostKeyTrustPrompt()
+        }
+    }
+
+    private func startConnection() {
+        guard !connectionVM.isConnecting, isReady else { return }
+        Task {
+            await connectionVM.connect(
+                server: server,
+                password: server.authMethod == .password ? password : nil,
+                keyTag: server.authMethod == .key ? selectedKeyTag : nil
+            )
+            if connectionVM.connectionState == .connected {
+                saveCredentialsIfNeeded()
+                dismiss()
+            }
+        }
+    }
+
+    /// Applies the Remember Password choice once the server has accepted the password.
+    private func saveCredentialsIfNeeded() {
+        guard server.authMethod == .password, !credentialsSaved, !password.isEmpty else { return }
+        credentialsSaved = true
+        do {
+            if rememberPassword {
+                try KeychainService.shared.storePassword(password, forServer: server.id)
+            } else if hadStoredPassword {
+                try KeychainService.shared.deletePassword(forServer: server.id)
+            }
+        } catch {
+            // The session is already up; a Keychain failure only affects the next launch.
+            connectionVM.presentConnectionError(error, server: server, operation: .credentials)
         }
     }
 

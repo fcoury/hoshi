@@ -8,6 +8,26 @@ final class RemoteFileBrowserTests: XCTestCase {
     private var staging: RemoteFileDownloadStagingArea!
     private var backend: MockRemoteFileBrowser!
 
+    func testShellPathKeepsTildeBareAndQuotesTheRest() {
+        XCTAssertEqual(RemoteFileBrowserPolicy.shellPath([]), "~")
+        XCTAssertEqual(RemoteFileBrowserPolicy.shellPath(["code", "my app"]), "~/'code/my app'")
+        XCTAssertEqual(RemoteFileBrowserPolicy.shellPath(["it's"]), "~/'it'\\''s'")
+    }
+
+    func testInitialDirectoryFollowsTerminalWorkingDirectoryInsideHome() {
+        XCTAssertEqual(
+            RemoteFileBrowserPolicy.directory(fromWorkingDirectory: "/home/fcoury/code/hoshi", username: "fcoury")?.components,
+            ["code", "hoshi"]
+        )
+        XCTAssertEqual(
+            RemoteFileBrowserPolicy.directory(fromWorkingDirectory: "/Users/fcoury", username: "fcoury")?.components,
+            []
+        )
+        XCTAssertNil(RemoteFileBrowserPolicy.directory(fromWorkingDirectory: "/etc", username: "fcoury"))
+        XCTAssertNil(RemoteFileBrowserPolicy.directory(fromWorkingDirectory: "/home/other/x", username: "fcoury"))
+        XCTAssertNil(RemoteFileBrowserPolicy.directory(fromWorkingDirectory: nil, username: "fcoury"))
+    }
+
     override func setUpWithError() throws {
         try super.setUpWithError()
         rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(

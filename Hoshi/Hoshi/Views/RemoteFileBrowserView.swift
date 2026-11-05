@@ -14,6 +14,7 @@ struct RemoteFileBrowserView: View {
     @State private var searchText = ""
     @State private var showHiddenFiles = false
     @State private var showUploader = false
+    @State private var uploadDirectory: RemoteUploadDirectory?
     @State private var previewURL: URL?
 
     private let connection: ConnectionViewModel
@@ -23,13 +24,15 @@ struct RemoteFileBrowserView: View {
         connection: ConnectionViewModel,
         serverName: String,
         controller: RemoteFileBrowserController? = nil,
+        initialDirectory: RemoteUploadDirectory? = nil,
         onInsert: @escaping (Data) async -> Bool
     ) {
         self.connection = connection
         self.serverName = serverName
         self.onInsert = onInsert
         _controller = State(initialValue: controller ?? RemoteFileBrowserController(
-            backend: SFTPRemoteFileBrowserBackend(connection: connection)
+            backend: SFTPRemoteFileBrowserBackend(connection: connection),
+            directory: initialDirectory
         ))
     }
 
@@ -97,6 +100,7 @@ struct RemoteFileBrowserView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button {
+                            uploadDirectory = controller.currentDirectory
                             showUploader = true
                         } label: {
                             Label("Upload Here", systemImage: "square.and.arrow.up")
@@ -125,7 +129,7 @@ struct RemoteFileBrowserView: View {
         .sheet(isPresented: $showUploader) {
             FileUploadView(
                 connection: connection,
-                initialRemoteDirectory: controller.currentDirectory.displayPath,
+                initialRemoteDirectory: (uploadDirectory ?? controller.currentDirectory).displayPath,
                 onUploadCompleted: { _ in controller.load() },
                 onInsert: onInsert
             )
@@ -282,9 +286,55 @@ struct RemoteFileBrowserView: View {
         }
         .buttonStyle(.plain)
         .disabled(!entry.isOpenable || controller.isDownloading)
+        .contextMenu { rowActions(entry) }
         .accessibilityLabel("\(entry.name), \(entry.kind.accessibilityDescription)")
         .accessibilityHint(entry.kind == .directory ? "Opens this folder" : "Downloads and previews this file")
         .accessibilityIdentifier("file-browser.entry.\(entry.relativePath)")
+    }
+
+    @ViewBuilder
+    private func rowActions(_ entry: RemoteFileEntry) -> some View {
+        let path = RemoteFileBrowserPolicy.shellPath(entry.directory.components + [entry.name])
+
+        Button {
+            insert(path + " ")
+        } label: {
+            Label("Insert Path", systemImage: "text.insert")
+        }
+
+        Button {
+            UIPasteboard.general.string = path
+            HapticService.success()
+        } label: {
+            Label("Copy Path", systemImage: "doc.on.doc")
+        }
+
+        if entry.kind == .directory {
+            Button {
+                insert("cd \(path)\r")
+            } label: {
+                Label("cd Here", systemImage: "terminal")
+            }
+
+            if let directory = try? RemoteUploadDirectory(entry.displayPath) {
+                Button {
+                    uploadDirectory = directory
+                    showUploader = true
+                } label: {
+                    Label("Upload Here", systemImage: "square.and.arrow.up")
+                }
+            }
+        }
+    }
+
+    /// Sends text to the terminal and closes the browser so the result is visible.
+    private func insert(_ text: String) {
+        Task {
+            if await onInsert(Data(text.utf8)) {
+                HapticService.success()
+                closeBrowser()
+            }
+        }
     }
 
     private func systemImage(for entry: RemoteFileEntry) -> String {

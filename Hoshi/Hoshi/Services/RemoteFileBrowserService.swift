@@ -104,6 +104,22 @@ enum RemoteFileBrowserPolicy {
         return home
     }
 
+    /// The home-relative folder for a terminal working directory, or nil when it is outside home.
+    static func directory(fromWorkingDirectory path: String?, username: String) -> RemoteUploadDirectory? {
+        guard let path, !path.isEmpty, !username.isEmpty else { return nil }
+        let abbreviated = TerminalHeaderContext.abbreviatePath(path, username: username)
+        guard abbreviated == "~" || abbreviated.hasPrefix("~/") else { return nil }
+        return try? RemoteUploadDirectory(abbreviated)
+    }
+
+    /// A home-relative path ready to type into a shell: `~` stays bare so it expands,
+    /// the rest is single-quoted.
+    static func shellPath(_ components: [String]) -> String {
+        guard !components.isEmpty else { return "~" }
+        let joined = components.joined(separator: "/")
+        return "~/'" + joined.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
     nonisolated static func validateEntryName(_ name: String) throws {
         guard !name.isEmpty,
               name != ".",

@@ -66,11 +66,12 @@ enum TerminalClipboardNoticeKind: Equatable {
     case writeDenied
     case payloadTooLarge
     case invalidPayload
+    case policySaveFailed
 
     var isWarning: Bool {
         switch self {
         case .readAllowed, .writeAllowed: false
-        case .readDenied, .writeDenied, .payloadTooLarge, .invalidPayload: true
+        case .readDenied, .writeDenied, .payloadTooLarge, .invalidPayload, .policySaveFailed: true
         }
     }
 
@@ -80,6 +81,7 @@ enum TerminalClipboardNoticeKind: Equatable {
         case .writeAllowed: "clipboard"
         case .readDenied, .writeDenied: "hand.raised"
         case .payloadTooLarge, .invalidPayload: "exclamationmark.shield"
+        case .policySaveFailed: "exclamationmark.triangle"
         }
     }
 }
@@ -104,6 +106,8 @@ struct TerminalClipboardNotice: Identifiable, Equatable {
             return "Blocked clipboard data larger than \(TerminalClipboardPayload.maximumBytes.formatted()) bytes"
         case .invalidPayload:
             return "Blocked invalid clipboard data from \(serverName)"
+        case .policySaveFailed:
+            return "Couldn't save Always Allow for \(serverName); allowed for this session only"
         }
     }
 }

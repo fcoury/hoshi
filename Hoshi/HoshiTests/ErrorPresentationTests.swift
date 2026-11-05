@@ -12,6 +12,16 @@ import XCTest
 final class ErrorPresentationTests: XCTestCase {
     // MARK: - Authentication and the observed Citadel error 4
 
+    func testCredentialFailuresAreFlaggedForReentry() {
+        XCTAssertTrue(ErrorPresentation.classify(SSHClientError.allAuthenticationOptionsFailed).isCredentialFailure)
+        XCTAssertTrue(ErrorPresentation.classify(SSHConnectionError.passwordNotFound).isCredentialFailure)
+        XCTAssertTrue(ErrorPresentation.classify(ConnectionFallbackError(
+            moshError: URLError(.timedOut),
+            sshError: SSHClientError.allAuthenticationOptionsFailed
+        )).isCredentialFailure)
+        XCTAssertFalse(ErrorPresentation.classify(URLError(.timedOut)).isCredentialFailure)
+    }
+
     func testPasswordAuthenticationFailureExplainsBothSupportedPossibilities() {
         let error = ErrorPresentation.classify(
             SSHClientError.allAuthenticationOptionsFailed,
