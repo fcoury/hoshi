@@ -194,6 +194,10 @@ struct SettingsView: View {
             }
             .accessibilityIdentifier("settings.long-press")
 
+            Text(settings.longPressAction.explanation)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
             Picker("Double Tap", selection: Binding(
                 get: { settings.doubleTapAction },
                 set: { settings.doubleTapAction = $0 }

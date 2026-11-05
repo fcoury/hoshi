@@ -331,7 +331,9 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
     private var arrowJoystick = TerminalArrowJoystick()
     private var arrowRepeater = TerminalArrowRepeater()
     private var arrowOrigin: CGPoint?
-    private var arrowModifiers: Set<String> = []
+    /// Sticky toolbar modifiers for this drag, taken on the first arrow so a hold that
+    /// ends up selecting text leaves them armed for the next key.
+    private var arrowModifiers: Set<String>?
     private var arrowLastGear = 0
     private var arrowDisplayLink: CADisplayLink?
     private var reopenEditMenuAfterDismissal = false
@@ -2104,6 +2106,8 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
             beginArrowJoystick(at: location)
         case .changed:
             updateArrowJoystick(at: location)
+        case .ended:
+            finishArrowJoystick()
         default:
             endArrowJoystick()
         }
@@ -2116,8 +2120,7 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
         arrowJoystick.reset()
         arrowRepeater.reset()
         arrowLastGear = 0
-        // Sticky Ctrl/Opt/Shift apply to every key of this drag, then clear.
-        arrowModifiers = toolbarAccessory.takeActiveModifiers()
+        arrowModifiers = nil
 
         let pad = arrowPad ?? {
             let pad = ArrowPadOverlayView()
@@ -2158,15 +2161,30 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
     private func fireArrowIfDue() {
         guard let direction = arrowRepeater.advance(arrowJoystick.state, now: CACurrentMediaTime()) else { return }
         HapticService.lightTap()
-        let bytes = toolbarAccessory.apply(modifiers: arrowModifiers, to: ArraySlice(direction.bytes))
+        // Sticky Ctrl/Opt/Shift apply to every key of this drag, then clear.
+        let modifiers = arrowModifiers ?? toolbarAccessory.takeActiveModifiers()
+        arrowModifiers = modifiers
+        let bytes = toolbarAccessory.apply(modifiers: modifiers, to: ArraySlice(direction.bytes))
         sendInputData(Data(bytes), applyingToolbarModifiers: false)
+    }
+
+    /// Lifting the finger without having dragged selects the word under it, as on
+    /// Termius: the edit menu offers Copy/Paste and the handles extend the selection.
+    private func finishArrowJoystick() {
+        let selectionPoint = arrowJoystick.releaseSelectsText ? arrowOrigin : nil
+        endArrowJoystick()
+        guard let selectionPoint else { return }
+        if selectWord(at: selectionPoint) {
+            HapticService.selection()
+        }
+        presentEditMenu(at: selectionPoint)
     }
 
     private func endArrowJoystick() {
         arrowDisplayLink?.invalidate()
         arrowDisplayLink = nil
         arrowOrigin = nil
-        arrowModifiers = []
+        arrowModifiers = nil
         arrowJoystick.reset()
         arrowRepeater.reset()
         arrowPad?.hide()

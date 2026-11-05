@@ -231,6 +231,23 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertEqual(joystick.update(translation: CGPoint(x: 40, y: 60)).direction, .down)
     }
 
+    func testArrowJoystickReleaseSelectsTextOnlyWhenTheHoldNeverDragged() {
+        var joystick = TerminalArrowJoystick()
+        XCTAssertTrue(joystick.releaseSelectsText)
+
+        // Finger jitter inside the dead zone is still a stationary hold.
+        _ = joystick.update(translation: CGPoint(x: 4, y: -5))
+        XCTAssertTrue(joystick.releaseSelectsText)
+
+        // Dragging out and back is steering, not selecting.
+        _ = joystick.update(translation: CGPoint(x: 20, y: 0))
+        _ = joystick.update(translation: .zero)
+        XCTAssertFalse(joystick.releaseSelectsText)
+
+        joystick.reset()
+        XCTAssertTrue(joystick.releaseSelectsText)
+    }
+
     func testArrowRepeaterFiresOnceThenRepeatsAfterDelay() {
         var repeater = TerminalArrowRepeater()
         let armed = TerminalArrowJoystick.State(direction: .right, fill: 1, gear: 1)

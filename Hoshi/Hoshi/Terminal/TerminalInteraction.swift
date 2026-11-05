@@ -744,6 +744,13 @@ enum TerminalLongPressAction: String, CaseIterable, Identifiable {
         case .selectText: "Select Text"
         }
     }
+
+    var explanation: String {
+        switch self {
+        case .arrowKeys: "Hold and drag to send arrow keys. Hold and release to select a word, then drag the handles."
+        case .selectText: "Hold and drag to select text."
+        }
+    }
 }
 
 enum TerminalArrowDirection: CaseIterable, Equatable {
@@ -783,6 +790,12 @@ struct TerminalArrowJoystick {
     var axisHysteresis: CGFloat = 1.3
 
     private(set) var state = State.idle
+    /// Whether this hold has ever left the dead zone. Stays set if the finger comes back.
+    private(set) var hasEngaged = false
+
+    /// A hold released without ever dragging selects text instead of moving the cursor,
+    /// so one long-press covers both (press-and-release selects, press-and-drag steers).
+    var releaseSelectsText: Bool { !hasEngaged }
 
     mutating func update(translation: CGPoint) -> State {
         let absX = abs(translation.x)
@@ -791,6 +804,7 @@ struct TerminalArrowJoystick {
             state = .idle
             return state
         }
+        hasEngaged = true
 
         let horizontal: Bool
         if let current = state.direction {
@@ -828,6 +842,7 @@ struct TerminalArrowJoystick {
 
     mutating func reset() {
         state = .idle
+        hasEngaged = false
     }
 
     static func repeatInterval(gear: Int) -> TimeInterval {
