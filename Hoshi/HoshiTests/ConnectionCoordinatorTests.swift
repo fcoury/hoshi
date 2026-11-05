@@ -486,6 +486,43 @@ final class ConnectionCoordinatorTests: XCTestCase {
         XCTAssertEqual(session.connectionState, .disconnected)
     }
 
+    func testMoshFramesReachTheTerminalUnchangedAfterABlankScreen() async throws {
+        let transport = FakeMoshUDPTransport()
+        let session = makeMoshSession(transport: transport)
+        let info = makeMoshConnectionInfo()
+        var received: [[UInt8]] = []
+        session.onDataReceived = { received.append($0) }
+        try await connect(session, transport: transport, info: info)
+
+        // Like mosh-server: an empty first state, then diffs against the previous frame. A
+        // large partial repaint and a full-screen app's exit must arrive exactly as sent.
+        let header = Data("HEADER".utf8)
+        let partialRepaint = Data((4...19).map { "\u{1b}[\($0);1Hupd\u{1b}[K" }.joined().utf8)
+        let appExit = Data("\u{1b}[?1002l\u{1b}[?2004l\u{1b}[24;1Hprompt$ ".utf8)
+        var sequence: UInt64 = 10
+        for (newNum, bytes) in [(UInt64(1), Data()), (2, header), (3, partialRepaint), (4, appExit)] {
+            var instruction = MoshTransportInstruction()
+            instruction.oldNum = newNum - 1
+            instruction.newNum = newNum
+            instruction.diff = bytes.isEmpty ? Data() : hostFrame(bytes)
+            for datagram in try await makeServerDatagrams(key: info.sessionKey, instruction: instruction, firstSequence: sequence) {
+                transport.yield(datagram)
+                sequence += 1
+            }
+        }
+        let deadline = Date().addingTimeInterval(2)
+        while received.count < 3, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(received, [
+            Array("\u{1b}[r\u{1b}[0m\u{1b}[H\u{1b}[2J".utf8) + Array(header),
+            Array(partialRepaint),
+            Array(appExit),
+        ])
+        await session.disconnect()
+    }
+
     func testShutdownStateWithUnknownBaseIsNotTreatedAsSessionEnd() async throws {
         let transport = FakeMoshUDPTransport()
         let session = makeMoshSession(transport: transport)
@@ -1227,6 +1264,12 @@ final class ConnectionCoordinatorTests: XCTestCase {
             sessionKeyBase64: key.base64EncodedString(),
             serverIP: "127.0.0.1"
         )
+    }
+
+    /// A HostMessage carrying terminal bytes. Its layout (instruction 1, extension 2,
+    /// bytes field 4) matches a keystroke UserMessage, so the same encoder builds it.
+    private func hostFrame(_ bytes: Data) -> Data {
+        MoshUserInput.encodeKeystroke(bytes)
     }
 
     private func makeServerDatagrams(

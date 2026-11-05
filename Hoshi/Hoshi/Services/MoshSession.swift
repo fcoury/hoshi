@@ -67,6 +67,9 @@ final class MoshSession: ObservableObject {
     /// User input not yet acknowledged by mosh-server; survives socket replacement.
     private var sender = MoshTransportSender()
     private var remoteStateNum: UInt64 = 0
+    /// mosh-server draws its first frame as a diff against a blank screen, so the terminal
+    /// is cleared right before the first host bytes of each server session.
+    private var terminalNeedsBlankScreen = false
     /// Set when mosh-server acknowledges our shutdown state.
     private var clientShutdownAcknowledged = false
     private var consecutiveDatagramFailures = 0
@@ -80,12 +83,6 @@ final class MoshSession: ObservableObject {
     /// Keepalive interval for the NAT mapping and our acknowledgements, as in mosh.
     private static let heartbeatInterval: TimeInterval = 3
 
-    // Track whether a full-screen app (nvim, etc.) has enabled mouse
-    // tracking. When it disables tracking on exit, we inject a screen
-    // clear because the mosh server's terminal emulator handles the
-    // alternate-screen switch internally (\x1b[?1049h/l) and never
-    // sends those sequences to us.
-    private var mouseTrackingActive = false
     private var debugSendInstructionCount = 0
     private var debugSendDatagramCount = 0
     private var debugReceiveDatagramCount = 0
@@ -409,8 +406,8 @@ final class MoshSession: ObservableObject {
         clientShutdownAcknowledged = false
         sender = MoshTransportSender()
         remoteStateNum = 0
+        terminalNeedsBlankScreen = true
         needsImmediateAck = false
-        mouseTrackingActive = false
         consecutiveDatagramFailures = 0
         debugSendInstructionCount = 0
         debugSendDatagramCount = 0
@@ -620,59 +617,23 @@ final class MoshSession: ObservableObject {
                     debugHostOutputCount += outputs.count
                     for (idx, output) in outputs.enumerated() {
                         if let rawHostString = output.hostString {
-                            let hostString = await processInboundOutput(rawHostString)
+                            var hostString = await processInboundOutput(rawHostString)
                             guard !hostString.isEmpty else { continue }
+                            // Each frame is a diff against the one before, so the terminal must
+                            // start from mosh's blank frame; mosh repaints fully on resize itself.
+                            if terminalNeedsBlankScreen {
+                                hostString = Self.blankScreen + hostString
+                                terminalNeedsBlankScreen = false
+                            }
                             debugHostByteCount += hostString.count
-
-                            // Mosh's server-side terminal emulator consumes
-                            // alternate screen sequences (\x1b[?1049h/l)
-                            // internally, so the diff may not fully clear
-                            // Ghostty's display on screen transitions.
-                            // Detect full-screen repaints (many erase-to-EOL
-                            // sequences) and prepend a screen clear.
-                            let needsClear = isFullScreenRepaint(hostString)
 
                             if Self.sspTraceEnabled {
                                 let hex = hostString.prefix(64).map { String(format: "%02x", $0) }.joined(separator: " ")
-                                sspLog.notice("[SSP]   output[\(idx)] \(hostString.count)B clear=\(needsClear) hex=\(hex, privacy: .public)")
+                                sspLog.notice("[SSP]   output[\(idx)] \(hostString.count)B hex=\(hex, privacy: .public)")
                             }
 
                             if let callback = onDataReceived {
-                                if needsClear {
-                                    // Prepend cursor-home + erase-display so
-                                    // the full repaint starts on a clean screen.
-                                    var buf = Data(capacity: 7 + hostString.count)
-                                    buf.append(contentsOf: [0x1b, 0x5b, 0x48,        // \x1b[H  (cursor home)
-                                                            0x1b, 0x5b, 0x32, 0x4a]) // \x1b[2J (erase display)
-                                    buf.append(hostString)
-                                    callback(Array(buf))
-                                } else {
-                                    callback(Array(hostString))
-                                }
-
-                                // Detect full-screen app exit via mouse tracking
-                                // + bracketed paste disable in the same output.
-                                // Apps like nvim enable \x1b[?1002h on start and
-                                // disable it on exit alongside \x1b[?2004l. We
-                                // require BOTH to avoid false positives when nvim
-                                // briefly toggles mouse mode (e.g. command entry).
-                                let mouseEnable  = Data([0x1b, 0x5b, 0x3f, 0x31, 0x30, 0x30, 0x32, 0x68])  // \x1b[?1002h
-                                let mouseDisable = Data([0x1b, 0x5b, 0x3f, 0x31, 0x30, 0x30, 0x32, 0x6c])  // \x1b[?1002l
-                                let pasteDisable = Data([0x1b, 0x5b, 0x3f, 0x32, 0x30, 0x30, 0x34, 0x6c])  // \x1b[?2004l
-
-                                if hostString.range(of: mouseEnable) != nil {
-                                    mouseTrackingActive = true
-                                }
-                                let hasMouseOff = hostString.range(of: mouseDisable) != nil
-                                let hasPasteOff = hostString.range(of: pasteDisable) != nil
-                                if hasMouseOff, hasPasteOff, mouseTrackingActive {
-                                    mouseTrackingActive = false
-                                    callback([0x1b, 0x5b, 0x48,        // \x1b[H  (cursor home)
-                                              0x1b, 0x5b, 0x32, 0x4a]) // \x1b[2J (erase display)
-                                    if Self.sspTraceEnabled {
-                                        sspLog.notice("[SSP]   → INJECTED screen clear (app exit: mouse+paste disabled)")
-                                    }
-                                }
+                                callback(Array(hostString))
                             } else {
                                 bufferTerminalOutput(hostString)
                             }
@@ -990,28 +951,8 @@ final class MoshSession: ObservableObject {
         recoveryStartedAt = nil
     }
 
-    // Detect full-screen repaints by counting erase-to-end-of-line
-    // (\x1b[K) sequences. Mosh's screen-diff algorithm emits \x1b[K
-    // for each changed line to clear remnants. A high count (≥10)
-    // signals a full-screen transition (entering/exiting nvim, etc.)
-    // where we need to prepend a screen clear because the mosh server
-    // handles alternate-screen switching internally.
-    private func isFullScreenRepaint(_ data: Data) -> Bool {
-        let target: [UInt8] = [0x1b, 0x5b, 0x4b]  // \x1b[K
-        var count = 0
-        var i = data.startIndex
-
-        while i <= data.endIndex - 3 {
-            if data[i] == target[0], data[i+1] == target[1], data[i+2] == target[2] {
-                count += 1
-                if count >= 10 { return true }
-                i += 3
-            } else {
-                i += 1
-            }
-        }
-        return false
-    }
+    /// Resets scrolling region and attributes and clears the screen: mosh's blank frame.
+    private static let blankScreen = Data("\u{1b}[r\u{1b}[0m\u{1b}[H\u{1b}[2J".utf8)
 
     private func sendTransportInstruction(_ instruction: MoshTransportInstruction) async throws {
         guard let protocolEngine, let udpConnection, udpConnection.isReady else {

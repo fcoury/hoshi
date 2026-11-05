@@ -75,6 +75,55 @@ final class MoshIntegrationTests: XCTestCase {
         await session.disconnect()
     }
 
+    /// Drives a mosh-server that is already running (started with `mosh-server new`),
+    /// skipping the SSH bootstrap. The remote program must print `__SCENARIO_DONE__` after
+    /// reading one line of input. Set HOSHI_MOSH_CAPTURE to a file path to save every chunk
+    /// handed to the terminal (one base64 line per chunk) for offline screen checks.
+    func testLocalMoshServerScenario() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let portString = environment["HOSHI_MOSH_LOCAL_PORT"], let port = UInt16(portString),
+              let keyString = environment["HOSHI_MOSH_LOCAL_KEY"],
+              let key = MoshBootstrapService.decodeMoshSessionKey(keyString) else {
+            throw XCTSkip("Set HOSHI_MOSH_LOCAL_PORT and HOSHI_MOSH_LOCAL_KEY to drive a running mosh-server.")
+        }
+        let info = MoshConnectionInfo(
+            udpPort: port,
+            sessionKey: key,
+            sessionKeyBase64: keyString,
+            serverIP: environment["HOSHI_MOSH_LOCAL_HOST"] ?? "127.0.0.1"
+        )
+
+        let session = await MainActor.run {
+            MoshSession(server: Server(name: "Local", hostname: info.serverIP, username: "test", authMethod: .password, useMosh: true))
+        }
+        final class Chunks: @unchecked Sendable {
+            var all: [[UInt8]] = []
+            var text: String { String(decoding: all.joined(), as: UTF8.self) }
+        }
+        let chunks = Chunks()
+        await MainActor.run {
+            session.onDataReceived = { bytes in chunks.all.append(bytes) }
+        }
+        await session.resize(cols: 80, rows: 24)
+        try await session.establishUDP(info: info, timeout: 10)
+
+        try await waitFor(description: "prompt", timeoutSeconds: 20) {
+            await MainActor.run { chunks.text.contains("prompt$") }
+        }
+        await session.sendString("hello\n")
+        try await waitFor(description: "echoed input", timeoutSeconds: 20) {
+            await MainActor.run { chunks.text.contains("__SCENARIO_DONE__") }
+        }
+        let text = await MainActor.run { chunks.text }
+        XCTAssertTrue(text.contains("GOT:hello"), text)
+
+        if let path = environment["HOSHI_MOSH_CAPTURE"] {
+            let lines = await MainActor.run { chunks.all.map { Data($0).base64EncodedString() } }
+            try lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        }
+        await session.disconnect()
+    }
+
     private func waitFor(
         description: String,
         timeoutSeconds: TimeInterval,
