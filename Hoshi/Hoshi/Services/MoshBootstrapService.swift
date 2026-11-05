@@ -102,14 +102,29 @@ final class MoshBootstrapService {
     // Start mosh-server and parse connection info from its output
     // mosh-server prints: MOSH CONNECT <port> <base64-key>
     func startMoshServer(initialCommand: String? = nil) async throws -> MoshConnectionInfo {
-        let output = try await runCommand(Self.serverLaunchCommand(
-            configuredServerPath: configuredServerPath,
-            portRange: portRange,
-            initialCommand: initialCommand
-        ))
+        let output: String
+        do {
+            output = try await runCommand(Self.serverLaunchCommand(
+                configuredServerPath: configuredServerPath,
+                portRange: portRange,
+                initialCommand: initialCommand
+            ))
+        } catch let failure as SSHClient.CommandFailed {
+            // The launch command reports mosh-server's status itself, so this means the
+            // wrapper shell failed; its output is lost.
+            throw MoshBootstrapError.serverFailedToStart(
+                MoshLaunchFailure(launchOutput: "", exitCode: failure.exitCode)
+            )
+        }
 
         // Parse the MOSH CONNECT line
-        let (port, keyString) = try MoshBootstrapService.parseMoshConnect(output)
+        let port: UInt16
+        let keyString: String
+        do {
+            (port, keyString) = try MoshBootstrapService.parseMoshConnect(output)
+        } catch {
+            throw MoshBootstrapError.serverFailedToStart(MoshLaunchFailure(launchOutput: output))
+        }
         // mosh-server binds only to the address SSH arrived on (`new -s`). Aim UDP at
         // that exact address instead of letting the socket resolve the name again, which
         // can pick another address family or drop a link-local IPv6 interface scope.
@@ -235,7 +250,7 @@ final class MoshBootstrapService {
         // A client that vanishes without shutting down (the app was killed in the background)
         // must not leave the shell running forever. Respect a timeout the user already set.
         let networkTimeout = "MOSH_SERVER_NETWORK_TMOUT=\"${MOSH_SERVER_NETWORK_TMOUT:-\(orphanedServerTimeout)}\""
-        let command = "[ -n \"$SSH_CONNECTION\" ] && printf \"\\nMOSH SSH_CONNECTION %s\\n\" \"$SSH_CONNECTION\"; \(networkTimeout) \(executable) new -s -c 256 -l LANG=en_US.UTF-8\(terminalEnvironment)\(rangeArgument)\(commandArgument)"
+        let command = "[ -n \"$SSH_CONNECTION\" ] && printf \"\\nMOSH SSH_CONNECTION %s\\n\" \"$SSH_CONNECTION\"; \(networkTimeout) \(executable) new -s -c 256 -l LANG=en_US.UTF-8\(terminalEnvironment)\(rangeArgument)\(commandArgument); printf \"\\n\(MoshLaunchFailure.exitMarker) %s\\n\" \"$?\""
         return "sh -lc \(shellEscape(command)) 2>&1"
     }
 
@@ -261,6 +276,7 @@ enum MoshBootstrapError: LocalizedError {
     case installFailed(reason: String)
     case invalidSessionKey
     case noConnectLine(output: String)
+    case serverFailedToStart(MoshLaunchFailure)
     case sshCommandFailed(String)
 
     var errorDescription: String? {
@@ -271,6 +287,11 @@ enum MoshBootstrapError: LocalizedError {
             return "mosh-server returned an invalid session key"
         case .noConnectLine(let output):
             return "Could not find MOSH CONNECT in server output: \(output)"
+        case .serverFailedToStart(let failure):
+            var description = failure.summary
+            if let exitCode = failure.exitCode { description += " Exit status \(exitCode)." }
+            if !failure.output.isEmpty { description += "\nServer output:\n\(failure.output)" }
+            return description
         case .sshCommandFailed(let reason):
             return "SSH command failed: \(reason)"
         }
@@ -284,6 +305,8 @@ enum MoshBootstrapError: LocalizedError {
             return "The mosh-server may be an incompatible version. Try updating it."
         case .noConnectLine:
             return "Ensure mosh-server is properly installed and your user has permission to run it."
+        case .serverFailedToStart(let failure):
+            return failure.recovery
         case .sshCommandFailed:
             return "Check your SSH connection and try again."
         }
