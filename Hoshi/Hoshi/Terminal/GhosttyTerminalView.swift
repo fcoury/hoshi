@@ -315,10 +315,8 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
     private var recentDirectInputs: [(canonical: Data, time: CFTimeInterval)] = []
     private let mirroredInputWindow: CFTimeInterval = 0.08
     private let callbackDeferral: CFTimeInterval = 0.012
-    // Track recent pressesBegan sends so insertText can suppress duplicates
-    // when both paths fire for the same keystroke.
-    private var lastPressSend: (data: Data, time: CFTimeInterval)?
-    private let pressInsertOverlap: CFTimeInterval = 0.05
+    // Keys pressesBegan already sent, so insertText doesn't send them again.
+    private var pressedKeyTextFilter = PressedKeyTextFilter()
     private var lastAppliedSettingsHash: Int = 0
     private var pendingFocusRetryWorkItem: DispatchWorkItem?
     private var pendingKeyboardLayoutWorkItems: [DispatchWorkItem] = []
@@ -625,12 +623,11 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
         let terminalText = text.replacingOccurrences(of: "\n", with: "\r")
         let data = Data(terminalText.utf8)
 
-        // If pressesBegan already sent this exact data within the overlap
-        // window, suppress the duplicate from insertText.
-        if let last = lastPressSend,
-           last.data == data,
-           CACurrentMediaTime() - last.time <= pressInsertOverlap {
-            lastPressSend = nil
+        // pressesBegan may already have sent this key.
+        if pressedKeyTextFilter.suppressesInsertedText(data, at: CACurrentMediaTime()) {
+            if Self.inputTraceEnabled {
+                print("[INPUT_TRACE] insertText suppressed (already sent by pressesBegan)")
+            }
             return
         }
 
@@ -683,12 +680,12 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
             } else {
                 // Send printable keys directly — insertText may not fire for
                 // hardware keyboards when super.pressesBegan is not called.
-                // The insertText dedup guard prevents doubles when both paths fire.
+                // pressedKeyTextFilter prevents doubles when both paths fire.
                 let chars = key.characters
                 if !chars.isEmpty {
                     let terminalChars = chars.replacingOccurrences(of: "\n", with: "\r")
                     let data = Data(terminalChars.utf8)
-                    lastPressSend = (data, CACurrentMediaTime())
+                    pressedKeyTextFilter.recordPress(data, at: CACurrentMediaTime())
                     sendInputData(data)
                 }
                 handled = true
