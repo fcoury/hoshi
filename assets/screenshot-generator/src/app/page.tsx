@@ -8,11 +8,13 @@ import { CANVAS, type Device } from "@/lib/brand";
 import { IPHONE_SLIDES } from "@/slides/iphone";
 import { IPAD_SLIDES } from "@/slides/ipad";
 import { PREVIEW_CARDS } from "@/slides/preview";
+import { SOCIAL_CARDS } from "@/slides/social";
 
 const SETS: Record<Device, readonly { id: string; C: () => React.JSX.Element }[]> = {
   iphone: IPHONE_SLIDES,
   ipad: IPAD_SLIDES,
   preview: PREVIEW_CARDS,
+  social: SOCIAL_CARDS,
 };
 
 export default function Page() {
