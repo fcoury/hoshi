@@ -27,8 +27,8 @@ const EXPORTS = {
   ipad: [{ name: "ipad-13", w: 2064, h: 2752 }],
 };
 const SLIDES = CARDS ? { preview: ["intro", "agents", "terminal", "outro"] } : {
-  iphone: ["hero", "lock-screen", "sessions-picker", "mosh", "joystick", "voice", "selection", "sftp", "multi-session", "open-source"],
-  ipad: ["hero", "agents", "terminal", "sftp", "sessions", "open-source"],
+  iphone: ["hero", "lock-screen", "sessions-picker", "mosh", "joystick", "voice", "selection", "sftp", "multi-session", "private"],
+  ipad: ["hero", "agents", "terminal", "sftp", "sessions", "private"],
 };
 
 async function waitForServer(url, timeoutMs = 90_000) {
