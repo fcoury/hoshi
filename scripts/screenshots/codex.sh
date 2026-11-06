@@ -5,11 +5,13 @@
 #
 #   scripts/screenshots/codex.sh setup          key in devbox, forced-command line in ~/.ssh/authorized_keys
 #   scripts/screenshots/codex.sh swap [PROMPT]  after host.sh restart: Builder pane -> Codex on this Mac
+#                                               (CODEX_TITLE: its title in Herdr's agent list)
 #   scripts/screenshots/codex.sh remove         undo setup
 #
 # Needs Remote Login (System Settings > General > Sharing) and a signed-in
-# `codex` on PATH. The devbox key can only run `codex -s read-only -a never`
-# in this repo, with the prompt the client sends: no shell, no forwarding.
+# `codex` on PATH. The devbox key can only run codex-remote.sh (Codex,
+# read-only, in this repo) with the prompt the client sends: no shell, no
+# forwarding.
 # Herdr recognises agents by process name, so the ssh client runs from a copy
 # named `codex`, and the pane lists as a real Codex agent.
 set -euo pipefail
@@ -26,18 +28,20 @@ setup)
   docker exec -u fcoury "$C" bash -c "mkdir -p ~/.ssh ~/.local/shim && chmod 700 ~/.ssh
     [ -f ~/.ssh/hoshi_codex ] || ssh-keygen -q -t ed25519 -N '' -C $MARK -f ~/.ssh/hoshi_codex
     [ -x ~/.local/shim/codex ] || cp /usr/bin/ssh ~/.local/shim/codex"
+  # `codex [PROMPT]` in devbox shells (sourced by the host's .bashrc).
+  docker exec -u fcoury "$C" bash -c "printf '%s\n' 'codex() { ~/.local/shim/codex -tt -q -o StrictHostKeyChecking=accept-new -i ~/.ssh/hoshi_codex $(id -un)@host.docker.internal \"\$*\"; }' > ~/.shots-codex"
   pub=$(docker exec -u fcoury "$C" cat /home/fcoury/.ssh/hoshi_codex.pub)
   mkdir -p "$HOME/.ssh"; touch "$KEYS"; chmod 600 "$KEYS"
   [ -f "$KEYS.bak-$MARK" ] || cp "$KEYS" "$KEYS.bak-$MARK"
-  # cd/&&/exec and "$VAR" read the same in bash, zsh and fish.
-  line="command=\"cd '$SHOTS_ROOT' && exec '$codex_bin' -s read-only -a never \\\"\$SSH_ORIGINAL_COMMAND\\\"\",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc $pub $MARK"
+  # exec and "$VAR" read the same in bash, zsh and fish.
+  line="command=\"exec '$SHOTS_ROOT/scripts/screenshots/codex-remote.sh' '$codex_bin' \\\"\$SSH_ORIGINAL_COMMAND\\\"\",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc $pub $MARK"
   { grep -v -e "$MARK" "$KEYS" || true; printf '%s\n' "$line"; } > "$KEYS.tmp"
   cat "$KEYS.tmp" > "$KEYS"; rm "$KEYS.tmp"
   log "authorized $MARK for codex in $SHOTS_ROOT (backup: $KEYS.bak-$MARK)"
   ;;
 swap)
   prompt=${2:-$PROMPT_DEFAULT}
-  docker exec -u fcoury -e PROMPT="$prompt" -e MAC_USER="$(id -un)" "$C" bash -lc '
+  docker exec -u fcoury -e PROMPT="$prompt" -e TITLE="${CODEX_TITLE:-Ask about the code}" -e MAC_USER="$(id -un)" "$C" bash -lc '
     for _ in $(seq 60); do
       p=$(herdr agent list 2>/dev/null | python3 -c "import json,sys
 try: print([a[\"pane_id\"] for a in json.load(sys.stdin)[\"result\"][\"agents\"] if a[\"agent\"]==\"builder\"][0])
@@ -46,14 +50,16 @@ except Exception: pass")
     done
     [ -n "$p" ] || { echo "no builder pane on devbox" >&2; exit 1; }
     pkill -f "[a]gent.py working" || true; sleep 1.5
-    herdr pane run "$p" "clear; ~/.local/shim/codex -tt -q -o StrictHostKeyChecking=accept-new -i ~/.ssh/hoshi_codex $MAC_USER@host.docker.internal $(printf %q "$PROMPT")" >/dev/null'
+    herdr pane run "$p" "clear; ~/.local/shim/codex -tt -q -o StrictHostKeyChecking=accept-new -i ~/.ssh/hoshi_codex $MAC_USER@host.docker.internal $(printf %q "$PROMPT")" >/dev/null
+    # Without a title Herdr lists the pane by its command line.
+    sleep 2; herdr pane report-metadata "$p" --source shots --title "$TITLE" >/dev/null'
   log "builder pane now runs Codex on this Mac"
   ;;
 remove)
   if [ -f "$KEYS" ]; then
     { grep -v -e "$MARK" "$KEYS" || true; } > "$KEYS.tmp"; cat "$KEYS.tmp" > "$KEYS"; rm "$KEYS.tmp"
   fi
-  docker exec -u fcoury "$C" rm -f /home/fcoury/.ssh/hoshi_codex /home/fcoury/.ssh/hoshi_codex.pub /home/fcoury/.local/shim/codex 2>/dev/null || true
+  docker exec -u fcoury "$C" rm -f /home/fcoury/.ssh/hoshi_codex /home/fcoury/.ssh/hoshi_codex.pub /home/fcoury/.local/shim/codex /home/fcoury/.shots-codex 2>/dev/null || true
   log "removed $MARK"
   ;;
 *) echo "usage: $0 setup|swap [PROMPT]|remove" >&2; exit 2 ;;
