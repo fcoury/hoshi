@@ -81,8 +81,8 @@ function Hero() {
         }}
       />
       <Caption
-        kicker="Open source · MIT"
-        line1="The open-source terminal"
+        kicker="SSH · Mosh · tmux"
+        line1="The terminal"
         line2="for coding agents."
         size={92}
         style={{ position: "absolute", top: 340, left: 0, right: 0 }}
@@ -251,9 +251,9 @@ function Closer() {
         }}
       />
       <Caption
-        kicker="Yours to read"
-        line1="Open source."
-        line2="Nothing to unlock."
+        kicker="Private by design"
+        line1="Your servers."
+        line2="Your keys."
         size={118}
         tone="light"
         style={{ position: "absolute", top: 940, left: 0, right: 0 }}
@@ -270,7 +270,7 @@ function Closer() {
           color: "rgba(255,255,255,0.88)",
         }}
       >
-        MIT licensed · github.com/fcoury/hoshi
+        No account · no ads · no tracking
       </div>
       <Pills
         tone="light"
@@ -278,7 +278,7 @@ function Closer() {
         items={[
           "Mosh", "tmux", "Herdr", "Live Activities", "SFTP", "Voice",
           "50+ Nerd Fonts", "Known Hosts", "Face ID lock", "iPad",
-          "No ads", "No account", "Family Sharing",
+          "Family Sharing",
         ]}
         style={{ position: "absolute", top: 1620, left: 110, right: 110 }}
       />
@@ -296,5 +296,5 @@ export const IPHONE_SLIDES = [
   { id: "selection", C: Selection },
   { id: "sftp", C: Sftp },
   { id: "multi-session", C: Sessions },
-  { id: "open-source", C: Closer },
+  { id: "private", C: Closer },
 ] as const;

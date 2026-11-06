@@ -48,8 +48,8 @@ const R = {
 function Hero() {
   return (
     <Standard
-      kicker="Open source · MIT"
-      line1="The open-source terminal"
+      kicker="SSH · Mosh · tmux"
+      line1="The terminal"
       line2="for coding agents."
       src={shot("split-agent")}
     >
@@ -120,9 +120,9 @@ function Closer() {
         }}
       />
       <Caption
-        kicker="Yours to read"
-        line1="Open source."
-        line2="Nothing to unlock."
+        kicker="Private by design"
+        line1="Your servers."
+        line2="Your keys."
         size={150}
         tone="light"
         style={{ position: "absolute", top: 1090, left: 0, right: 0 }}
@@ -139,7 +139,7 @@ function Closer() {
           color: "rgba(255,255,255,0.88)",
         }}
       >
-        MIT licensed · github.com/fcoury/hoshi
+        No account · no ads · no tracking
       </div>
       <Pills
         tone="light"
@@ -147,7 +147,7 @@ function Closer() {
         items={[
           "Mosh", "tmux", "Herdr", "Live Activities", "SFTP", "Voice",
           "50+ Nerd Fonts", "Known Hosts", "Face ID lock", "iPhone",
-          "No ads", "No account", "Family Sharing",
+          "Family Sharing",
         ]}
         style={{ position: "absolute", top: 1880, left: 200, right: 200 }}
       />
@@ -164,5 +164,5 @@ export const IPAD_SLIDES = [
   { id: "terminal", C: BigTerminal },
   { id: "sftp", C: Files },
   { id: "sessions", C: Sessions },
-  { id: "open-source", C: Closer },
+  { id: "private", C: Closer },
 ] as const;

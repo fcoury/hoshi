@@ -93,7 +93,7 @@ function Intro() {
     <Card
       icon
       comment="# hoshi"
-      lines={[<Prompt key="a">The open-source</Prompt>, "terminal for", "coding agents."]}
+      lines={[<Prompt key="a">The terminal</Prompt>, "for coding agents."]}
     />
   );
 }
@@ -123,12 +123,10 @@ function Outro() {
     <Card
       icon
       variant="accent"
-      comment="# open source · MIT"
-      lines={[<Prompt key="a" light>Open source.</Prompt>, "Nothing to", "unlock."]}
+      comment="# private by design"
+      lines={[<Prompt key="a" light>Your servers.</Prompt>, "Your keys."]}
       footer={
         <div style={{ fontSize: 32, fontWeight: 500, color: "rgba(255,255,255,0.85)", lineHeight: 1.6 }}>
-          github.com/fcoury/hoshi
-          <br />
           no account · no ads · no tracking
         </div>
       }
