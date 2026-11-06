@@ -55,3 +55,8 @@ __pycache__/
 # App Store build archives, IPAs, and export logs
 .asc/
 .DS_Store
+
+# Local-only research and icon exploration (large, partly third-party images).
+# The shipped icon variant under icon-concepts stays tracked.
+assets/competitive-research/
+assets/icon-concepts/
