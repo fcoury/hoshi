@@ -2,6 +2,7 @@
 //   bun run export                 -> ../screenshots/<size>/NN-id.png
 //   bun run export -- --only iphone/hero
 //   bun run export -- --cards      -> ../../.shots/preview/cards/<id>.png
+//   bun run export -- --social     -> ../site/img/og.jpg
 // Starts `next dev` on a private port, screenshots each slide at its design
 // size with Playwright, then resizes per App Store display type and strips the
 // alpha channel (App Store Connect rejects transparency) with ffmpeg.
@@ -18,15 +19,17 @@ const outRoot = join(root, "..", "screenshots");
 const only = process.argv.includes("--only") ? process.argv[process.argv.indexOf("--only") + 1] : null;
 
 // Mirrors src/lib/brand.ts and the slide registries.
-const CANVAS = { iphone: { w: 1320, h: 2868 }, ipad: { w: 2064, h: 2752 }, preview: { w: 886, h: 1920 } };
+const CANVAS = { iphone: { w: 1320, h: 2868 }, ipad: { w: 2064, h: 2752 }, preview: { w: 886, h: 1920 }, social: { w: 1200, h: 630 } };
 const CARDS = process.argv.includes("--cards");
+const SOCIAL = process.argv.includes("--social");
+const SITE_IMG = join(root, "..", "site", "img");
 const CARDS_OUT = join(root, "..", "..", ".shots", "preview", "cards");
 const EXPORTS = {
   // App Store Connect scales the 6.9" set down to every smaller iPhone.
   iphone: [{ name: "iphone-6.9", w: 1320, h: 2868 }],
   ipad: [{ name: "ipad-13", w: 2064, h: 2752 }],
 };
-const SLIDES = CARDS ? { preview: ["intro", "agents", "terminal", "outro"] } : {
+const SLIDES = SOCIAL ? { social: ["og"] } : CARDS ? { preview: ["intro", "agents", "terminal", "outro"] } : {
   iphone: ["hero", "lock-screen", "sessions-picker", "mosh", "joystick", "voice", "selection", "sftp", "multi-session", "private"],
   ipad: ["hero", "agents", "terminal", "sftp", "sessions", "private"],
 };
@@ -54,14 +57,14 @@ try {
     .launch({ channel: "chrome" })
     .catch(() => chromium.launch({ channel: "chromium" }));
   // A full export replaces the day's set, so dropped slides don't linger.
-  if (!only && !CARDS) for (const sizes of Object.values(EXPORTS)) for (const s of sizes) rmSync(join(outRoot, s.name), { recursive: true, force: true });
+  if (!only && !CARDS && !SOCIAL) for (const sizes of Object.values(EXPORTS)) for (const s of sizes) rmSync(join(outRoot, s.name), { recursive: true, force: true });
   const tmp = join(outRoot, ".design");
   mkdirSync(tmp, { recursive: true });
 
   for (const device of Object.keys(SLIDES)) {
     const { w, h } = CANVAS[device];
     // Cards render at 2x and are downsampled, so small mono text stays crisp.
-    const scale = device === "preview" ? 2 : 1;
+    const scale = device === "preview" || device === "social" ? 2 : 1;
     const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: scale });
     for (const [i, id] of SLIDES[device].entries()) {
       if (only && only !== `${device}/${id}`) continue;
@@ -75,6 +78,14 @@ try {
       const design = join(tmp, `${device}-${name}.png`);
       await page.locator("#slide").screenshot({ path: design });
 
+      if (device === "social") {
+        // High-quality JPEG keeps the card small for crawlers (X caps at 5 MB).
+        execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-i", design,
+          "-vf", `scale=${w}:${h}:flags=lanczos`, "-q:v", "2", "-frames:v", "1", "-update", "1",
+          join(SITE_IMG, `${id}.jpg`)]);
+        console.log(`site/img/${id}.jpg`);
+        continue;
+      }
       if (device === "preview") {
         mkdirSync(CARDS_OUT, { recursive: true });
         execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-i", design,

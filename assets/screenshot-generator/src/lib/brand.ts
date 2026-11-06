@@ -23,6 +23,8 @@ export const CANVAS = {
   ipad: { w: 2064, h: 2752 },
   // App Preview video title cards (6.9" App Preview size).
   preview: { w: 886, h: 1920 },
+  // gethoshi.app social card (og:image).
+  social: { w: 1200, h: 630 },
 } as const;
 
 export type Device = keyof typeof CANVAS;
