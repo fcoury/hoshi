@@ -72,6 +72,12 @@ app_defaults() {
   "${d[@]}" write "$BUNDLE_ID" app.gethoshi.agent-live-activity-server-names -bool true
   "${d[@]}" write "$BUNDLE_ID" com.hoshi.security.appLockEnabled -bool false
   "${d[@]}" write "$BUNDLE_ID" com.hoshi.appearance.fontSize -float "${SHOTS_FONT_SIZE:-15}"
+  # SHOTS_FONT picks a bundled terminal font (e.g. the video's JetBrains Mono).
+  if [ -n "${SHOTS_FONT:-}" ]; then
+    "${d[@]}" write "$BUNDLE_ID" com.hoshi.appearance.fontFamily "$SHOTS_FONT"
+  else
+    "${d[@]}" delete "$BUNDLE_ID" com.hoshi.appearance.fontFamily 2>/dev/null || true
+  fi
   "${d[@]}" write "$BUNDLE_ID" com.hoshi.terminal.autoHideHeader -bool false
 }
 

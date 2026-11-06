@@ -48,3 +48,6 @@ assets/screenshot-generator/.DS_Store
 assets/screenshot-host/.shots-password
 .shots/
 assets/screenshot-generator/public/shots/
+
+# Python bytecode (screenshot host scripts)
+__pycache__/
