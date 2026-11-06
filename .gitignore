@@ -51,3 +51,7 @@ assets/screenshot-generator/public/shots/
 
 # Python bytecode (screenshot host scripts)
 __pycache__/
+
+# App Store build archives, IPAs, and export logs
+.asc/
+.DS_Store
