@@ -7,7 +7,8 @@
 #   scripts/screenshots/capture.sh ipad-13    # iPad 13"
 #   SKIP_BUILD=1 scripts/screenshots/capture.sh iphone-6.3 agents
 #
-# Scenes are grouped in runs that share one app launch: `agents`, `terminal`.
+# Scenes are grouped in runs that share one app launch: `agents`, `terminal`,
+# and the opt-in `codex` (real Codex on this Mac; see codex.sh).
 # Coordinates are in points for the given device; see notes inline. The
 # accessibility tree goes stale while the terminal is on screen, so most taps
 # inside a session use coordinates rather than labels.
@@ -104,6 +105,19 @@ run_agents() {
   shot "$udid" "$raw/reply-typed.png"
   at "${REPLY_SEND[@]}"; sleep 5
   shot "$udid" "$raw/reply-sent.png"
+}
+
+# Opt-in (needs `codex.sh setup`): real Codex on this Mac in the Builder pane.
+# Codex answers in about 20 s, so one frame catches it working, one done.
+run_codex() {
+  log "run: codex (real Codex over SSH in a Herdr pane)"
+  SHOTS_HOLD=0 fresh_launch "$udid"
+  "$SHOTS_ROOT/scripts/screenshots/codex.sh" swap
+  open_picker "$udid" "fcoury@devbox.localhost"
+  tap_prefix "$udid" "Codex"; sleep 4
+  shot "$udid" "$raw/codex-working.png"
+  sleep "${CODEX_WAIT:-30}"
+  shot "$udid" "$raw/codex.png"
 }
 
 run_terminal() {

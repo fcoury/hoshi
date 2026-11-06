@@ -53,6 +53,29 @@ the JetBrains Mono title cards. Output is 886×1920, 30 fps, H.264 High with a
 silent stereo AAC track, 15–30 s: the App Preview spec for 6.9" and 6.5"
 iPhones. Edit `PLAN` in the script to change the cut.
 
+## Real Codex (opt-in)
+
+The site's agent shot is the real Codex, not the scripted agent. Hoshi
+connects to devbox and attaches to Herdr; the Builder pane runs `ssh` back to
+this Mac, where a forced command starts Codex in this repo, read-only.
+
+```bash
+scripts/screenshots/codex.sh setup                       # once; needs Remote Login + signed-in codex
+SKIP_BUILD=1 scripts/screenshots/capture.sh iphone-6.3 codex   # codex-working.png, codex.png
+scripts/screenshots/codex.sh remove                      # undo setup
+```
+
+`setup` adds one `hoshi-shots-codex` line to `~/.ssh/authorized_keys` (backup
+beside it). That key can only run `codex -s read-only -a never` in this repo
+with the prompt the client sends: no shell, no forwarding. Herdr recognises
+agents by process name, so the ssh client runs from a copy named `codex` and
+the pane lists as a real Codex agent. `codex.sh swap "PROMPT"` changes the
+task. Runs are live, so the answer and timing differ each time, and each one
+uses a little of your Codex quota.
+
+Site images are 560 px wide JPEGs of the raw captures:
+`sips -s format jpeg -s formatOptions 80 --resampleWidth 560 IN.png --out assets/site/img/NAME.jpg`.
+
 ## How it stays deterministic
 
 - **Seeded app.** Debug builds read `HOSHI_SCREENSHOT_SEED` (base64 JSON,
