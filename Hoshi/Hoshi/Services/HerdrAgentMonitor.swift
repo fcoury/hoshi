@@ -86,8 +86,8 @@ enum HerdrAgentChangeDetector {
     }
 }
 
-/// Ensures only one monitor per host reports events, so two Hoshi sessions
-/// on the same machine do not duplicate every notification. Other monitors
+/// Ensures only one monitor per host and Herdr view reports events, so two
+/// Hoshi sessions on the same Herdr session do not duplicate every notification. Other monitors
 /// keep tracking state and take over when the reporting one stops.
 @MainActor
 enum HerdrEventReporterRegistry {
@@ -123,6 +123,10 @@ final class HerdrAgentMonitor {
     private let interval: Duration
     private let onEvent: @MainActor (AgentEventEnvelope) -> Void
     private let onInventory: @MainActor (HerdrInventory) -> Void
+    /// What the terminal shows from Herdr right now. Only those agents raise
+    /// events: a plain shell on a host running Herdr stays quiet.
+    private let attachment: @MainActor () -> HerdrAttachment?
+    private var claimedKey: String?
 
     private var task: Task<Void, Never>?
     private var previous: [HerdrAgentChangeDetector.Key: HerdrAgent]?
@@ -134,6 +138,7 @@ final class HerdrAgentMonitor {
         hostKey: String? = nil,
         interval: Duration = .seconds(5),
         runner: @escaping CommandRunner,
+        attachment: @escaping @MainActor () -> HerdrAttachment?,
         onEvent: @escaping @MainActor (AgentEventEnvelope) -> Void,
         onInventory: @escaping @MainActor (HerdrInventory) -> Void = { _ in }
     ) {
@@ -141,6 +146,7 @@ final class HerdrAgentMonitor {
         self.hostKey = hostKey
         self.interval = interval
         self.runner = runner
+        self.attachment = attachment
         self.onEvent = onEvent
         self.onInventory = onInventory
     }
@@ -161,9 +167,7 @@ final class HerdrAgentMonitor {
         task = nil
         observers.forEach(NotificationCenter.default.removeObserver)
         observers.removeAll()
-        if let hostKey {
-            HerdrEventReporterRegistry.release(hostKey, for: self)
-        }
+        releaseClaim()
     }
 
     /// Polls immediately, for example after the user changed Herdr's focus.
@@ -175,18 +179,33 @@ final class HerdrAgentMonitor {
 
     /// Processes one discovery output. Exposed for tests.
     func process(_ inventory: HerdrInventory) {
-        let reports = hostKey.map { HerdrEventReporterRegistry.claim($0, for: self) } ?? true
-        if reports, let previous {
+        if let attachment = attachment(), claimReporting(for: attachment), let previous {
             for event in HerdrAgentChangeDetector.events(
                 previous: previous,
                 current: inventory,
                 hostname: hostname
-            ) {
+            ) where event.herdrTarget.map(attachment.shows) ?? false {
                 onEvent(event)
             }
+        } else if attachment() == nil {
+            releaseClaim()
         }
         previous = HerdrAgentChangeDetector.snapshot(of: inventory)
         onInventory(inventory)
+    }
+
+    private func claimReporting(for attachment: HerdrAttachment) -> Bool {
+        guard let hostKey else { return true }
+        let key = "\(hostKey)#\(attachment.reporterKey)"
+        if claimedKey != key { releaseClaim() }
+        guard HerdrEventReporterRegistry.claim(key, for: self) else { return false }
+        claimedKey = key
+        return true
+    }
+
+    private func releaseClaim() {
+        if let claimedKey { HerdrEventReporterRegistry.release(claimedKey, for: self) }
+        claimedKey = nil
     }
 
     private func run() async {

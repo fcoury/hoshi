@@ -8,9 +8,11 @@ import XCTest
 final class AgentMonitoringTests: XCTestCase {
     private var defaults: UserDefaults!
     private var suiteName: String!
+    private var appIsActive = true
 
     override func setUp() {
         super.setUp()
+        appIsActive = true
         suiteName = "hoshi.agent-monitoring.tests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)
     }
@@ -373,7 +375,7 @@ final class AgentMonitoringTests: XCTestCase {
         XCTAssertTrue(notifier.deliveredEvents.isEmpty)
     }
 
-    func testTerminalDesktopNotificationHonorsExplicitRequestForFocusedSession() async throws {
+    func testTerminalDesktopNotificationForWatchedSessionIsReadAndSilent() async throws {
         let notifier = MockAgentNotifications()
         let center = makeEventCenter(notifier: notifier)
         let manager = makeSessionManager(center)
@@ -386,12 +388,77 @@ final class AgentMonitoringTests: XCTestCase {
         ))
 
         session.connectionVM.onTerminalNotification?(notification)
-        await yieldUntil { !notifier.deliveredEvents.isEmpty }
+        await Task.yield()
 
         let event = try XCTUnwrap(center.events.first)
         XCTAssertEqual(event.kind, .completed)
-        XCTAssertEqual(event.sessionID, session.id)
+        XCTAssertFalse(event.isUnread, "Seen on screen, so it does not grow the badge")
+        XCTAssertTrue(notifier.deliveredEvents.isEmpty)
+    }
+
+    func testWatchedSessionInBackgroundStillNotifies() async throws {
+        let notifier = MockAgentNotifications()
+        let center = makeEventCenter(notifier: notifier)
+        let manager = makeSessionManager(center)
+        let session = try XCTUnwrap(manager.createSession(for: makeServer()))
+        manager.switchTo(sessionID: session.id)
+        await center.setNotificationsEnabled(true)
+        appIsActive = false
+
+        let event = try XCTUnwrap(center.ingest(makeEnvelope(kind: .completed), from: session))
+        await yieldUntil { !notifier.deliveredEvents.isEmpty }
+
+        XCTAssertTrue(event.isUnread)
         XCTAssertEqual(notifier.deliveredEvents.map(\.id), [event.id])
+    }
+
+    func testRepeatedEventWithinWindowIsDropped() async throws {
+        let notifier = MockAgentNotifications()
+        let center = makeEventCenter(notifier: notifier)
+        let manager = makeSessionManager(center)
+        let session = try XCTUnwrap(manager.createSession(for: makeServer()))
+        await center.setNotificationsEnabled(true)
+
+        XCTAssertNotNil(center.ingest(makeEnvelope(kind: .completed), from: session))
+        XCTAssertNil(center.ingest(makeEnvelope(kind: .completed), from: session), "Same turn reported twice")
+        XCTAssertNotNil(center.ingest(makeEnvelope(kind: .needsAttention), from: session))
+        await yieldUntil { notifier.deliveredEvents.count == 2 }
+
+        XCTAssertEqual(center.events.count, 2)
+        XCTAssertEqual(notifier.deliveredEvents.count, 2)
+    }
+
+    func testDifferentHerdrAgentsAreNotDuplicates() throws {
+        let center = makeEventCenter()
+        let manager = makeSessionManager(center)
+        let session = try XCTUnwrap(manager.createSession(for: makeServer()))
+        func finished(_ pane: String) -> AgentEventEnvelope {
+            AgentEventEnvelope(
+                kind: .completed,
+                title: "Codex finished",
+                herdrTarget: HerdrAgentTarget(session: "default", paneID: pane)
+            )
+        }
+
+        XCTAssertNotNil(center.ingest(finished("p1"), from: session))
+        XCTAssertNotNil(center.ingest(finished("p2"), from: session))
+        XCTAssertNil(center.ingest(finished("p1"), from: session))
+    }
+
+    func testFinishedNotificationsAreQuietAndAttentionOnesAlert() throws {
+        let center = makeEventCenter()
+        let manager = makeSessionManager(center)
+        let session = try XCTUnwrap(manager.createSession(for: makeServer()))
+        let finished = try XCTUnwrap(center.ingest(makeEnvelope(kind: .completed), from: session))
+        let waiting = try XCTUnwrap(center.ingest(makeEnvelope(kind: .needsAttention), from: session))
+
+        let quiet = AgentNotificationService.makeContent(for: finished, badgeCount: 1, protectDetails: false)
+        let loud = AgentNotificationService.makeContent(for: waiting, badgeCount: 2, protectDetails: false)
+
+        XCTAssertEqual(quiet.interruptionLevel, .passive)
+        XCTAssertNil(quiet.sound)
+        XCTAssertEqual(loud.interruptionLevel, .active)
+        XCTAssertNotNil(loud.sound)
     }
 
     func testApprovalRequestNotifiesEvenForFocusedSession() async {
@@ -694,7 +761,8 @@ final class AgentMonitoringTests: XCTestCase {
         AgentEventCenter(
             persistence: persistence ?? AgentEventPersistenceStore(defaults: defaults),
             notifications: notifier ?? MockAgentNotifications(),
-            defaults: defaults
+            defaults: defaults,
+            isAppActive: { self.appIsActive }
         )
     }
 
