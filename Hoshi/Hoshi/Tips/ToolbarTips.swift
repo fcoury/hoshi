@@ -33,14 +33,14 @@ enum ToolbarTips {
     }
 }
 
-/// Tip 1: the bar follows the running app, and the chip picks a set by hand.
+/// Tip 1: the bar follows the running app, and holding any key picks a set by hand.
 struct KeySetTip: Tip {
     /// Set when the bar first switches on its own, or on the second session.
     @Parameter static var isEligible: Bool = false
 
     var title: Text { Text("Keys for every app") }
     var message: Text? {
-        Text("The key bar switches for the app you're in. Tap the chip at its left to pick a key set yourself, or hold any key.")
+        Text("The key bar switches for the app you're in. Hold any key to pick a key set yourself.")
     }
     var image: Image? { Image(systemName: "rectangle.stack") }
     var rules: [Rule] { [#Rule(Self.$isEligible) { $0 == true }] }

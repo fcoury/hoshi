@@ -316,7 +316,7 @@ struct KeySetsSettingsView: View {
                     set: { store.autoSwitch = $0 }
                 ))
             } footer: {
-                Text("Hoshi picks a key set from the terminal title, e.g. Vim keys while vim is running. Pin a key set for a server from the key set button at the left of the toolbar.")
+                Text("Hoshi picks a key set from the terminal title, e.g. Vim keys while vim is running. Hold any toolbar key to pin a key set for a server.")
             }
 
             Section("Key Sets") {
