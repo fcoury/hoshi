@@ -25,6 +25,8 @@ struct HoshiApp: App {
         // AppearanceSettings must init before GhosttyRuntimeController reads from it
         _ = AppearanceSettings.shared
         _ = GhosttyRuntimeController.shared
+
+        ToolbarTips.configure()
     }
 
     // Register every .ttf/.otf in the Fonts resource directory with Core Text.

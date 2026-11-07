@@ -18,6 +18,10 @@ enum ClipboardAction: Equatable {
 class KeyboardToolbarAccessoryView: UIView {
     static let preferredHeight: CGFloat = 44
     static let buttonVisualHeight: CGFloat = 36
+    private static let arrowKeyIDs: Set<String> = [
+        ToolbarButton.arrowUp.id, ToolbarButton.arrowDown.id,
+        ToolbarButton.arrowLeft.id, ToolbarButton.arrowRight.id,
+    ]
 
     private var hostingController: UIHostingController<KeyboardToolbarContent>?
 
@@ -188,6 +192,10 @@ class KeyboardToolbarAccessoryView: UIView {
     }
 
     func handleButtonTap(_ button: ToolbarButton) {
+        if Self.arrowKeyIDs.contains(button.id) {
+            ToolbarTips.recordArrowKeyTap()
+        }
+
         if button.id == ToolbarButton.copy.id {
             guard selectionAvailable else { return }
             HapticService.lightTap()
@@ -419,6 +427,11 @@ struct KeyboardToolbarContent: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            if let chip = profileChip {
+                keySetChip(chip)
+                    .padding(.leading, 6)
+            }
+
             // Scrollable button row. The trailing fade signals more keys
             // instead of clipping the last visible key mid-glyph.
             ScrollView(.horizontal) {
@@ -487,6 +500,40 @@ struct KeyboardToolbarContent: View {
                 Label("Edit \(chip.activeName) Keys…", systemImage: "slider.horizontal.3")
             }
         }
+    }
+
+    /// The active key set's icon. Tap for the same menu a long press on any key opens;
+    /// a pin badge marks a set chosen by hand instead of picked automatically.
+    private func keySetChip(_ chip: KeyProfileChip) -> some View {
+        Menu {
+            keySetMenuItems
+        } label: {
+            Image(systemName: chip.activeSymbol)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(SwiftUI.Color(theme.accentBlue))
+                .frame(width: 36, height: KeyboardToolbarAccessoryView.buttonVisualHeight)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(SwiftUI.Color(theme.accentBlue).opacity(0.14))
+                )
+                .overlay(alignment: .topTrailing) {
+                    if chip.pinnedID != nil {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(SwiftUI.Color(theme.background))
+                            .padding(2.5)
+                            .background(Circle().fill(SwiftUI.Color(theme.accentBlue)))
+                            .offset(x: 3, y: -3)
+                    }
+                }
+                .frame(height: 44)
+                .contentShape(.rect)
+        }
+        .menuOrder(.fixed)
+        .accessibilityLabel("Key set: \(chip.activeName)")
+        .accessibilityValue(chip.pinnedID == nil ? "Automatic" : "Pinned")
+        .accessibilityHint("Choose a key set")
+        .accessibilityIdentifier("terminal.toolbar.key-set")
     }
 
     /// Tap hides the keyboard; holding opens the toolbar editor.

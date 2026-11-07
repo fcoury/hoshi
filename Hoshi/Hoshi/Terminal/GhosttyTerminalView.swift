@@ -1,4 +1,5 @@
 import SwiftUI
+import TipKit
 import UIKit
 import GhosttyKit
 import QuartzCore
@@ -2171,6 +2172,10 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
         guard let direction = arrowRepeater.advance(arrowJoystick.state, now: CACurrentMediaTime()) else { return }
         HapticService.lightTap()
         // Sticky Ctrl/Opt/Shift apply to every key of this drag, then clear.
+        // The first arrow of the gesture: the joystick has been used, so its tip retires.
+        if arrowModifiers == nil {
+            ArrowJoystickTip().invalidate(reason: .actionPerformed)
+        }
         let modifiers = arrowModifiers ?? toolbarAccessory.takeActiveModifiers()
         arrowModifiers = modifiers
         let bytes = toolbarAccessory.apply(modifiers: modifiers, to: ArraySlice(direction.bytes))
