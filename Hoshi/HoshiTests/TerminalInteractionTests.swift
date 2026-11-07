@@ -1778,6 +1778,24 @@ final class KeyChordTests: XCTestCase {
         XCTAssertEqual(try bytes("+"), Array("+".utf8))
     }
 
+    func testQuotedTextKeepsSpacesAndKeyNames() throws {
+        // The reported bug: `ls -la` used to send "ls-la".
+        XCTAssertEqual(try bytes("\"ls -la\" enter"), Array("ls -la\r".utf8))
+        XCTAssertEqual(try bytes("ls space -la"), Array("ls -la".utf8))
+        // Inside quotes, key names are just text.
+        XCTAssertEqual(try bytes("\"esc enter\""), Array("esc enter".utf8))
+        // iOS Smart Punctuation's curly quotes work too.
+        XCTAssertEqual(try bytes("\u{201C}git status\u{201D} enter"), Array("git status\r".utf8))
+        // Quotes can sit next to other keys.
+        XCTAssertEqual(try bytes("esc \":wq\" enter"), [0x1B] + Array(":wq\r".utf8))
+    }
+
+    func testUnclosedQuoteIsTypedAsText() throws {
+        XCTAssertEqual(try bytes("\""), Array("\"".utf8))
+        XCTAssertEqual(try bytes("echo \"hi"), Array("echo\"hi".utf8))
+        XCTAssertThrowsError(try bytes("\"\""))
+    }
+
     func testRejectsRangesAndUnknownModifiers() {
         XCTAssertThrowsError(try bytes("prefix+1..9", prefix: "ctrl+b"))
         XCTAssertThrowsError(try bytes("hyper+x"))
@@ -1793,6 +1811,7 @@ final class KeyChordTests: XCTestCase {
     func testDisplayString() {
         XCTAssertEqual(KeyChord.displayString("ctrl+s"), "⌃s")
         XCTAssertEqual(KeyChord.displayString("prefix+shift+b"), "Pfx ⇧b")
+        XCTAssertEqual(KeyChord.displayString("\"ls -la\" enter"), "\u{201C}ls -la\u{201D} enter")
     }
 }
 

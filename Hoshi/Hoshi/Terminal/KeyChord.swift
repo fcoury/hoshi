@@ -8,6 +8,7 @@ import Foundation
 /// - Chords: `ctrl+s`, `alt+up`, `shift+tab`, `prefix+shift+b`, `prefix+minus`
 /// - Named keys: `esc`, `enter`, `tab`, `space`, `backspace`, `up`, `pgup`, `f5`, …
 /// - Literal text: `:w` (any token that is not a chord or named key)
+/// - Quoted text: `"ls -la"` is typed exactly as written, spaces and key names included
 ///
 /// `prefix` expands to the owning key set's prefix chord (for example `ctrl+b`).
 enum KeyChord {
@@ -28,14 +29,52 @@ enum KeyChord {
     }
 
     static func encode(_ binding: String, prefix: String? = nil) throws -> [UInt8] {
-        let tokens = binding.split(whereSeparator: \.isWhitespace).map(String.init)
+        let tokens = tokens(binding)
         guard !tokens.isEmpty else { throw EncodingError.empty }
 
         var bytes: [UInt8] = []
         for token in tokens {
-            bytes += try encodeToken(token, prefix: prefix, depth: 0)
+            switch token {
+            case .key(let key): bytes += try encodeToken(key, prefix: prefix, depth: 0)
+            case .text(let text): bytes += Array(text.utf8)
+            }
         }
         return bytes
+    }
+
+    enum Token: Equatable {
+        /// A chord, named key or bare word.
+        case key(String)
+        /// Quoted text, typed as written.
+        case text(String)
+    }
+
+    /// Splits a binding on whitespace, keeping `"quoted text"` (straight or curly quotes,
+    /// as iOS Smart Punctuation types them) as one token. A quote that opens a token but
+    /// is never closed is an ordinary character, so a lone `"` still types a quote.
+    static func tokens(_ binding: String) -> [Token] {
+        let quotes: Set<Character> = ["\"", "\u{201C}", "\u{201D}"]
+        let chars = Array(binding)
+        var tokens: [Token] = []
+        var i = 0
+        while i < chars.count {
+            if chars[i].isWhitespace {
+                i += 1
+                continue
+            }
+            if quotes.contains(chars[i]),
+               let close = chars[(i + 1)...].firstIndex(where: { quotes.contains($0) }) {
+                let text = String(chars[(i + 1)..<close])
+                if !text.isEmpty { tokens.append(.text(text)) }
+                i = close + 1
+                continue
+            }
+            var end = i
+            while end < chars.count, !chars[end].isWhitespace { end += 1 }
+            tokens.append(.key(String(chars[i..<end])))
+            i = end
+        }
+        return tokens
     }
 
     /// True when the binding can be encoded with the given prefix.
@@ -284,9 +323,14 @@ enum KeyChord {
 
     /// Compact, readable rendering of a binding for previews (e.g. `^S d`).
     static func displayString(_ binding: String) -> String {
-        binding.split(whereSeparator: \.isWhitespace).map { token -> String in
-            let parts = splitChord(String(token))
-            guard parts.count > 1 else { return String(token) }
+        tokens(binding).map { token -> String in
+            let key: String
+            switch token {
+            case .text(let text): return "\u{201C}\(text)\u{201D}"
+            case .key(let word): key = word
+            }
+            let parts = splitChord(key)
+            guard parts.count > 1 else { return key }
             var output = ""
             for part in parts.dropLast() {
                 switch canonicalModifier(part.lowercased()) {

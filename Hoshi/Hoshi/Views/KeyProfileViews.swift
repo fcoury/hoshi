@@ -92,7 +92,7 @@ struct CustomKeyEditorSheet: View {
                 }
 
                 Section {
-                    TextField("e.g. prefix+d or esc : w enter", text: $draft.chord)
+                    TextField("e.g. \"ls -la\" enter or prefix+d", text: $draft.chord)
                         .font(.body.monospaced())
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -178,7 +178,7 @@ struct CustomKeyEditorSheet: View {
 
     private var chordHelp: String {
         let prefixText = prefix.map { "“prefix” sends \(KeyChord.displayString($0)). " } ?? ""
-        return prefixText + "Separate keys with spaces. Words that aren't key names are typed as text."
+        return prefixText + "Separate keys with spaces. Words that aren't key names are typed as text; put text in \"quotes\" to type it as written, spaces included."
     }
 
     private func insert(_ token: String) {
