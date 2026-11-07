@@ -25,21 +25,26 @@ final class ToolbarConfigurationService {
             return ToolbarButton.defaultButtons
         }
 
-        // Upgrade previous untouched defaults as semantic Paste, Voice, and File actions are introduced,
-        // while preserving deliberately customized layouts verbatim.
+        // Upgrade untouched earlier defaults (before Paste, Voice and File existed, or with
+        // four arrow keys instead of ⌖), while preserving customized layouts verbatim.
         let currentDefaults = ToolbarButton.defaultButtons
         let introducedActionIDs = [
             ToolbarButton.paste.id,
             ToolbarButton.voicePrompt.id,
             ToolbarButton.uploadFile.id,
         ]
-        let priorDefaultLayouts = (1..<(1 << introducedActionIDs.count)).map { mask in
-            let omittedIDs = Set(introducedActionIDs.enumerated().compactMap { index, identifier in
-                mask & (1 << index) == 0 ? nil : identifier
-            })
-            return currentDefaults.filter { !omittedIDs.contains($0.id) }
+        // Every earlier default, plus each one as it looked before those actions existed.
+        let bases = [currentDefaults.map(\.id)] + ToolbarButton.previousDefaultButtonIDs
+        let priorDefaultLayouts = bases.enumerated().flatMap { baseIndex, base in
+            // The current default itself (mask 0) isn't a prior layout; earlier ones are.
+            ((baseIndex == 0 ? 1 : 0)..<(1 << introducedActionIDs.count)).map { mask in
+                let omittedIDs = Set(introducedActionIDs.enumerated().compactMap { index, identifier in
+                    mask & (1 << index) == 0 ? nil : identifier
+                })
+                return base.filter { !omittedIDs.contains($0) }
+            }
         }
-        if priorDefaultLayouts.contains(where: { $0.map(\.id) == savedIDs }) {
+        if priorDefaultLayouts.contains(savedIDs) {
             saveButtons(ToolbarButton.defaultButtons)
             return ToolbarButton.defaultButtons
         }

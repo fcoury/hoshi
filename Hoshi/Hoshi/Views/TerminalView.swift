@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import SwiftData
+import TipKit
 import Citadel
 import NIOCore
 
@@ -43,6 +44,12 @@ struct TerminalView: View {
 
     // Toolbar edit sheet
     @State private var showToolbarEditor = false
+    /// One key bar hint at a time: key sets, then customizing; the arrow tip when earned.
+    @State private var toolbarTips = TipGroup(.firstAvailable) {
+        KeySetTip()
+        CustomizeKeysTip()
+        ArrowJoystickTip()
+    }
     // Key set the editor edits; frozen while the editor is open.
     @State private var editingKeyProfileID: String?
     @State private var showTmuxPalette = false
@@ -137,6 +144,7 @@ struct TerminalView: View {
                 ),
                 onSelectKeyProfile: { profileID in
                     keyProfiles.pin(profileID, for: currentServer?.id)
+                    KeySetTip().invalidate(reason: .actionPerformed)
                 },
                 onSurfaceReady: { surfaceView in
                     managedSession?.surfaceView = surfaceView
@@ -154,13 +162,35 @@ struct TerminalView: View {
                         .transition(.scale(scale: 0.8).combined(with: .opacity))
                 }
             }
+            .overlay(alignment: .bottom) {
+                toolbarTip
+            }
         }
+        .modifier(ToolbarTipTriggers(
+            activeKeyProfileID: activeKeyProfile.id,
+            isPinned: keyProfiles.pinnedProfileID(for: currentServer?.id) != nil,
+            isConnected: connectionVM.connectionState == .connected,
+            isEditingToolbar: showToolbarEditor,
+            longPressAction: appearanceSettings.longPressAction
+        ))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // Header, terminal and toolbar share one surface: no tonal bands.
         .background(SwiftUI.Color(appearanceSettings.currentTheme.background))
     }
 
     private static let terminalHorizontalInset: CGFloat = 6
+
+    /// The current key bar hint, just above the bar while the keyboard is up.
+    @ViewBuilder
+    private var toolbarTip: some View {
+        if isKeyboardVisible, connectionVM.connectionState == .connected, let tip = toolbarTips.currentTip {
+            TipView(tip)
+                .tipBackground(SwiftUI.Color(appearanceSettings.currentTheme.cardSurface))
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
 
     private var animatedTerminal: some View {
         terminalContent
@@ -1468,5 +1498,43 @@ private struct TransportFallbackBanner: View {
             )
             HapticService.error()
         }
+    }
+}
+
+
+/// Feeds the key bar tips their triggers: an automatic key set switch or a second
+/// session unlocks the key set tip, finishing it unlocks the customize tip, and
+/// opening the editor retires that one.
+private struct ToolbarTipTriggers: ViewModifier {
+    let activeKeyProfileID: String
+    let isPinned: Bool
+    let isConnected: Bool
+    let isEditingToolbar: Bool
+    let longPressAction: TerminalLongPressAction
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: activeKeyProfileID) { _, newID in
+                if !isPinned, newID != KeyProfile.shellID {
+                    KeySetTip.isEligible = true
+                }
+            }
+            // `initial`: the screen often opens on a session that's already connected.
+            .onChange(of: isConnected, initial: true) { _, connected in
+                if connected { ToolbarTips.recordConnectedSession() }
+            }
+            .onChange(of: isEditingToolbar) { _, editing in
+                if editing { CustomizeKeysTip().invalidate(reason: .actionPerformed) }
+            }
+            .onChange(of: longPressAction, initial: true) { _, action in
+                ArrowJoystickTip.joystickEnabled = action == .arrowKeys
+            }
+            .task {
+                for await status in KeySetTip().statusUpdates {
+                    if case .invalidated = status {
+                        CustomizeKeysTip.isUnlocked = true
+                    }
+                }
+            }
     }
 }

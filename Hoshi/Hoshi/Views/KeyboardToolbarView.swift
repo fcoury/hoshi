@@ -18,6 +18,10 @@ enum ClipboardAction: Equatable {
 class KeyboardToolbarAccessoryView: UIView {
     static let preferredHeight: CGFloat = 44
     static let buttonVisualHeight: CGFloat = 36
+    private static let arrowKeyIDs: Set<String> = [
+        ToolbarButton.arrowUp.id, ToolbarButton.arrowDown.id,
+        ToolbarButton.arrowLeft.id, ToolbarButton.arrowRight.id,
+    ]
 
     private var hostingController: UIHostingController<KeyboardToolbarContent>?
 
@@ -188,6 +192,10 @@ class KeyboardToolbarAccessoryView: UIView {
     }
 
     func handleButtonTap(_ button: ToolbarButton) {
+        if Self.arrowKeyIDs.contains(button.id) {
+            ToolbarTips.recordArrowKeyTap()
+        }
+
         if button.id == ToolbarButton.copy.id {
             guard selectionAvailable else { return }
             HapticService.lightTap()
