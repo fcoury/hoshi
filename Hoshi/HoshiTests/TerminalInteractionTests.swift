@@ -568,6 +568,24 @@ final class TerminalInteractionTests: XCTestCase {
         XCTAssertEqual(ToolbarConfigurationService.shared.loadButtons(), ToolbarButton.defaultButtons)
     }
 
+    func testUntouchedArrowKeyDefaultMigratesToSwipeKey() {
+        let byID = Dictionary(uniqueKeysWithValues: ToolbarButton.allAvailable.map { ($0.id, $0) })
+        let arrowDefault = ToolbarButton.previousDefaultButtonIDs[0].compactMap { byID[$0] }
+        XCTAssertTrue(arrowDefault.contains(.arrowUp))
+
+        ToolbarConfigurationService.shared.saveButtons(arrowDefault)
+        XCTAssertEqual(ToolbarConfigurationService.shared.loadButtons(), ToolbarButton.defaultButtons)
+
+        // Also from before Voice existed.
+        ToolbarConfigurationService.shared.saveButtons(arrowDefault.filter { $0 != .voicePrompt })
+        XCTAssertEqual(ToolbarConfigurationService.shared.loadButtons(), ToolbarButton.defaultButtons)
+    }
+
+    func testDefaultToolbarUsesSwipeKeyInsteadOfArrows() {
+        XCTAssertTrue(ToolbarButton.defaultButtons.contains(.swipeAll))
+        XCTAssertFalse(ToolbarButton.defaultButtons.contains { $0.id.hasPrefix("arrow-") })
+    }
+
     func testCustomizedToolbarWithoutPasteIsPreserved() {
         ToolbarConfigurationService.shared.saveButtons([.ctrl, .arrowUp])
 

@@ -68,11 +68,20 @@ extension ToolbarButton {
     static let allAvailable: [ToolbarButton] = modifiers + navigation + swipeControls + function + symbols + clipboard + transferActions + voiceActions + combos
 
     // Default toolbar layout
+    /// One ⌖ key stands in for the four arrows: drag it in any direction. Holding the
+    /// terminal itself is the arrow joystick.
     static let defaultButtons: [ToolbarButton] = [
         .esc, .ctrl, .opt, .tab,
-        .arrowUp, .arrowDown, .arrowLeft, .arrowRight,
+        .swipeAll,
         .slash, .dash, .pipe,
         .ctrlC, .paste, .uploadFile, .voicePrompt,
+    ]
+
+    /// Earlier default layouts. A saved bar that still matches one of these was never
+    /// customized and is upgraded to `defaultButtons`.
+    static let previousDefaultButtonIDs: [[String]] = [
+        ["esc", "ctrl", "opt", "tab", "arrow-up", "arrow-down", "arrow-left", "arrow-right",
+         "slash", "dash", "pipe", "ctrl-c", "paste", "upload-file", "voice-prompt"],
     ]
 
     // Modifier IDs that behave as sticky toggles (applied to next key press)
