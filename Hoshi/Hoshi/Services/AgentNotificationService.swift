@@ -80,7 +80,13 @@ final class AgentNotificationService: NSObject, AgentNotificationDelivering {
             content.subtitle = "\(event.serverName) · \(event.kind.title)"
             content.body = event.message ?? "Open Hoshi to check this agent."
         }
-        content.sound = .default
+        // A finished turn is good to know, not worth interrupting for: it lands quietly
+        // in Notification Center. Needing input or approval still alerts with sound.
+        if event.kind == .completed {
+            content.interruptionLevel = .passive
+        } else {
+            content.sound = .default
+        }
         content.badge = NSNumber(value: badgeCount)
         content.threadIdentifier = event.serverID?.uuidString ?? event.hostname ?? "hoshi-agent-events"
         content.categoryIdentifier = Self.category
@@ -117,7 +123,9 @@ extension AgentNotificationService: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
+        notification.request.content.interruptionLevel == .passive
+            ? [.banner, .list]
+            : [.banner, .list, .sound]
     }
 
     nonisolated func userNotificationCenter(

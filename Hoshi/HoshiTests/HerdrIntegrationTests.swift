@@ -172,6 +172,7 @@ final class HerdrIntegrationTests: XCTestCase {
         let monitor = HerdrAgentMonitor(
             hostname: "host",
             runner: { _ in "" },
+            attachment: { .session("default") },
             onEvent: { received.append($0) },
             onInventory: { inventories.append($0) }
         )
@@ -267,12 +268,55 @@ final class HerdrIntegrationTests: XCTestCase {
         XCTAssertEqual(ConnectionCoordinator.resolve(.session("hoshi"), in: inventory), .session("hoshi"))
     }
 
+    func testPlainShellOnAHerdrHostRaisesNoEvents() {
+        var received: [AgentEventEnvelope] = []
+        let monitor = HerdrAgentMonitor(
+            hostname: "host",
+            runner: { _ in "" },
+            attachment: { nil },
+            onEvent: { received.append($0) }
+        )
+
+        monitor.process(inventory([HerdrAgent(paneID: "p1", agent: "claude", status: .working, completionSeq: 1)]))
+        monitor.process(inventory([HerdrAgent(paneID: "p1", agent: "claude", status: .blocked, completionSeq: 2)]))
+
+        XCTAssertTrue(received.isEmpty, "Agents in a Herdr session this terminal does not show stay quiet")
+    }
+
+    func testOnlyAgentsInTheAttachedHerdrSessionRaiseEvents() {
+        var received: [AgentEventEnvelope] = []
+        let monitor = HerdrAgentMonitor(
+            hostname: "host",
+            runner: { _ in "" },
+            attachment: { .session("hoshi") },
+            onEvent: { received.append($0) }
+        )
+        func sessions(_ seq: Int) -> HerdrInventory {
+            HerdrInventory(executable: "/x/herdr", version: nil, sessions: [
+                HerdrSessionInfo(name: "default", isRunning: true, agents: [
+                    HerdrAgent(paneID: "p1", agent: "claude", status: .idle, completionSeq: seq),
+                ]),
+                HerdrSessionInfo(name: "hoshi", isRunning: true, agents: [
+                    HerdrAgent(paneID: "p2", agent: "codex", status: .idle, completionSeq: seq),
+                ]),
+            ])
+        }
+
+        monitor.process(sessions(1))
+        monitor.process(sessions(2))
+
+        XCTAssertEqual(received.map { $0.herdrTarget?.session }, ["hoshi"])
+        XCTAssertEqual(sessions(2).agents(shownBy: .session("hoshi")).map(\.paneID), ["p2"])
+        XCTAssertEqual(sessions(2).agents(shownBy: .agent(session: "default", paneID: "p1")).map(\.paneID), ["p1"])
+        XCTAssertTrue(sessions(2).agents(shownBy: nil).isEmpty)
+    }
+
     func testOnlyOneMonitorPerHostReportsEvents() {
         var first: [AgentEventEnvelope] = []
         var second: [AgentEventEnvelope] = []
         let key = "me@host:22-\(UUID().uuidString)"
-        let a = HerdrAgentMonitor(hostname: "host", hostKey: key, runner: { _ in "" }, onEvent: { first.append($0) })
-        let b = HerdrAgentMonitor(hostname: "host", hostKey: key, runner: { _ in "" }, onEvent: { second.append($0) })
+        let a = HerdrAgentMonitor(hostname: "host", hostKey: key, runner: { _ in "" }, attachment: { .session("default") }, onEvent: { first.append($0) })
+        let b = HerdrAgentMonitor(hostname: "host", hostKey: key, runner: { _ in "" }, attachment: { .session("default") }, onEvent: { second.append($0) })
         let before = inventory([HerdrAgent(paneID: "p1", agent: "claude", status: .working, completionSeq: 1)])
         let after = inventory([HerdrAgent(paneID: "p1", agent: "claude", status: .idle, completionSeq: 2)])
         let later = inventory([HerdrAgent(paneID: "p1", agent: "claude", status: .idle, completionSeq: 3)])

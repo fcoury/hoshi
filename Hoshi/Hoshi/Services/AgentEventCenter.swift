@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// Main-actor inbox state; event parsing and companion networking stay on dedicated actors.
 @MainActor @Observable
@@ -10,6 +11,12 @@ final class AgentEventCenter {
     @ObservationIgnored private let liveActivities: any AgentLiveActivityManaging
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private weak var sessionManager: SessionManager?
+    /// Whether Hoshi is on screen; a session only counts as watched while it is.
+    @ObservationIgnored private let isAppActive: @MainActor () -> Bool
+
+    /// The same kind of event from the same session within this window is one moment
+    /// reported twice (for example Codex's own notification and Herdr's completion).
+    static let duplicateWindow: TimeInterval = 10
 
     private static let notificationSettingKey = "app.gethoshi.agent-notifications-enabled"
 
@@ -26,8 +33,10 @@ final class AgentEventCenter {
         persistence: AgentEventPersistenceStore = AgentEventPersistenceStore(),
         notifications: (any AgentNotificationDelivering)? = nil,
         liveActivities: (any AgentLiveActivityManaging)? = nil,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        isAppActive: @escaping @MainActor () -> Bool = { UIApplication.shared.applicationState == .active }
     ) {
+        self.isAppActive = isAppActive
         self.persistence = persistence
         self.notifications = notifications ?? AgentNotificationService.shared
         self.liveActivities = liveActivities ?? AgentLiveActivityService.shared
@@ -79,13 +88,13 @@ final class AgentEventCenter {
             session: session,
             serverID: session.serverID,
             hostname: session.server.hostname,
-            origin: .terminal,
-            alwaysNotify: false
+            origin: .terminal
         )
     }
 
-    /// Desktop notifications have already passed the terminal application's own
-    /// notification policy. Honor that request even while its session is visible.
+    /// A program's desktop notification (OSC 9/777), such as Claude Code or Codex
+    /// finishing a turn. Treated like any other event: no alert for the session
+    /// you're watching.
     @discardableResult
     func ingest(
         _ notification: TerminalDesktopNotification,
@@ -96,8 +105,7 @@ final class AgentEventCenter {
             session: session,
             serverID: session.serverID,
             hostname: session.server.hostname,
-            origin: .terminal,
-            alwaysNotify: true
+            origin: .terminal
         )
     }
 
@@ -126,8 +134,7 @@ final class AgentEventCenter {
             session: session,
             serverID: session?.serverID ?? envelope.serverID,
             hostname: session?.server.hostname ?? envelope.hostname,
-            origin: .companion,
-            alwaysNotify: false
+            origin: .companion
         )
     }
 
@@ -229,15 +236,21 @@ final class AgentEventCenter {
         session: ManagedSession?,
         serverID: UUID?,
         hostname: String?,
-        origin: AgentEventOrigin,
-        alwaysNotify: Bool
+        origin: AgentEventOrigin
     ) -> AgentInboxEvent? {
         guard envelope.isValid,
               !events.contains(where: { $0.id == envelope.id }) else { return nil }
 
         let now = Date()
+        if let session, isDuplicate(envelope, session: session, now: now) { return nil }
         let requestedDate = envelope.timestamp ?? now
         let createdAt = requestedDate.timeIntervalSince(now) > 300 ? now : requestedDate
+        // What happens in the session you're looking at is already seen; only an
+        // approval request still needs a deliberate response.
+        let isWatched = session != nil
+            && sessionManager?.activeSessionID == session?.id
+            && isAppActive()
+        let seenOnScreen = isWatched && envelope.kind != .approvalRequested
         let event = AgentInboxEvent(
             id: envelope.id,
             kind: envelope.kind,
@@ -250,7 +263,7 @@ final class AgentEventCenter {
             hostname: hostname,
             tmuxSession: session?.tmuxSession ?? envelope.tmuxSession,
             origin: origin,
-            readAt: nil,
+            readAt: seenOnScreen ? now : nil,
             herdrTarget: envelope.herdrTarget
         )
 
@@ -262,11 +275,7 @@ final class AgentEventCenter {
         persistence.save(events)
         synchronizeSessionAttention()
 
-        let shouldNotify = notificationsEnabled
-            && (alwaysNotify
-                || session == nil
-                || sessionManager?.activeSessionID != session?.id
-                || envelope.kind == .approvalRequested)
+        let shouldNotify = notificationsEnabled && !seenOnScreen
         if shouldNotify {
             let count = unreadCount
             Task { [weak self] in
@@ -287,6 +296,17 @@ final class AgentEventCenter {
         }
 
         return event
+    }
+
+    private func isDuplicate(_ envelope: AgentEventEnvelope, session: ManagedSession, now: Date) -> Bool {
+        events.contains { event in
+            event.sessionID == session.id
+                && event.kind == envelope.kind
+                && now.timeIntervalSince(event.createdAt) < Self.duplicateWindow
+                // Two different Herdr agents finishing together are two events.
+                && (event.herdrTarget == nil || envelope.herdrTarget == nil
+                    || event.herdrTarget == envelope.herdrTarget)
+        }
     }
 
     private func presentNotificationError(_ error: any Error) {

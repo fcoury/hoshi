@@ -235,8 +235,18 @@ final class AgentLiveActivityService: AgentLiveActivityManaging {
             return $0.kind.attentionPriority < $1.kind.attentionPriority
         }
 
+        let agents = session.connectionVM.detectedHerdr?.agents(shownBy: session.herdrAttachment) ?? []
+        // Only sessions with something to watch get an activity: unread agent events,
+        // or Herdr agents still working or waiting. A plain shell gets none, and the
+        // activity ends once everything is read and done.
+        let hasAgentActivity = !unread.isEmpty
+            || agents.contains { $0.status == .working || $0.status == .blocked }
+        guard hasAgentActivity else {
+            if activityIDs[session.id] != nil { endSession(id: session.id) }
+            return
+        }
+
         let hidden = !showsServerNames || isAppLockEnabled()
-        let agents = session.connectionVM.detectedHerdr?.runningSessions.flatMap(\.agents) ?? []
         let location = session.herdrAttachment.map { attachment in
             attachment.machineID
                 .flatMap { session.connectionVM.detectedHerdr?.machine(id: $0)?.label }

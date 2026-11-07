@@ -53,13 +53,13 @@ final class AgentLiveActivityTests: XCTestCase {
         let service = makeService()
         let session = makeSession(name: "Private Production", tmux: "secret-work")
 
-        service.setEnabled(true, sessions: [session], events: [])
-        service.synchronize(sessions: [session], events: [])
+        service.setEnabled(true, sessions: [session], events: waiting(session))
+        service.synchronize(sessions: [session], events: waiting(session))
 
         let activity = try XCTUnwrap(provider.started.first)
         XCTAssertEqual(provider.started.count, 1)
         XCTAssertEqual(activity.attributes.sessionID, session.id)
-        XCTAssertEqual(activity.state.status, .running)
+        XCTAssertEqual(activity.state.status, .needsAttention)
         XCTAssertEqual(activity.state.displayName, "Coding Agent")
         XCTAssertNil(activity.state.tmuxSession)
         XCTAssertTrue(activity.state.detailsAreHidden)
@@ -68,9 +68,9 @@ final class AgentLiveActivityTests: XCTestCase {
     func testExplicitServerNamesAppearOnlyWhenAppLockIsDisabled() async throws {
         let service = makeService()
         let session = makeSession(name: "Private Production", tmux: "coding")
-        service.setEnabled(true, sessions: [session], events: [])
+        service.setEnabled(true, sessions: [session], events: waiting(session))
 
-        service.setShowsServerNames(true, sessions: [session], events: [])
+        service.setShowsServerNames(true, sessions: [session], events: waiting(session))
         await waitUntil { self.provider.updated.count == 1 }
 
         let visible = try XCTUnwrap(provider.updated.last?.state)
@@ -79,7 +79,7 @@ final class AgentLiveActivityTests: XCTestCase {
         XCTAssertFalse(visible.detailsAreHidden)
 
         appLockEnabled = true
-        service.synchronize(sessions: [session], events: [])
+        service.synchronize(sessions: [session], events: waiting(session))
         await waitUntil { self.provider.updated.count == 2 }
 
         let hidden = try XCTUnwrap(provider.updated.last?.state)
@@ -93,8 +93,8 @@ final class AgentLiveActivityTests: XCTestCase {
         let service = makeService()
         let malicious = "prod\n\u{1B}[31m" + String(repeating: "x", count: 100)
         let session = makeSession(name: malicious, tmux: "tmux\nsecret")
-        service.setEnabled(true, sessions: [session], events: [])
-        service.setShowsServerNames(true, sessions: [session], events: [])
+        service.setEnabled(true, sessions: [session], events: waiting(session))
+        service.setShowsServerNames(true, sessions: [session], events: waiting(session))
         await waitUntil { !self.provider.updated.isEmpty }
 
         let state = try XCTUnwrap(provider.updated.last?.state)
@@ -107,7 +107,7 @@ final class AgentLiveActivityTests: XCTestCase {
     func testApprovalRequestsTakePriorityAndNeverExposeEventContents() async throws {
         let service = makeService()
         let session = makeSession(name: "Production")
-        service.setEnabled(true, sessions: [session], events: [])
+        service.setEnabled(true, sessions: [session], events: waiting(session))
         let completed = makeEvent(for: session, kind: .completed, title: "secret deployment details")
         let approval = makeEvent(
             for: session,
@@ -134,7 +134,7 @@ final class AgentLiveActivityTests: XCTestCase {
     func testUnreadAttentionCountIsBounded() async throws {
         let service = makeService()
         let session = makeSession()
-        service.setEnabled(true, sessions: [session], events: [])
+        service.setEnabled(true, sessions: [session], events: waiting(session))
         let events = (0..<120).map { _ in
             makeEvent(for: session, kind: .needsAttention, title: "Attention")
         }
@@ -146,26 +146,40 @@ final class AgentLiveActivityTests: XCTestCase {
         XCTAssertEqual(provider.updated.last?.state.status, .needsAttention)
     }
 
-    func testMarkingEventsReadReturnsActivityToRunning() async throws {
+    func testReadingEveryEventEndsTheActivity() async throws {
         let service = makeService()
         let session = makeSession()
         let event = makeEvent(for: session, kind: .needsAttention, title: "Review")
         service.setEnabled(true, sessions: [session], events: [event])
+        XCTAssertEqual(provider.started.count, 1)
 
         var read = event
         read.readAt = Date()
         service.synchronize(sessions: [session], events: [read])
-        await waitUntil { !self.provider.updated.isEmpty }
+        await waitUntil { !self.provider.ended.isEmpty }
 
-        XCTAssertEqual(provider.updated.last?.state.status, .running)
-        XCTAssertEqual(provider.updated.last?.state.attentionCount, 0)
-        XCTAssertNil(provider.updated.last?.state.latestEventID)
+        XCTAssertEqual(provider.ended.first?.attributes.sessionID, session.id)
+        XCTAssertEqual(service.activeActivityCount, 0)
+    }
+
+    func testSessionsWithoutAgentActivityGetNoActivity() {
+        let service = makeService()
+        let session = makeSession()
+
+        service.setEnabled(true, sessions: [session], events: [])
+        var read = makeEvent(for: session, kind: .completed, title: "Done")
+        read.readAt = Date()
+        service.synchronize(sessions: [session], events: [read])
+
+        XCTAssertTrue(provider.started.isEmpty, "A plain shell has nothing to watch")
+        XCTAssertEqual(service.monitoredSessionCount, 1)
+        XCTAssertEqual(service.activeActivityCount, 0)
     }
 
     func testCompletionUpdatesActivityWithoutEndingItsSession() async throws {
         let service = makeService()
         let session = makeSession()
-        service.setEnabled(true, sessions: [session], events: [])
+        service.setEnabled(true, sessions: [session], events: waiting(session))
         let event = makeEvent(for: session, kind: .completed, title: "Finished")
 
         service.synchronize(sessions: [session], events: [event])
@@ -178,7 +192,7 @@ final class AgentLiveActivityTests: XCTestCase {
     func testClosingSessionImmediatelyEndsItsLiveActivity() async {
         let service = makeService()
         let session = makeSession()
-        service.setEnabled(true, sessions: [session], events: [])
+        service.setEnabled(true, sessions: [session], events: waiting(session))
 
         service.endSession(id: session.id)
         await waitUntil { !self.provider.ended.isEmpty }
@@ -191,9 +205,9 @@ final class AgentLiveActivityTests: XCTestCase {
         let service = makeService()
         let first = makeSession()
         let second = makeSession()
-        service.setEnabled(true, sessions: [first, second], events: [])
+        service.setEnabled(true, sessions: [first, second], events: waiting(first, second))
 
-        service.setEnabled(false, sessions: [first, second], events: [])
+        service.setEnabled(false, sessions: [first, second], events: waiting(first, second))
         await waitUntil { self.provider.ended.count == 2 }
 
         XCTAssertFalse(service.isEnabled)
@@ -204,10 +218,10 @@ final class AgentLiveActivityTests: XCTestCase {
     func testImmediatelyReenablingDoesNotReuseAnActivityScheduledForRemoval() async {
         let service = makeService()
         let session = makeSession()
-        service.setEnabled(true, sessions: [session], events: [])
+        service.setEnabled(true, sessions: [session], events: waiting(session))
 
-        service.setEnabled(false, sessions: [session], events: [])
-        service.setEnabled(true, sessions: [session], events: [])
+        service.setEnabled(false, sessions: [session], events: waiting(session))
+        service.setEnabled(true, sessions: [session], events: waiting(session))
         await waitUntil { !self.provider.ended.isEmpty }
 
         XCTAssertEqual(provider.started.count, 2)
@@ -218,7 +232,7 @@ final class AgentLiveActivityTests: XCTestCase {
     func testMissingSessionsEndRestoredSystemActivities() async {
         let service = makeService()
         let session = makeSession()
-        service.setEnabled(true, sessions: [session], events: [])
+        service.setEnabled(true, sessions: [session], events: waiting(session))
 
         service.synchronize(sessions: [], events: [])
         await waitUntil { !self.provider.ended.isEmpty }
@@ -229,11 +243,11 @@ final class AgentLiveActivityTests: XCTestCase {
     func testSystemDismissedActivityRequiresExplicitRestart() throws {
         let service = makeService()
         let session = makeSession()
-        service.setEnabled(true, sessions: [session], events: [])
+        service.setEnabled(true, sessions: [session], events: waiting(session))
         let firstActivity = try XCTUnwrap(provider.started.first)
 
         provider.simulateSystemDismissal(id: firstActivity.id)
-        service.synchronize(sessions: [session], events: [])
+        service.synchronize(sessions: [session], events: waiting(session))
 
         XCTAssertEqual(provider.started.count, 1)
         XCTAssertTrue(provider.activeActivities.isEmpty)
@@ -241,7 +255,7 @@ final class AgentLiveActivityTests: XCTestCase {
         XCTAssertEqual(service.activeActivityCount, 0)
         XCTAssertEqual(service.dismissedActivityCount, 1)
 
-        service.restartDismissedActivities(sessions: [session], events: [])
+        service.restartDismissedActivities(sessions: [session], events: waiting(session))
 
         XCTAssertEqual(provider.started.count, 2)
         XCTAssertNotEqual(provider.started.last?.id, firstActivity.id)
@@ -258,11 +272,11 @@ final class AgentLiveActivityTests: XCTestCase {
         XCTAssertEqual(service.activeActivityCount, 0)
 
         let session = makeSession()
-        service.synchronize(sessions: [session], events: [])
+        service.synchronize(sessions: [session], events: waiting(session))
         XCTAssertEqual(service.monitoredSessionCount, 1)
         XCTAssertEqual(service.activeActivityCount, 1)
 
-        service.setEnabled(false, sessions: [session], events: [])
+        service.setEnabled(false, sessions: [session], events: waiting(session))
         await waitUntil { !self.provider.ended.isEmpty }
         XCTAssertEqual(service.activeActivityCount, 0)
         XCTAssertEqual(service.dismissedActivityCount, 0)
@@ -271,10 +285,10 @@ final class AgentLiveActivityTests: XCTestCase {
     func testExistingSystemActivitiesAreReusedAfterAppRestart() {
         let firstService = makeService()
         let session = makeSession()
-        firstService.setEnabled(true, sessions: [session], events: [])
+        firstService.setEnabled(true, sessions: [session], events: waiting(session))
         let restoredService = makeService()
 
-        restoredService.synchronize(sessions: [session], events: [])
+        restoredService.synchronize(sessions: [session], events: waiting(session))
 
         XCTAssertEqual(provider.started.count, 1)
     }
@@ -282,10 +296,10 @@ final class AgentLiveActivityTests: XCTestCase {
     func testSystemPermissionRevocationEndsExistingActivityAndDisablesPreference() async {
         let service = makeService()
         let session = makeSession()
-        service.setEnabled(true, sessions: [session], events: [])
+        service.setEnabled(true, sessions: [session], events: waiting(session))
         provider.areActivitiesEnabled = false
 
-        service.synchronize(sessions: [session], events: [])
+        service.synchronize(sessions: [session], events: waiting(session))
         await waitUntil { !self.provider.ended.isEmpty }
 
         XCTAssertFalse(service.isEnabled)
@@ -329,7 +343,8 @@ final class AgentLiveActivityTests: XCTestCase {
         let center = AgentEventCenter(
             persistence: AgentEventPersistenceStore(defaults: defaults),
             liveActivities: service,
-            defaults: defaults
+            defaults: defaults,
+            isAppActive: { false }
         )
         let manager = SessionManager(
             persistenceStore: SessionPersistenceStore(defaults: defaults),
@@ -338,15 +353,15 @@ final class AgentLiveActivityTests: XCTestCase {
         center.setLiveActivitiesEnabled(true)
         let session = try XCTUnwrap(manager.createSession(for: makeServer()))
 
-        XCTAssertEqual(provider.started.count, 1)
+        XCTAssertTrue(provider.started.isEmpty, "No activity until an agent does something")
 
         _ = center.ingest(
             AgentEventEnvelope(kind: .approvalRequested, title: "Approval needed"),
             from: session
         )
-        await waitUntil { !self.provider.updated.isEmpty }
 
-        XCTAssertEqual(provider.updated.last?.state.status, .approvalRequested)
+        XCTAssertEqual(provider.started.count, 1)
+        XCTAssertEqual(provider.started.last?.state.status, .approvalRequested)
 
         await manager.closeSession(id: session.id)
         await waitUntil { !self.provider.ended.isEmpty }
@@ -359,7 +374,8 @@ final class AgentLiveActivityTests: XCTestCase {
         let center = AgentEventCenter(
             persistence: AgentEventPersistenceStore(defaults: defaults),
             liveActivities: service,
-            defaults: defaults
+            defaults: defaults,
+            isAppActive: { false }
         )
         let manager = SessionManager(
             persistenceStore: SessionPersistenceStore(defaults: defaults),
@@ -367,6 +383,7 @@ final class AgentLiveActivityTests: XCTestCase {
         )
         center.setLiveActivitiesEnabled(true)
         let session = try XCTUnwrap(manager.createSession(for: makeServer()))
+        _ = center.ingest(AgentEventEnvelope(kind: .needsAttention, title: "Waiting"), from: session)
 
         weak var discardedManager: SessionManager?
         autoreleasepool {
@@ -391,7 +408,8 @@ final class AgentLiveActivityTests: XCTestCase {
         let center = AgentEventCenter(
             persistence: AgentEventPersistenceStore(defaults: defaults),
             liveActivities: service,
-            defaults: defaults
+            defaults: defaults,
+            isAppActive: { false }
         )
         let manager = SessionManager(
             persistenceStore: SessionPersistenceStore(defaults: defaults),
@@ -406,11 +424,10 @@ final class AgentLiveActivityTests: XCTestCase {
             title: "Review requested",
             sessionID: second.id
         ))
-        await waitUntil { !self.provider.updated.isEmpty }
 
-        XCTAssertEqual(provider.updated.last?.attributes.sessionID, second.id)
-        XCTAssertEqual(provider.updated.last?.state.status, .needsAttention)
-        XCTAssertNotEqual(provider.updated.last?.attributes.sessionID, first.id)
+        XCTAssertEqual(provider.started.map(\.attributes.sessionID), [second.id])
+        XCTAssertEqual(provider.started.last?.state.status, .needsAttention)
+        XCTAssertNotEqual(provider.started.last?.attributes.sessionID, first.id)
     }
 
     func testAppDeclaresLiveActivitySupportAndEmbedsWidgetExtension() throws {
@@ -468,6 +485,11 @@ final class AgentLiveActivityTests: XCTestCase {
 
     private func makeSession(name: String = "Agents", tmux: String? = nil) -> ManagedSession {
         ManagedSession(server: makeServer(name: name), tmuxSession: tmux)
+    }
+
+    /// One unread "needs input" event per session, so each has an activity.
+    private func waiting(_ sessions: ManagedSession...) -> [AgentInboxEvent] {
+        sessions.map { makeEvent(for: $0, kind: .needsAttention, title: "Waiting") }
     }
 
     private func makeEvent(

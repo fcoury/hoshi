@@ -198,6 +198,30 @@ enum HerdrAttachment: Codable, Equatable, Sendable {
         }
     }
 
+    /// Whether this terminal shows the agent at `target`: its whole Herdr
+    /// session or machine, or that one agent pane. Only these agents raise
+    /// alerts for the terminal.
+    func shows(_ target: HerdrAgentTarget) -> Bool {
+        switch self {
+        case .session(let name):
+            target.machineID == nil && target.session == name
+        case .agent(let session, let paneID):
+            target.machineID == nil && target.session == session && target.paneID == paneID
+        case .machine(let id, _):
+            target.machineID == id
+        }
+    }
+
+    /// A stable key for this view, so two terminals on the same Herdr view
+    /// report each event once.
+    var reporterKey: String {
+        switch self {
+        case .session(let name): "session/\(name)"
+        case .agent(let session, let paneID): "agent/\(session)/\(paneID)"
+        case .machine(let id, _): "machine/\(id)"
+        }
+    }
+
     /// Whether this terminal shows the Herdr UI that owns `session`, so
     /// focusing an agent there switches the view in place.
     func shows(_ session: HerdrSessionInfo) -> Bool {
@@ -316,6 +340,15 @@ struct HerdrInventory: Equatable, Sendable {
     var sessions: [HerdrSessionInfo]
 
     var runningSessions: [HerdrSessionInfo] { sessions.filter(\.isRunning) }
+
+    /// The running agents a terminal attached to `attachment` shows; none
+    /// for a terminal that is not in Herdr.
+    func agents(shownBy attachment: HerdrAttachment?) -> [HerdrAgent] {
+        guard let attachment else { return [] }
+        return runningSessions.flatMap { session in
+            session.agents.filter { attachment.shows(session.target(for: $0)) }
+        }
+    }
     var localSessions: [HerdrSessionInfo] { sessions.filter { $0.machine == nil } }
     var machineSessions: [HerdrSessionInfo] { sessions.filter { $0.machine != nil } }
 

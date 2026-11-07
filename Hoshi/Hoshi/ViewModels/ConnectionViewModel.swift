@@ -390,6 +390,7 @@ final class ConnectionViewModel {
                 guard let self else { throw CancellationError() }
                 return try await self.runRemoteCommand(command)
             },
+            attachment: { [weak self] in self?.herdrAttachment },
             onEvent: { [weak self] event in
                 self?.onAgentEvent?(event)
             },
