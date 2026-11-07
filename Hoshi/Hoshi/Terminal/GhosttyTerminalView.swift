@@ -111,6 +111,9 @@ struct GhosttyTerminalView: UIViewRepresentable {
             view.toolbarAccessory.apply(buttons: keyProfileButtons, chip: keyProfileChip)
         }
 
+        view.onTerminalReply = { [weak connectionVM] data in
+            Task { @MainActor in await connectionVM?.send(data) }
+        }
         connectionVM.setDataCallback { [weak view] bytes in
             DispatchQueue.main.async {
                 view?.writeRemoteOutput(bytes)
@@ -175,6 +178,9 @@ struct GhosttyTerminalView: UIViewRepresentable {
             uiView.toolbarAccessory.apply(buttons: keyProfileButtons, chip: keyProfileChip)
         }
 
+        uiView.onTerminalReply = { [weak connectionVM] data in
+            Task { @MainActor in await connectionVM?.send(data) }
+        }
         connectionVM.setDataCallback { [weak uiView] bytes in
             DispatchQueue.main.async {
                 uiView?.writeRemoteOutput(bytes)
@@ -209,6 +215,7 @@ struct GhosttyTerminalView: UIViewRepresentable {
         if coordinator.managedSession?.surfaceView !== uiView {
             coordinator.connectionVM.setDataCallback(nil)
             uiView.onDesktopNotification = nil
+            uiView.onTerminalReply = nil
         }
     }
 
@@ -360,6 +367,12 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
     let toolbarAccessory: KeyboardToolbarAccessoryView
 
     var onInputData: ((Data) -> Void)?
+    /// Bytes Ghostty writes back to the PTY: key input it encoded and answers to
+    /// terminal queries (device attributes, colors, cursor position). Bound to the
+    /// session rather than the on-screen coordinator, so a retained surface still
+    /// answers while hidden. A shell that starts on a reconnect in the
+    /// background, such as fish 4, otherwise waits 10 s for a reply that never comes.
+    var onTerminalReply: ((Data) -> Void)?
     var onTerminalSizeChanged: ((Int, Int) -> Void)? {
         didSet {
             guard onTerminalSizeChanged != nil else { return }
@@ -1820,7 +1833,11 @@ final class GhosttyTerminalSurfaceView: UIView, UITextInput, UIEditMenuInteracti
                     $0.canonical == canonical && abs($0.time - now) <= self.mirroredInputWindow
                 }
                 if !hasMirroredDirect {
-                    self.onInputData?(data)
+                    if let onTerminalReply = self.onTerminalReply {
+                        onTerminalReply(data)
+                    } else {
+                        self.onInputData?(data)
+                    }
                 }
             }
         }
