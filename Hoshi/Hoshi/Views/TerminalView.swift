@@ -1519,7 +1519,8 @@ private struct ToolbarTipTriggers: ViewModifier {
                     KeySetTip.isEligible = true
                 }
             }
-            .onChange(of: isConnected) { _, connected in
+            // `initial`: the screen often opens on a session that's already connected.
+            .onChange(of: isConnected, initial: true) { _, connected in
                 if connected { ToolbarTips.recordConnectedSession() }
             }
             .onChange(of: isEditingToolbar) { _, editing in

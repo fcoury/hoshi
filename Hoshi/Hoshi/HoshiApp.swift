@@ -18,6 +18,15 @@ struct HoshiApp: App {
     @UIApplicationDelegateAdaptor(HoshiAppDelegate.self) private var appDelegate
 
     init() {
+        #if DEBUG
+        // `-HoshiResetKeyBars`: back to the default Shell bar and key sets, no pins.
+        if ProcessInfo.processInfo.arguments.contains("-HoshiResetKeyBars") {
+            for key in ["com.hoshi.toolbar.buttons", "com.hoshi.keyProfiles.v1", "com.hoshi.keyProfiles.pins"] {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+        #endif
+
         // Register all bundled fonts with Core Text before Ghostty initializes,
         // so they're discoverable by the terminal's font lookup.
         Self.registerBundledFonts()

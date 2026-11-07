@@ -10,6 +10,8 @@ enum ToolbarTips {
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("-HoshiResetTips") {
             try? Tips.resetDatastore()
+            UserDefaults.standard.removeObject(forKey: sessionCountKey)
+            UserDefaults.standard.removeObject(forKey: arrowTapCountKey)
         }
         if (ScreenshotSeed.isActive && !arguments.contains("-HoshiShowTips")) || arguments.contains("-HoshiHideTips") {
             Tips.hideAllTipsForTesting()
@@ -21,15 +23,21 @@ enum ToolbarTips {
 
     /// Counts connected terminal sessions; the key set tip shows from the second
     /// one even when no app on the server ever switched the keys.
+    private static let arrowTapCountKey = "com.hoshi.tips.arrowKeyTaps"
+
     @MainActor
     static func recordConnectedSession(defaults: UserDefaults = .standard) {
         let count = defaults.integer(forKey: sessionCountKey) + 1
         defaults.set(count, forKey: sessionCountKey)
         if count >= 2 { KeySetTip.isEligible = true }
+        // The default bar has no arrow keys to count, so sessions alone earn the arrow tip.
+        if count >= 3 { ArrowJoystickTip.isEligible = true }
     }
 
-    static func recordArrowKeyTap() {
-        Task { await ArrowJoystickTip.arrowKeyTapped.donate() }
+    static func recordArrowKeyTap(defaults: UserDefaults = .standard) {
+        let count = defaults.integer(forKey: arrowTapCountKey) + 1
+        defaults.set(count, forKey: arrowTapCountKey)
+        if count >= 3 { ArrowJoystickTip.isEligible = true }
     }
 }
 
@@ -58,9 +66,9 @@ struct CustomizeKeysTip: Tip {
     var rules: [Rule] { [#Rule(Self.$isUnlocked) { $0 == true }] }
 }
 
-/// Tip 3: after a few taps on the arrow keys, point at the joystick.
+/// Tip 3: after a few taps on arrow keys, or by the third session, point at the joystick.
 struct ArrowJoystickTip: Tip {
-    static let arrowKeyTapped = Event(id: "arrowKeyTapped")
+    @Parameter static var isEligible: Bool = false
     /// Mirrors Settings > Long Press: the joystick only exists for "Arrow Keys".
     @Parameter static var joystickEnabled: Bool = true
 
@@ -72,7 +80,7 @@ struct ArrowJoystickTip: Tip {
     var rules: [Rule] {
         [
             #Rule(Self.$joystickEnabled) { $0 == true },
-            #Rule(Self.arrowKeyTapped) { $0.donations.count >= 3 },
+            #Rule(Self.$isEligible) { $0 == true },
         ]
     }
 }
