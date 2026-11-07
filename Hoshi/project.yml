@@ -45,7 +45,7 @@ targets:
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         PRODUCT_BUNDLE_IDENTIFIER: app.gethoshi.ios
         MARKETING_VERSION: "1.2.0"
-        CURRENT_PROJECT_VERSION: "5"
+        CURRENT_PROJECT_VERSION: "6"
         DEVELOPMENT_TEAM: UXWHD5F6F4
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -76,7 +76,7 @@ targets:
         INFOPLIST_FILE: HoshiLiveActivity/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: app.gethoshi.ios.liveactivity
         MARKETING_VERSION: "1.2.0"
-        CURRENT_PROJECT_VERSION: "5"
+        CURRENT_PROJECT_VERSION: "6"
         DEVELOPMENT_TEAM: UXWHD5F6F4
         CODE_SIGN_STYLE: Automatic
         APPLICATION_EXTENSION_API_ONLY: "YES"
