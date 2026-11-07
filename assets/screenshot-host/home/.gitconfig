@@ -1,0 +1,7 @@
+[user]
+	name = Felipe Coury
+	email = fcoury@devbox
+[init]
+	defaultBranch = master
+[advice]
+	detachedHead = false

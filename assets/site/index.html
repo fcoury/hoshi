@@ -2,499 +2,707 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Hoshi: the terminal for coding agents</title>
-<meta name="description" content="Hoshi is an SSH and Mosh terminal for iPhone and iPad, with tmux and Herdr built in. Check on your coding agents and reply from your Lock Screen. One purchase, no subscription, no account, no tracking.">
-<meta property="og:title" content="Hoshi: the terminal for coding agents">
-<meta property="og:description" content="SSH and Mosh for iPhone and iPad, with tmux and Herdr built in. One purchase. No account, no subscription, no data collected.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Hoshi: the terminal I wished for</title>
+<meta name="description" content="Hoshi is the SSH and Mosh terminal for iPhone and iPad that I wished for: open source, $4.99 once, with tmux, Herdr, keys for each app, an arrow joystick, and your own themes and fonts.">
+<meta property="og:title" content="Hoshi: the terminal I wished for">
+<meta property="og:description" content="I wrote a wish list for a phone terminal, then built it. SSH and Mosh for iPhone and iPad, with tmux and Herdr. Open source, $4.99 once.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Hoshi">
 <meta property="og:url" content="https://gethoshi.app/">
 <meta property="og:image" content="https://gethoshi.app/img/og.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Hoshi: the terminal for coding agents. An iPhone shows a coding agent working over Mosh, with a Lock Screen alert asking for a reply.">
+<meta property="og:image:alt" content="Hoshi: I wrote a wish list, then I built the terminal. A handwritten list of terminal wishes taped beside an iPhone running vim with the arrow joystick.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Hoshi: the terminal for coding agents">
-<meta name="twitter:description" content="SSH and Mosh for iPhone and iPad, with tmux and Herdr built in. Watch your agents work and reply from the Lock Screen.">
+<meta name="twitter:title" content="Hoshi: the terminal I wished for">
+<meta name="twitter:description" content="SSH and Mosh for iPhone and iPad, with tmux and Herdr. Open source, $4.99 once.">
 <meta name="twitter:image" content="https://gethoshi.app/img/og.jpg">
-<meta name="theme-color" content="#08090d">
+<meta name="theme-color" content="#0a0d29">
 <link rel="icon" href="img/icon.png">
 <link rel="apple-touch-icon" href="img/icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,400..800,100,1;1,9..144,400..800,100,1&family=Shantell+Sans:ital,wght,BNCE,INFM@0,400..700,40,60;1,400..700,40,60&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Fira+Code:wght@400;600&family=Geist+Mono:wght@400;600&family=Victor+Mono:ital,wght@0,400;1,400&family=Source+Code+Pro:wght@400;600&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #08090d;
-    --bg-raised: #0f1117;
-    --bg-card: #12151d;
-    --line: #1f2430;
-    --text: #e8eaf0;
-    --muted: #9aa1b2;
-    --faint: #6b7285;
-    --mint: #8de0b5;
-    --mint-dim: rgba(141, 224, 181, 0.12);
-    --red: #ff5f57;
-    --yellow: #febc2e;
-    --green: #28c840;
-    --radius: 18px;
-    --max: 1120px;
-    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
+/* Layout: a night sky you scroll down. The hero pins a paper wishlist to the phone; below, nine wishes hang off one dotted constellation line on the left, each granted with a picture or a toy. Ends at a dawn horizon. Single deliberate night world. */
+:root {
+  color-scheme: dark;
+  --sky-0: #0a0d29;
+  --sky-1: #141a46;
+  --sky-2: #251f5c;
+  --dusk: #4b2c6c;
+  --glow: #f2a37c;
+  --star: #ffdf8a;
+  --star-dim: rgba(255, 223, 138, 0.22);
+  --text: #eceaf8;
+  --muted: #abaed6;
+  --line: rgba(171, 174, 214, 0.22);
+  --paper: #eef0fc;
+  --paper-rule: #cdd3f2;
+  --ink: #27306e;
+  --ink-red: #d4566e;
+  --display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+  --hand: 'Shantell Sans', 'Comic Neue', 'Marker Felt', cursive;
+  --body: 'Figtree', -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html { background: var(--sky-0); }
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--body); font-size: 17px; line-height: 1.6;
+  background: linear-gradient(180deg, var(--sky-0) 0%, var(--sky-1) 38%, var(--sky-2) 78%, var(--dusk) 96%, #6b3a6e 100%);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--sky-0); }
+#sky { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.page { position: relative; z-index: 1; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+a { color: inherit; }
+img { max-width: 100%; display: block; }
+h1, h2, h3 { font-family: var(--display); font-variation-settings: 'SOFT' 100, 'WONK' 1; font-weight: 600; line-height: 1.05; margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+p { margin: 0; }
+code { font-family: var(--mono); font-size: .86em; background: rgba(255, 223, 138, .12); color: var(--star); padding: 1px 6px; border-radius: 5px; }
+.hand { font-family: var(--hand); font-variation-settings: 'BNCE' 40, 'INFM' 60; }
+:focus-visible { outline: 2px solid var(--star); outline-offset: 3px; border-radius: 6px; }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
-    overflow-x: hidden;
-  }
-  a { color: inherit; }
-  img { max-width: 100%; display: block; }
-  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
-  .mono { font-family: var(--mono); }
+/* ── Nav ── */
+nav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); background: rgba(10, 13, 41, 0.6); border-bottom: 1px solid var(--line); }
+nav .wrap { display: flex; align-items: center; gap: 22px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-family: var(--display); font-weight: 600; font-size: 20px; }
+.brand img { width: 30px; height: 30px; border-radius: 8px; }
+.brand small { font-family: var(--body); font-size: 13px; color: var(--muted); font-weight: 400; }
+.nav-links { margin-left: auto; display: flex; gap: 20px; font-size: 15px; }
+.nav-links a { color: var(--muted); text-decoration: none; }
+.nav-links a:hover { color: var(--text); }
+.nav-buy { font-weight: 600; font-size: 14px; padding: 7px 14px; border-radius: 999px; background: var(--star); color: var(--sky-0); text-decoration: none; }
+@media (max-width: 720px) { .nav-links { display: none; } .nav-buy { margin-left: auto; } }
 
-  /* ── Nav ── */
-  nav {
-    position: sticky; top: 0; z-index: 10;
-    background: rgba(8, 9, 13, 0.82);
-    backdrop-filter: saturate(160%) blur(14px);
-    -webkit-backdrop-filter: saturate(160%) blur(14px);
-    border-bottom: 1px solid var(--line);
-  }
-  nav .wrap { display: flex; align-items: center; gap: 28px; height: 60px; }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; text-decoration: none; }
-  .brand img { width: 28px; height: 28px; border-radius: 7px; }
-  .nav-links { display: flex; gap: 22px; margin-left: auto; font-size: 14px; }
-  .nav-links a { color: var(--muted); text-decoration: none; }
-  .nav-links a:hover { color: var(--text); }
-  .nav-cta {
-    font-size: 14px; font-weight: 600; text-decoration: none;
-    padding: 7px 14px; border-radius: 999px; background: var(--text); color: var(--bg);
-  }
-  @media (max-width: 760px) { .nav-links { display: none; } .nav-cta { margin-left: auto; } }
+/* ── Hero ── */
+.hero { padding-block: 72px 40px; }
+.hero .wrap { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 48px; align-items: center; }
+@media (max-width: 900px) { .hero .wrap { grid-template-columns: 1fr; } }
+.hero-copy { display: grid; gap: 24px; }
+.kicker { font-family: var(--hand); color: var(--star); font-size: 18px; transform: rotate(-2deg); transform-origin: left; display: inline-block; }
+.hero h1 { font-size: clamp(2.6rem, 6.4vw, 4.6rem); }
+.hero h1 em { font-style: italic; color: var(--star); font-weight: 500; }
+.lede { font-size: 19px; color: var(--muted); max-width: 52ch; }
+.lede b { color: var(--text); font-weight: 600; }
+.ctas { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 22px; border-radius: 999px; font-weight: 600; text-decoration: none; font-size: 16px; transition: transform .2s; }
+.btn:hover { transform: translateY(-2px) rotate(-1deg); }
+.btn-star { background: var(--star); color: var(--sky-0); box-shadow: 0 0 0 6px var(--star-dim), 0 10px 30px -8px rgba(255, 223, 138, .55); }
+.btn-ghost { border: 1.5px solid var(--line); color: var(--text); }
+.psst { font-family: var(--hand); color: var(--muted); font-size: 16px; display: flex; gap: 8px; align-items: center; }
+.psst svg { flex: none; }
 
-  /* ── Hero ── */
-  .hero { position: relative; padding: 88px 0 72px; overflow: hidden; }
-  .hero::before {
-    content: ''; position: absolute; inset: 0; pointer-events: none;
-    background:
-      radial-gradient(ellipse 55% 45% at 70% 10%, rgba(141, 224, 181, 0.10) 0%, transparent 70%),
-      radial-gradient(ellipse 45% 40% at 10% 90%, rgba(56, 120, 255, 0.08) 0%, transparent 70%);
-  }
-  .hero .wrap { position: relative; display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 56px; align-items: center; }
-  @media (max-width: 900px) { .hero .wrap { grid-template-columns: 1fr; } .hero-visual { order: 2; } }
-  .eyebrow {
-    display: inline-flex; align-items: center; gap: 8px;
-    font-family: var(--mono); font-size: 13px; color: var(--mint);
-    padding: 6px 12px; border: 1px solid rgba(141, 224, 181, 0.3); border-radius: 999px; background: var(--mint-dim);
-  }
-  h1 {
-    font-size: clamp(40px, 6vw, 68px); line-height: 1.04; letter-spacing: -0.035em;
-    font-weight: 800; margin: 22px 0 20px;
-  }
-  h1 em { font-style: normal; color: var(--mint); }
-  .lede { font-size: clamp(17px, 2vw, 20px); color: var(--muted); max-width: 560px; }
-  .cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 32px; }
-  .btn-gh {
-    display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 18px;
-    border: 1px solid var(--line); border-radius: 10px; background: var(--bg-raised);
-    text-decoration: none; font-weight: 600; font-size: 15px;
-  }
-  .btn-gh:hover { border-color: #343b4c; }
-  .btn-gh svg { width: 20px; height: 20px; fill: currentColor; }
-  .badge-store img { height: 44px; width: auto; }
-  .proof { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 28px; font-size: 14px; color: var(--faint); }
-  .proof span::before { content: '✓ '; color: var(--mint); }
+.hero-art { position: relative; justify-self: center; width: min(100%, 440px); padding: 20px 0 30px 60px; }
+@media (max-width: 520px) { .hero-art { padding-left: 0; } }
+.phone { position: relative; width: 260px; max-width: 100%; aspect-ratio: 886 / 1920; border-radius: 40px; padding: 9px; background: linear-gradient(145deg, #3a3f6e, #1b1e3e); box-shadow: 0 40px 80px -30px rgba(0, 0, 0, .7), inset 0 0 0 1px rgba(255, 255, 255, .12); margin-left: auto; }
+.phone video, .phone img { width: 100%; height: 100%; object-fit: cover; border-radius: 32px; background: #0d0f18; }
+.note {
+  position: absolute; left: 0; bottom: 0; width: 250px; max-width: 70%;
+  background: repeating-linear-gradient(180deg, transparent 0 27px, var(--paper-rule) 27px 28px), var(--paper);
+  background-position: 0 44px;
+  color: var(--ink); padding: 18px 16px 18px 30px; border-radius: 3px;
+  transform: rotate(-5deg); box-shadow: 0 24px 40px -18px rgba(0, 0, 0, .65);
+  font-family: var(--hand); font-size: 15.5px; line-height: 28px;
+}
+.note::before { content: ""; position: absolute; top: 0; bottom: 0; left: 20px; width: 1.5px; background: var(--ink-red); opacity: .5; }
+.note::after { content: ""; position: absolute; top: -12px; left: 50%; width: 86px; height: 24px; transform: translateX(-50%) rotate(3deg); background: rgba(255, 223, 138, .55); border-left: 2px dashed rgba(0,0,0,.08); border-right: 2px dashed rgba(0,0,0,.08); }
+.note h4 { margin: 0 0 2px; font-family: var(--hand); font-weight: 700; font-size: 19px; line-height: 28px; }
+.note ul { list-style: none; margin: 0; padding: 0; }
+.note li { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.note li svg { flex: none; width: 15px; height: 15px; color: #e3a520; animation: pop .5s cubic-bezier(.3, 1.8, .5, 1) both; }
+.note li:nth-child(1) svg { animation-delay: .5s } .note li:nth-child(2) svg { animation-delay: .7s } .note li:nth-child(3) svg { animation-delay: .9s }
+.note li:nth-child(4) svg { animation-delay: 1.1s } .note li:nth-child(5) svg { animation-delay: 1.3s } .note li:nth-child(6) svg { animation-delay: 1.5s }
+.note li:nth-child(7) svg { animation-delay: 1.7s } .note li:nth-child(8) svg { animation-delay: 1.9s } .note li:nth-child(9) svg { animation-delay: 2.1s }
+@keyframes pop { from { transform: scale(0) rotate(-90deg); } to { transform: scale(1) rotate(0); } }
+.note .sig { display: block; text-align: right; font-size: 14px; opacity: .75; margin-top: 2px; }
 
-  /* ── Phone frame ── */
-  .phone {
-    position: relative; width: 100%; max-width: 320px; margin: 0 auto;
-    border-radius: 48px; padding: 11px; background: #1b1e26;
-    box-shadow: 0 0 0 1px #2c313d, 0 40px 80px -20px rgba(0, 0, 0, 0.7), 0 0 120px -30px rgba(141, 224, 181, 0.25);
-  }
-  .phone img { border-radius: 38px; width: 100%; aspect-ratio: 1320 / 2868; object-fit: cover; }
-  .agent-card {
-    position: absolute; left: -36px; bottom: 18%; width: 250px;
-    background: rgba(28, 32, 42, 0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-    border: 1px solid #2f3544; border-radius: 18px; padding: 14px 16px;
-    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.6);
-    font-size: 13px;
-  }
-  .agent-card .row { display: flex; align-items: center; gap: 8px; }
-  .agent-card .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); box-shadow: 0 0 10px var(--yellow); }
-  .agent-card strong { font-weight: 600; }
-  .agent-card p { color: var(--muted); margin: 6px 0 10px; }
-  .agent-card .reply { display: inline-block; font-weight: 600; font-size: 12px; padding: 5px 12px; border-radius: 999px; background: var(--mint); color: #0a0d12; }
-  @media (max-width: 900px) { .agent-card { left: 50%; transform: translateX(-50%); bottom: -28px; } }
+/* ── Section head ── */
+.sec-head { display: grid; gap: 14px; justify-items: center; text-align: center; padding-block: 72px 36px; }
+.sec-head h2 { font-size: clamp(2rem, 4.6vw, 3.2rem); }
+.sec-head h2 em { color: var(--star); font-weight: 500; }
+.sec-head p { color: var(--muted); max-width: 56ch; }
 
-  /* ── Sections ── */
-  section { padding: 96px 0; border-top: 1px solid var(--line); }
-  .kicker { font-family: var(--mono); font-size: 13px; color: var(--mint); margin-bottom: 14px; }
-  h2 { font-size: clamp(30px, 4vw, 44px); line-height: 1.1; letter-spacing: -0.025em; font-weight: 800; max-width: 760px; }
-  .section-lede { color: var(--muted); font-size: 18px; max-width: 680px; margin-top: 16px; }
+/* ── Constellation of wishes ── */
+.wishes { position: relative; display: grid; gap: 30px; padding-left: 56px; }
+.wishes::before { content: ""; position: absolute; left: 17px; top: 20px; bottom: 20px; width: 2px; background: repeating-linear-gradient(180deg, var(--star-dim) 0 4px, transparent 4px 11px); }
+@media (max-width: 640px) { .wishes { padding-left: 38px; } .wishes::before { left: 10px; } }
+.wish { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: center; padding: 34px; border-radius: 28px; background: rgba(255, 255, 255, 0.035); border: 1px solid var(--line); }
+@media (max-width: 860px) { .wish { grid-template-columns: 1fr; padding: 24px; gap: 28px; } }
+.wish-star { position: absolute; left: -56px; top: 40px; width: 36px; height: 36px; color: var(--star); filter: drop-shadow(0 0 10px rgba(255, 223, 138, .7)); }
+@media (max-width: 640px) { .wish-star { left: -38px; width: 24px; height: 24px; } }
+.wish-text { display: grid; gap: 14px; min-width: 0; }
+.wish-no { font-family: var(--hand); font-size: 15px; color: var(--muted); }
+.wish-quote { font-family: var(--hand); font-size: clamp(1.35rem, 2.6vw, 1.7rem); line-height: 1.3; color: var(--text); font-weight: 500; }
+.wish-quote::before { content: "I wish "; color: var(--star); }
+.granted { display: inline-flex; align-items: baseline; gap: 8px; font-family: var(--display); font-style: italic; font-size: 28px; color: var(--star); font-variation-settings: 'SOFT' 100, 'WONK' 1; }
+.granted span { font-style: normal; font-size: 18px; }
+.wish-text .body { color: var(--muted); max-width: 48ch; }
+.wish-text .body b { color: var(--text); font-weight: 600; }
+.wish-visual { display: grid; justify-items: center; gap: 12px; min-width: 0; }
+.caption { font-family: var(--hand); font-size: 15px; color: var(--muted); text-align: center; }
+.shot { width: 220px; max-width: 100%; aspect-ratio: 1206 / 2622; border-radius: 30px; padding: 7px; background: linear-gradient(145deg, #3a3f6e, #1b1e3e); box-shadow: 0 30px 60px -28px rgba(0, 0, 0, .8); }
+.shot img { width: 100%; height: 100%; object-fit: cover; border-radius: 24px; }
+.tilt-l { transform: rotate(-3deg); } .tilt-r { transform: rotate(3deg); }
+.wish:nth-child(even) .wish-visual { order: -1; }
+@media (max-width: 860px) { .wish:nth-child(even) .wish-visual { order: 0; } }
 
-  /* Open source */
-  .os-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 48px; }
-  @media (max-width: 860px) { .os-grid { grid-template-columns: 1fr; } }
-  .card { background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; }
-  .card h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
-  .card p { color: var(--muted); font-size: 15px; }
-  .term {
-    margin-top: 28px; background: #05060a; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
-  }
-  .term-bar { display: flex; gap: 7px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
-  .term-bar i { width: 11px; height: 11px; border-radius: 50%; }
-  .term pre { font-family: var(--mono); font-size: 14px; padding: 18px 20px; color: #cfd5e2; overflow-x: auto; line-height: 1.7; }
-  .term .p { color: var(--mint); }
-  .term .c { color: var(--faint); }
+/* term card */
+.term { width: 100%; max-width: 420px; border-radius: 14px; background: #1a1b26; color: #a9b1d6; font-family: var(--mono); font-size: 13.5px; line-height: 1.75; box-shadow: 0 30px 60px -28px rgba(0, 0, 0, .8); overflow: hidden; }
+.term-bar { display: flex; gap: 6px; padding: 10px 14px; background: #15161e; align-items: center; }
+.term-bar i { width: 10px; height: 10px; border-radius: 50%; background: #414868; }
+.term-bar span { margin-left: 8px; font-size: 11.5px; color: #565f89; }
+.term pre { margin: 0; padding: 14px 16px 16px; overflow-x: auto; font: inherit; }
+.copy { margin-left: auto; font: 11px var(--mono); color: #c0caf5; background: #24283b; border: 0; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
 
-  /* Features */
-  .feature { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; margin-top: 72px; }
-  .feature:first-of-type { margin-top: 56px; }
-  .feature.flip .feature-media { order: -1; }
-  @media (max-width: 860px) { .feature, .feature.flip { grid-template-columns: 1fr; gap: 36px; } .feature.flip .feature-media { order: 0; } }
-  .feature h3 { font-size: clamp(24px, 3vw, 32px); letter-spacing: -0.02em; line-height: 1.15; font-weight: 800; margin-bottom: 14px; }
-  .feature p { color: var(--muted); font-size: 17px; }
-  .feature ul { list-style: none; margin-top: 18px; display: grid; gap: 10px; }
-  .feature li { position: relative; padding-left: 26px; color: #c9cfdc; font-size: 15px; }
-  .feature li::before { content: '›'; position: absolute; left: 6px; color: var(--mint); font-weight: 700; }
-  .feature-media .phone { max-width: 290px; }
+/* ticket */
+.ticket { position: relative; display: grid; grid-template-columns: 1fr auto; width: 100%; max-width: 400px; background: var(--star); color: var(--sky-0); border-radius: 14px; transform: rotate(-2.5deg); box-shadow: 0 30px 50px -24px rgba(0, 0, 0, .8); }
+.ticket::before, .ticket::after { content: ""; position: absolute; right: 92px; width: 22px; height: 22px; border-radius: 50%; background: var(--sky-1); }
+.ticket::before { top: -11px; } .ticket::after { bottom: -11px; }
+.ticket-main { padding: 22px 24px; display: grid; gap: 4px; }
+.ticket-main small { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; opacity: .7; }
+.ticket-main strong { font-family: var(--display); font-size: 44px; line-height: 1; font-variation-settings: 'SOFT' 100, 'WONK' 1; }
+.ticket-main span { font-family: var(--hand); font-size: 16px; }
+.ticket-stub { width: 103px; border-left: 2px dashed rgba(10, 13, 41, .35); display: grid; place-items: center; padding: 14px 8px; }
+.ticket-stub span { writing-mode: vertical-rl; font-family: var(--mono); font-size: 12px; letter-spacing: .2em; text-transform: uppercase; }
+.ledger { width: 100%; max-width: 400px; display: grid; gap: 6px; font-size: 14.5px; color: var(--muted); }
+.ledger div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px dashed var(--line); padding-bottom: 6px; font-variant-numeric: tabular-nums; }
+.ledger div:last-child { border: 0; color: var(--text); }
 
-  .mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 72px; }
-  @media (max-width: 860px) { .mini-grid { grid-template-columns: 1fr; } }
-  .mini-grid .card .icon { font-family: var(--mono); color: var(--mint); font-size: 14px; margin-bottom: 12px; }
+/* keycaps */
+.keys-toy { width: 100%; max-width: 440px; display: grid; gap: 14px; }
+.sets { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.sets button, .chips button { font: 500 13.5px var(--body); color: var(--muted); background: transparent; border: 1.5px solid var(--line); border-radius: 999px; padding: 6px 12px; cursor: pointer; transition: all .2s; }
+.sets button[aria-pressed="true"], .chips button[aria-pressed="true"] { background: var(--star); color: var(--sky-0); border-color: var(--star); }
+.screen { border-radius: 18px; background: #1a1b26; padding: 16px 12px 12px; box-shadow: 0 30px 60px -28px rgba(0, 0, 0, .8); display: grid; gap: 12px; }
+.screen-title { font-family: var(--mono); font-size: 12.5px; color: #7aa2f7; padding-inline: 4px; display: flex; justify-content: space-between; gap: 8px; }
+.screen-title span:last-child { color: #565f89; }
+.keyrow { display: flex; gap: 6px; overflow-x: auto; padding: 8px 4px 10px; background: #13141c; border-radius: 10px; scrollbar-width: thin; }
+.key { flex: none; min-width: 38px; padding: 7px 9px; border-radius: 7px; background: #2a2e44; color: #dfe3fa; font: 12.5px var(--mono); text-align: center; box-shadow: 0 2px 0 #0b0c12; animation: keyin .35s cubic-bezier(.3, 1.6, .5, 1) both; }
+.key.add { background: transparent; border: 1.5px dashed #7aa2f7; color: #7aa2f7; box-shadow: none; cursor: pointer; }
+.key.mine { background: #e0af68; color: #1a1b26; }
+@keyframes keyin { from { transform: translateY(8px) scale(.8); opacity: .3; } to { transform: none; opacity: 1; } }
+.match { font-family: var(--hand); font-size: 15px; color: var(--muted); text-align: center; min-height: 24px; }
 
-  /* Compare */
-  .table-wrap { margin-top: 44px; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
-  table { width: 100%; border-collapse: collapse; min-width: 820px; font-size: 14px; }
-  th, td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
-  thead th { font-size: 13px; color: var(--muted); font-weight: 600; background: var(--bg-raised); }
-  tbody th { font-weight: 600; color: #c9cfdc; width: 20%; }
-  tr:last-child th, tr:last-child td { border-bottom: 0; }
-  td { color: var(--muted); }
-  .col-hoshi { background: var(--mint-dim); color: var(--text); }
-  thead .col-hoshi { color: var(--mint); }
-  .yes { color: var(--text); }
-  .yes::before { content: '✓ '; color: var(--mint); font-weight: 700; }
-  .pro { color: var(--yellow); }
-  .none { color: var(--faint); }
-  .table-note { color: var(--faint); font-size: 13px; margin-top: 14px; }
+/* themes */
+.theme-toy { width: 100%; max-width: 460px; display: grid; gap: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.chips.fonts button { font-family: var(--f, var(--mono)); }
+.tt { border-radius: 14px; overflow: hidden; background: var(--t-bg); color: var(--t-fg); font-family: var(--t-font, var(--mono)); font-size: 13.5px; line-height: 1.7; transition: background .35s, color .35s; box-shadow: 0 30px 60px -28px rgba(0, 0, 0, .8); }
+.tt pre { margin: 0; padding: 16px 18px; overflow-x: auto; font: inherit; }
+.tt .c1 { color: var(--t-1); } .tt .c2 { color: var(--t-2); } .tt .c3 { color: var(--t-3); } .tt .c4 { color: var(--t-4); } .tt .c5 { color: var(--t-5); } .tt .c8 { color: var(--t-8); }
+.tt .cur { background: var(--t-cur); color: var(--t-bg); animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.tt-bar { display: flex; justify-content: space-between; gap: 10px; padding: 8px 14px; font-size: 11.5px; background: rgba(0, 0, 0, .18); color: var(--t-8); }
 
-  /* Privacy */
-  .privacy-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-top: 44px; }
-  @media (max-width: 960px) { .privacy-grid { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 560px) { .privacy-grid { grid-template-columns: 1fr; } }
+/* ── Film ── */
+.film { position: relative; aspect-ratio: 16 / 9; width: 100%; max-width: 100%; border-radius: 26px; overflow: hidden; background: radial-gradient(ellipse 80% 70% at 50% 110%, rgba(242, 163, 124, .35), transparent 60%), linear-gradient(180deg, #0c1033, #221d58); border: 1px solid var(--line); display: grid; place-items: center; }
+.film video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.film-inner { position: absolute; left: 0; right: 0; bottom: 9%; display: grid; justify-items: center; gap: 14px; text-align: center; padding: 20px; }
+.film.playing .film-inner { display: none; }
+.film h3 { font-size: clamp(1.6rem, 4vw, 2.8rem); }
+.film h3 em { color: var(--star); font-weight: 500; }
+.play { width: 84px; height: 84px; border-radius: 50%; border: 0; background: var(--star); color: var(--sky-0); display: grid; place-items: center; cursor: pointer; box-shadow: 0 0 0 10px var(--star-dim), 0 0 60px rgba(255, 223, 138, .5); transition: transform .2s; }
+.play:hover { transform: scale(1.06) rotate(-6deg); }
+.film-note { font-family: var(--hand); color: var(--muted); font-size: 15px; }
+.chapters { position: relative; margin: 26px 4% 40px; display: flex; justify-content: space-between; align-items: center; }
+.chapters::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1.5px; background: repeating-linear-gradient(90deg, var(--star-dim) 0 5px, transparent 5px 10px); }
+.chapters button { position: relative; width: 22px; height: 22px; padding: 4px; border: 0; background: var(--sky-0); border-radius: 50%; color: var(--star-dim); cursor: pointer; transition: color .2s, transform .2s; }
+.chapters button:hover, .chapters button.on { color: var(--star); transform: scale(1.25); }
+.chapters button svg { display: block; }
+.chapters button::after { content: attr(data-l); position: absolute; top: 26px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-family: var(--hand); font-size: 12px; color: var(--muted); }
+@media (max-width: 720px) { .chapters button::after { display: none; } .film-note { display: none; } .play { width: 64px; height: 64px; } }
 
-  /* FAQ */
-  .faq { margin-top: 40px; display: grid; gap: 12px; max-width: 820px; }
-  details { background: var(--bg-card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; }
-  summary { cursor: pointer; font-weight: 600; font-size: 16px; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
-  summary::-webkit-details-marker { display: none; }
-  summary::after { content: '+'; color: var(--mint); font-family: var(--mono); }
-  details[open] summary::after { content: '−'; }
-  details p { color: var(--muted); margin-top: 12px; font-size: 15px; }
+/* ── FAQ ── */
+.faq { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+.faq div { padding: 24px; border-radius: 20px; background: rgba(255, 255, 255, .035); border: 1px solid var(--line); display: grid; gap: 8px; align-content: start; }
+.faq h3 { font-size: 21px; }
+.faq p { color: var(--muted); font-size: 16px; }
 
-  /* Final CTA + footer */
-  .final { text-align: center; }
-  .final h2 { margin: 0 auto; }
-  .final .cta-row { justify-content: center; }
-  .final img.icon-lg { width: 96px; height: 96px; border-radius: 22px; margin: 0 auto 28px; box-shadow: 0 20px 60px -10px rgba(141, 224, 181, 0.25); }
-  footer { border-top: 1px solid var(--line); padding: 36px 0 48px; color: var(--faint); font-size: 14px; }
-  footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: center; }
-  footer a { color: var(--muted); text-decoration: none; }
-  footer a:hover { color: var(--text); }
-  footer .spacer { margin-left: auto; }
-  @media (max-width: 640px) { footer .spacer { margin-left: 0; width: 100%; } }
+/* ── Dawn ── */
+.dawn { position: relative; text-align: center; padding-block: 120px 0; overflow: hidden; }
+.dawn::before { content: ""; position: absolute; left: 50%; bottom: -380px; width: 1300px; height: 640px; transform: translateX(-50%); border-radius: 50%; background: radial-gradient(closest-side, rgba(242, 163, 124, .55), rgba(242, 163, 124, .15) 60%, transparent); pointer-events: none; }
+.dawn .wrap { position: relative; display: grid; justify-items: center; gap: 22px; }
+.dawn h2 { font-size: clamp(2.4rem, 6vw, 4.2rem); }
+.dawn h2 em { color: var(--star); font-weight: 500; }
+.dawn p { color: var(--muted); max-width: 50ch; }
+footer { position: relative; padding-block: 90px 36px; color: rgba(236, 234, 248, .7); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 18px; justify-content: space-between; }
+footer a { text-decoration: none; } footer a:hover { text-decoration: underline; }
+
+/* shooting star */
+.shoot { position: fixed; top: 12%; left: 70%; width: 140px; height: 2px; z-index: 0; pointer-events: none; background: linear-gradient(90deg, rgba(255, 223, 138, 0), rgba(255, 240, 200, .95)); border-radius: 2px; transform: rotate(-24deg); opacity: 0; animation: shoot 11s ease-in 3s infinite; }
+@keyframes shoot { 0% { opacity: 0; transform: translate(0, 0) rotate(-24deg); } 2% { opacity: 1; } 9% { opacity: 0; transform: translate(-460px, 205px) rotate(-24deg); } 100% { opacity: 0; transform: translate(-460px, 205px) rotate(-24deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .shoot { display: none; }
+}
 </style>
+
 </head>
 <body>
 
-<nav aria-label="Main">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="star" viewBox="0 0 24 24"><path fill="currentColor" d="M12 1.8c.5 0 .9.3 1.1.8l2.3 5.6 6 .5c1 .1 1.4 1.3.7 2l-4.6 3.9 1.4 5.9c.2 1-.8 1.7-1.7 1.2L12 18.6l-5.2 3.1c-.9.5-1.9-.2-1.7-1.2l1.4-5.9L1.9 10.7c-.7-.7-.3-1.9.7-2l6-.5 2.3-5.6c.2-.5.6-.8 1.1-.8z"/></symbol>
+  <symbol id="sparkle" viewBox="0 0 24 24"><path fill="currentColor" d="M12 0c.6 5.6 3.4 9.4 12 12-8.6 2.6-11.4 6.4-12 12-.6-5.6-3.4-9.4-12-12 8.6-2.6 11.4-6.4 12-12z"/></symbol>
+</svg>
+
+<canvas id="sky" aria-hidden="true"></canvas>
+<div class="shoot" aria-hidden="true"></div>
+
+<div class="page">
+
+<nav>
   <div class="wrap">
-    <a class="brand" href="#top"><img src="img/icon.png" alt="">Hoshi</a>
+    <a class="brand" href="#top"><img src="img/icon.png" alt=""> Hoshi <small>星</small></a>
     <div class="nav-links">
-      <a href="#features">Features</a>
-      <a href="#compare">Compare</a>
-      <a href="#faq">FAQ</a>
+      <a href="#wishes">The wishes</a>
+      <a href="#film">The film</a>
+      <a href="#faq">Questions</a>
+      <a href="https://github.com/fcoury/hoshi">GitHub</a>
     </div>
-    <a class="nav-cta" href="https://apps.apple.com/app/id6760631255">Get the app</a>
+    <a class="nav-buy" href="https://apps.apple.com/app/id6760631255">$4.99 once</a>
   </div>
 </nav>
 
 <header class="hero" id="top">
   <div class="wrap">
-    <div>
-      <span class="eyebrow">iPhone &amp; iPad · $4.99 once</span>
-      <h1>The terminal for <em>coding agents</em>.</h1>
-      <p class="lede">
-        Hoshi is an SSH and Mosh terminal with tmux and Herdr built in. Check on your agents
-        from anywhere, and reply from your Lock Screen when they need you.
-      </p>
-      <div class="cta-row">
-        <a class="badge-store" href="https://apps.apple.com/app/id6760631255">
-          <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store">
+    <div class="hero-copy">
+      <span class="kicker">a terminal for iPhone &amp; iPad ✦</span>
+      <h1>I wrote a wish list for a phone terminal. <em>Then I built the terminal.</em></h1>
+      <p class="lede">Hoshi means <b>star</b> in Japanese. It's the SSH and Mosh terminal I always wanted on my phone, with tmux, Herdr, and keys that change with the app you're in. <b>It's open source, and it costs $4.99 once.</b></p>
+      <div class="ctas">
+        <a class="btn btn-star" href="https://apps.apple.com/app/id6760631255">
+          <svg width="18" height="18" aria-hidden="true"><use href="#star"/></svg>
+          Get it on the App Store
         </a>
+        <a class="btn btn-ghost" href="https://github.com/fcoury/hoshi">Read the source</a>
       </div>
-      <div class="proof">
-        <span>No account</span>
-        <span>No subscription</span>
-        <span>No data collected</span>
-      </div>
+      <p class="psst">
+        <svg width="34" height="22" viewBox="0 0 34 22" fill="none" aria-hidden="true"><path d="M2 4c8 14 18 16 28 8m0 0-6 .5m6-.5-1.5 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        or build it yourself for free. It's MIT.
+      </p>
     </div>
-    <div class="hero-visual">
+
+    <div class="hero-art">
       <div class="phone">
-        <img src="img/agent-terminal.jpg" alt="Hoshi showing a coding agent working in a remote terminal, with the keyboard toolbar">
-        <div class="agent-card" aria-hidden="true">
-          <div class="row"><span class="dot"></span><strong>Agent needs your input</strong></div>
-          <p>Herdr · api-refactor is waiting for a reply.</p>
-          <span class="reply">Reply</span>
-        </div>
+        <video src="img/preview.mp4" poster="img/preview-poster.jpg" autoplay muted loop playsinline aria-label="Hoshi running on an iPhone: picking a session, an agent working, and the Lock Screen"></video>
+      </div>
+      <div class="note" aria-label="Felipe's wish list">
+        <h4>my terminal wishes</h4>
+        <ul>
+          <li><svg aria-hidden="true"><use href="#star"/></svg>code I can read &amp; hack</li>
+          <li><svg aria-hidden="true"><use href="#star"/></svg>pay once, that's it</li>
+          <li><svg aria-hidden="true"><use href="#star"/></svg>mosh!!</li>
+          <li><svg aria-hidden="true"><use href="#star"/></svg>tmux, right away</li>
+          <li><svg aria-hidden="true"><use href="#star"/></svg>herdr too</li>
+          <li><svg aria-hidden="true"><use href="#star"/></svg>keys for each app</li>
+          <li><svg aria-hidden="true"><use href="#star"/></svg>…and my own keys</li>
+          <li><svg aria-hidden="true"><use href="#star"/></svg>arrows w/o arrow keys</li>
+          <li><svg aria-hidden="true"><use href="#star"/></svg>my themes + fonts</li>
+        </ul>
+        <span class="sig">— Felipe</span>
       </div>
     </div>
   </div>
 </header>
 
-<section id="features">
+<section id="wishes">
   <div class="wrap">
-    <p class="kicker">// features</p>
-    <h2>Built for checking in on agents, from anywhere.</h2>
-    <p class="section-lede">Everything is included. There are no Pro tiers and nothing behind a paywall.</p>
-
-    <div class="feature">
-      <div>
-        <h3>Your agents, at a glance.</h3>
-        <p>Hoshi attaches straight to your <a href="https://herdr.dev">Herdr</a> sessions and agents. See which ones are working, waiting, or done, and answer the one that needs you.</p>
-        <ul>
-          <li>Reply to an agent without leaving the app</li>
-          <li>Follow agent status on the Lock Screen and Dynamic Island with Live Activities</li>
-          <li>A local inbox for finished jobs and approval requests, with optional notifications</li>
-          <li>Approvals only open the terminal. Nothing runs without you.</li>
-        </ul>
-      </div>
-      <div class="feature-media"><div class="phone"><img src="img/agent-terminal.jpg" alt="A coding agent running in a Hoshi terminal session" loading="lazy"></div></div>
+    <div class="sec-head">
+      <h2>Nine wishes, <em>all granted.</em></h2>
+      <p>Every wish on that list is in the app today. Here's each one working.</p>
     </div>
 
-    <div class="feature flip">
-      <div>
-        <h3>Mosh that holds on.</h3>
-        <p>Hoshi speaks Mosh natively, written from scratch in Swift. Switch from Wi-Fi to cellular, lock your phone, ride the train, and your session is still there.</p>
-        <ul>
-          <li>Lost packets are resent, so keystrokes don't go missing</li>
-          <li>If mosh-server can't start, Hoshi tells you why and how to fix it, then falls back to SSH</li>
-          <li>Plain SSH with automatic reconnection when you prefer it</li>
-        </ul>
-      </div>
-      <div class="feature-media"><div class="phone"><img src="img/sessions.jpg" alt="The Hoshi server list with three active sessions" loading="lazy"></div></div>
-    </div>
+    <div class="wishes">
 
-    <div class="feature">
-      <div>
-        <h3>Straight back into tmux.</h3>
-        <p>Hoshi finds your tmux sessions when you connect and remembers which one you picked. Tap a server and you're back where you left off.</p>
-        <ul>
-          <li>See each session's windows, attached status, and recent activity</li>
-          <li>Create a named session or drop into a raw shell</li>
-          <li>Keep up to five servers open and swipe between them using live thumbnails</li>
-        </ul>
-      </div>
-      <div class="feature-media"><div class="phone"><img src="img/tmux-picker.jpg" alt="The tmux session picker listing sessions on a server" loading="lazy"></div></div>
-    </div>
+      <!-- 1 open source -->
+      <article class="wish">
+        <svg class="wish-star" aria-hidden="true"><use href="#star"/></svg>
+        <div class="wish-text">
+          <span class="wish-no">wish nº 1</span>
+          <p class="wish-quote">I could read the code, fix what bugs me, and send a PR.</p>
+          <span class="granted">Granted <span>✦</span></span>
+          <p class="body">Hoshi is <b>MIT-licensed on GitHub</b>. The Mosh client, the toolbar, the Herdr integration: it's all there to read. Found a bug? Open a pull request. Want a feature I didn't think of? Fork it and add it.</p>
+        </div>
+        <div class="wish-visual">
+          <div class="term">
+            <div class="term-bar"><i></i><i></i><i></i><span>~/code</span><button class="copy" type="button" id="copy-clone">copy</button></div>
+            <pre><span style="color:#565f89">$</span> git clone https://github.com/fcoury/hoshi
+<span style="color:#565f89">$</span> cd hoshi &amp;&amp; ./scripts/bootstrap.sh
+<span style="color:#9ece6a">✓</span> GhosttyKit built
+<span style="color:#9ece6a">✓</span> Hoshi.xcodeproj generated
+<span style="color:#565f89">$</span> open Hoshi/Hoshi.xcodeproj <span style="color:#e0af68">✦</span></pre>
+          </div>
+          <p class="caption">three commands from clone to Xcode</p>
+        </div>
+      </article>
 
-    <div class="feature flip">
-      <div>
-        <h3>A keyboard made for terminals.</h3>
-        <p>Rendered by <a href="https://ghostty.org">Ghostty</a> on Metal, so vim, htop, and agent TUIs look the way they do on your desktop, and typing feels just as direct.</p>
-        <ul>
-          <li>Hold the arrow key and drag for a joystick that moves in any direction</li>
-          <li>A toolbar that changes for the shell, tmux, and Herdr, with your own custom keys</li>
-          <li>Long-press to select, drag the handles, and copy. Risky pastes ask first.</li>
-        </ul>
-      </div>
-      <div class="feature-media"><div class="phone"><img src="img/editing.jpg" alt="Editing code in a Hoshi terminal with the keyboard toolbar" loading="lazy"></div></div>
-    </div>
+      <!-- 2 price -->
+      <article class="wish">
+        <svg class="wish-star" aria-hidden="true"><use href="#star"/></svg>
+        <div class="wish-text">
+          <span class="wish-no">wish nº 2</span>
+          <p class="wish-quote">I paid once and never saw a subscription screen.</p>
+          <span class="granted">Granted <span>✦</span></span>
+          <p class="body"><b>$4.99, one time.</b> Every feature is included and updates are free. The price exists to pay Apple's $99 yearly developer fee. Once that's covered, the price comes down. And you can always build it from source for free.</p>
+        </div>
+        <div class="wish-visual">
+          <div class="ticket" role="img" aria-label="Ticket: Hoshi, $4.99, admit one, good forever">
+            <div class="ticket-main">
+              <small>Admit one · Hoshi</small>
+              <strong>$4.99</strong>
+              <span>good forever, on iPhone &amp; iPad</span>
+            </div>
+            <div class="ticket-stub"><span>No subs ✦</span></div>
+          </div>
+          <div class="ledger" aria-label="Where the money goes">
+            <div><span>Apple Developer Program</span><span>$99 / year</span></div>
+            <div><span>What I keep after Apple's cut</span><span>≈ $4.24 / copy</span></div>
+            <div><span>Copies to cover a year</span><span>about 24</span></div>
+          </div>
+        </div>
+      </article>
 
-    <div class="mini-grid">
-      <div class="card">
-        <div class="icon">sftp://</div>
-        <h3>Files</h3>
-        <p>Browse your server's home directory, preview and share files, and upload documents or photos over a verified connection.</p>
-      </div>
-      <div class="card">
-        <div class="icon">mic</div>
-        <h3>Private voice prompts</h3>
-        <p>Dictate a prompt with on-device speech recognition and edit it before anything is sent. No audio is saved.</p>
-      </div>
-      <div class="card">
-        <div class="icon">iPad</div>
-        <h3>iPhone and iPad</h3>
-        <p>Every session gets its own terminal in iPad split view. Hoshi also runs on Apple Silicon Macs and Vision Pro.</p>
-      </div>
-      <div class="card">
-        <div class="icon">ssh-ed25519</div>
-        <h3>Keys and host trust</h3>
-        <p>Generate keys on the device and share only the public key. Hoshi asks before trusting a new server and keeps a Known Hosts list.</p>
-      </div>
-      <div class="card">
-        <div class="icon">Aa</div>
-        <h3>Fonts and themes</h3>
-        <p>More than 50 bundled Nerd Fonts and themes like Nord, Dracula, Tokyo Night, and Catppuccin.</p>
-      </div>
-      <div class="card">
-        <div class="icon">family</div>
-        <h3>Family Sharing</h3>
-        <p>One purchase covers up to six people in your family.</p>
-      </div>
+      <!-- 3 mosh -->
+      <article class="wish">
+        <svg class="wish-star" aria-hidden="true"><use href="#star"/></svg>
+        <div class="wish-text">
+          <span class="wish-no">wish nº 3</span>
+          <p class="wish-quote">my session survived the train tunnel.</p>
+          <span class="granted">Granted <span>✦</span></span>
+          <p class="body">Hoshi has <b>Mosh, written from scratch in Swift</b>. Switch from Wi-Fi to cellular, lock the phone, ride through a tunnel. When you come back, you're still there. If mosh-server can't start, Hoshi tells you why, shows you how to fix it, and falls back to SSH.</p>
+        </div>
+        <div class="wish-visual">
+          <div class="shot tilt-r"><img src="img/server-list.jpg" alt="Hoshi's server list with three active sessions, two over Mosh" loading="lazy"></div>
+          <p class="caption">three sessions, two over mosh</p>
+        </div>
+      </article>
+
+      <!-- 4 tmux -->
+      <article class="wish">
+        <svg class="wish-star" aria-hidden="true"><use href="#star"/></svg>
+        <div class="wish-text">
+          <span class="wish-no">wish nº 4</span>
+          <p class="wish-quote">it dropped me straight back into tmux.</p>
+          <span class="granted">Granted <span>✦</span></span>
+          <p class="body">Hoshi <b>finds your tmux sessions when you connect</b>, with their names, window counts and last activity. Pick one, or start a new one. It remembers your choice, so next time one tap gets you back where you were.</p>
+        </div>
+        <div class="wish-visual">
+          <div class="shot tilt-l"><img src="img/tmux-git.jpg" alt="tmux running inside Hoshi, showing the git log of Hoshi itself" loading="lazy"></div>
+          <p class="caption">Hoshi's own git log, in tmux, in Hoshi</p>
+        </div>
+      </article>
+
+      <!-- 5 herdr -->
+      <article class="wish">
+        <svg class="wish-star" aria-hidden="true"><use href="#star"/></svg>
+        <div class="wish-text">
+          <span class="wish-no">wish nº 5</span>
+          <p class="wish-quote">I could check on my agents from the couch.</p>
+          <span class="granted">Granted <span>✦</span></span>
+          <p class="body"><b>Herdr is built in.</b> Attach to a Herdr session, or jump straight to one agent's pane. See which agents are working, waiting or done, reply to one, and follow it on the Lock Screen. Hoshi even imports your server's Herdr keybindings.</p>
+        </div>
+        <div class="wish-visual">
+          <div class="shot tilt-r"><img src="img/codex.jpg" alt="Codex working in a Herdr pane inside Hoshi, searching the repo for how the Mosh client detects a silent server" loading="lazy"></div>
+          <p class="caption">real Codex, digging through Hoshi's Mosh code</p>
+        </div>
+      </article>
+
+      <!-- 6 per-app keys -->
+      <article class="wish">
+        <svg class="wish-star" aria-hidden="true"><use href="#star"/></svg>
+        <div class="wish-text">
+          <span class="wish-no">wish nº 6</span>
+          <p class="wish-quote">the keyboard knew what I was running.</p>
+          <span class="granted">Granted <span>✦</span></span>
+          <p class="body">The key bar <b>changes with the app on screen</b>. vim gets <code>:w</code> and <code>^R</code>. Claude Code gets <code>⇧Tab</code> and <code>@</code>. less gets <code>q</code>, <code>n</code> and <code>G</code>. Hoshi reads the terminal title and switches sets on its own. Try it.</p>
+        </div>
+        <div class="wish-visual">
+          <div class="keys-toy">
+            <div class="sets" role="group" aria-label="Pick what's running">
+              <button type="button" id="set-shell" data-set="shell" aria-pressed="false">Shell</button>
+              <button type="button" id="set-tmux" data-set="tmux" aria-pressed="false">tmux</button>
+              <button type="button" id="set-vim" data-set="vim" aria-pressed="true">vim</button>
+              <button type="button" id="set-agent" data-set="agent" aria-pressed="false">Claude Code</button>
+              <button type="button" id="set-pager" data-set="pager" aria-pressed="false">less</button>
+            </div>
+            <div class="screen">
+              <div class="screen-title"><span id="set-title">nvim MoshStateSync.swift</span><span id="set-name">Vim keys</span></div>
+              <div class="keyrow" id="set-keys" aria-live="polite"></div>
+            </div>
+            <p class="match" id="set-match"></p>
+          </div>
+        </div>
+      </article>
+
+      <!-- 7 custom keys -->
+      <article class="wish">
+        <svg class="wish-star" aria-hidden="true"><use href="#star"/></svg>
+        <div class="wish-text">
+          <span class="wish-no">wish nº 7</span>
+          <p class="wish-quote">I could add the keys I actually use.</p>
+          <span class="granted">Granted <span>✦</span></span>
+          <p class="body"><b>Add your own keys</b>, drag them where you want them, and build whole sets with their own match words and tmux-style prefix. If a command lives in your fingers, it can live on the bar.</p>
+        </div>
+        <div class="wish-visual">
+          <div class="keys-toy">
+            <div class="screen">
+              <div class="screen-title"><span>fcoury@devbox ~/hoshi</span><span>My keys</span></div>
+              <div class="keyrow" id="my-keys" aria-live="polite">
+                <span class="key">Esc</span><span class="key">Ctrl</span><span class="key">Tab</span><span class="key">↑</span><span class="key">↓</span>
+                <button class="key add" type="button" id="add-key">+ add</button>
+              </div>
+            </div>
+            <p class="match">tap <b>+ add</b> to make a wish of your own</p>
+          </div>
+        </div>
+      </article>
+
+      <!-- 8 navigation -->
+      <article class="wish">
+        <svg class="wish-star" aria-hidden="true"><use href="#star"/></svg>
+        <div class="wish-text">
+          <span class="wish-no">wish nº 8</span>
+          <p class="wish-quote">I had arrow keys without hunting for arrow keys.</p>
+          <span class="granted">Granted <span>✦</span></span>
+          <p class="body"><b>Long-press the arrow key</b> and it turns into a joystick. Drag in any direction and hold to keep moving. You can also swipe along the key bar. Tap to place the cursor in vim, pan to scroll, and pinch to resize the text.</p>
+        </div>
+        <div class="wish-visual">
+          <div class="shot tilt-l"><img src="img/joystick.jpg" alt="The arrow joystick open over vim in Hoshi" loading="lazy"></div>
+          <p class="caption">the joystick, steering through vim</p>
+        </div>
+      </article>
+
+      <!-- 9 themes -->
+      <article class="wish">
+        <svg class="wish-star" aria-hidden="true"><use href="#star"/></svg>
+        <div class="wish-text">
+          <span class="wish-no">wish nº 9</span>
+          <p class="wish-quote">it looked exactly like my desktop.</p>
+          <span class="granted">Granted <span>✦</span></span>
+          <p class="body">The terminal is drawn by <b>Ghostty on Metal</b>, so it looks crisp. Pick from <b>50+ bundled Nerd Fonts</b> and the themes you already use: Tokyo Night, Catppuccin, Gruvbox, Nord, Dracula and Solarized. Go ahead, try them on.</p>
+        </div>
+        <div class="wish-visual">
+          <div class="theme-toy" id="theme-toy">
+            <div class="chips" role="group" aria-label="Theme">
+              <button type="button" id="th-tokyo" data-t="tokyo" aria-pressed="true">Tokyo Night</button>
+              <button type="button" id="th-cat" data-t="cat" aria-pressed="false">Catppuccin</button>
+              <button type="button" id="th-gruv" data-t="gruv" aria-pressed="false">Gruvbox</button>
+              <button type="button" id="th-nord" data-t="nord" aria-pressed="false">Nord</button>
+              <button type="button" id="th-drac" data-t="drac" aria-pressed="false">Dracula</button>
+              <button type="button" id="th-sol" data-t="sol" aria-pressed="false">Solarized Light</button>
+            </div>
+            <div class="tt">
+              <pre><span class="c2">fcoury@devbox</span> <span class="c4">~/hoshi</span> <span class="c5">(master)</span>
+<span class="c3">❯</span> git log --oneline -3
+<span class="c3">414832e</span> feat(mosh): explain why it failed
+<span class="c3">4c30083</span> fix(mosh): stop a leftover server
+<span class="c3">b9ce2b1</span> fix(mosh): reliable SSP sender
+<span class="c3">❯</span> make test
+<span class="c2">✓</span> 692 passed  <span class="c8">1m53s</span>
+<span class="c3">❯</span> <span class="cur"> </span></pre>
+              <div class="tt-bar"><span id="tt-theme">Tokyo Night</span><span id="tt-font">JetBrains Mono</span></div>
+            </div>
+            <div class="chips fonts" role="group" aria-label="Font">
+              <button type="button" id="f-jb" data-f="'JetBrains Mono'" aria-pressed="true" style="--f:'JetBrains Mono'">JetBrains Mono</button>
+              <button type="button" id="f-fira" data-f="'Fira Code'" aria-pressed="false" style="--f:'Fira Code'">Fira Code</button>
+              <button type="button" id="f-geist" data-f="'Geist Mono'" aria-pressed="false" style="--f:'Geist Mono'">Geist Mono</button>
+              <button type="button" id="f-victor" data-f="'Victor Mono'" aria-pressed="false" style="--f:'Victor Mono'">Victor Mono</button>
+              <button type="button" id="f-scp" data-f="'Source Code Pro'" aria-pressed="false" style="--f:'Source Code Pro'">Source Code Pro</button>
+            </div>
+          </div>
+        </div>
+      </article>
+
     </div>
   </div>
 </section>
 
-<section id="compare">
+<section id="film">
   <div class="wrap">
-    <p class="kicker">// compare</p>
-    <h2>No paywalls. Here's how that compares.</h2>
-    <p class="section-lede">The features other terminals put behind a subscription are all part of Hoshi.</p>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th scope="col"></th>
-            <th scope="col" class="col-hoshi">Hoshi</th>
-            <th scope="col">Moshi</th>
-            <th scope="col">Termius</th>
-            <th scope="col">Blink Shell</th>
-            <th scope="col">VVTerm</th>
-            <th scope="col">Echo</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <th scope="row">Price</th>
-            <td class="col-hoshi">$4.99 once, everything included</td>
-            <td>Pro $69.99–89.99/yr, or $199–249 lifetime</td>
-            <td>Pro $119/yr</td>
-            <td>$19.99/yr</td>
-            <td>Pro $24.99/yr, or $49.99 lifetime</td>
-            <td>$2.99 once</td>
-          </tr>
-          <tr>
-            <th scope="row">Mosh</th>
-            <td class="col-hoshi"><span class="yes">Included</span></td>
-            <td class="pro">Pro</td>
-            <td><span class="yes">Included</span></td>
-            <td><span class="yes">Included</span></td>
-            <td><span class="yes">Included</span></td>
-            <td><span class="yes">Included</span></td>
-          </tr>
-          <tr>
-            <th scope="row">tmux and Herdr sessions</th>
-            <td class="col-hoshi"><span class="yes">Included</span></td>
-            <td class="pro">Pro</td>
-            <td class="none">Not listed</td>
-            <td class="none">Not listed</td>
-            <td><span class="yes">Session picker</span></td>
-            <td class="none">Not listed</td>
-          </tr>
-          <tr>
-            <th scope="row">Agent status, replies, Live Activities</th>
-            <td class="col-hoshi"><span class="yes">Included</span></td>
-            <td class="pro">5 free actions, then Pro</td>
-            <td class="none">No</td>
-            <td class="none">No</td>
-            <td class="none">Not listed</td>
-            <td class="none">Not listed</td>
-          </tr>
-          <tr>
-            <th scope="row">App Store privacy label</th>
-            <td class="col-hoshi"><span class="yes">Data Not Collected</span></td>
-            <td>Data not linked to you</td>
-            <td>Data linked to you</td>
-            <td>Data linked to you</td>
-            <td>Data not linked to you</td>
-            <td><span class="yes">Data Not Collected</span></td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="sec-head">
+      <h2>Watch them <em>come true.</em></h2>
+      <p>Ninety seconds, nine wishes, and the real app on a real server. No mockups.</p>
     </div>
-    <p class="table-note">From each app's App Store listing, website, and public repository, November 2026. "Not listed" means we couldn't find the feature documented. Prices are in US dollars and may vary by region.</p>
-  </div>
-</section>
-
-<section id="privacy">
-  <div class="wrap">
-    <p class="kicker">// privacy</p>
-    <h2>Your servers. Your keys. Nobody else's business.</h2>
-    <div class="privacy-grid">
-      <div class="card"><h3>No account</h3><p>Open the app and connect. There's nothing to sign up for.</p></div>
-      <div class="card"><h3>Direct connections</h3><p>Hoshi talks to your servers and nothing else. No relay, no cloud vault.</p></div>
-      <div class="card"><h3>Keys stay put</h3><p>Passwords and keys live in the iOS Keychain on your device.</p></div>
-      <div class="card"><h3>Data Not Collected</h3><p>No analytics, no tracking, no ads. That's the App Store label.</p></div>
+    <div class="film">
+      <video id="film-video" src="img/film.mp4" poster="img/film-poster.jpg" preload="metadata" playsinline aria-label="The Hoshi film: each of the nine wishes, shown in the app"></video>
+      <div class="film-inner" id="film-cover">
+        <button class="play" type="button" id="play-film" aria-label="Play the film">
+          <svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 5.5v13a1 1 0 0 0 1.5.9l10.4-6.5a1 1 0 0 0 0-1.8L9.5 4.6A1 1 0 0 0 8 5.5z"/></svg>
+        </button>
+        <p class="film-note">1:34 · no sound needed</p>
+      </div>
+    </div>
+    <div class="chapters" id="film-chapters">
+        <button type="button" data-t="2.4" data-l="source" aria-label="Wish 1: source"><svg width="14" height="14" aria-hidden="true"><use href="#star"/></svg></button>
+        <button type="button" data-t="12.6" data-l="$4.99" aria-label="Wish 2: $4.99"><svg width="14" height="14" aria-hidden="true"><use href="#star"/></svg></button>
+        <button type="button" data-t="15.6" data-l="mosh" aria-label="Wish 3: mosh"><svg width="14" height="14" aria-hidden="true"><use href="#star"/></svg></button>
+        <button type="button" data-t="29.0" data-l="tmux" aria-label="Wish 4: tmux"><svg width="14" height="14" aria-hidden="true"><use href="#star"/></svg></button>
+        <button type="button" data-t="35.5" data-l="herdr" aria-label="Wish 5: herdr"><svg width="14" height="14" aria-hidden="true"><use href="#star"/></svg></button>
+        <button type="button" data-t="46.2" data-l="app keys" aria-label="Wish 6: app keys"><svg width="14" height="14" aria-hidden="true"><use href="#star"/></svg></button>
+        <button type="button" data-t="57.9" data-l="my keys" aria-label="Wish 7: my keys"><svg width="14" height="14" aria-hidden="true"><use href="#star"/></svg></button>
+        <button type="button" data-t="70.8" data-l="joystick" aria-label="Wish 8: joystick"><svg width="14" height="14" aria-hidden="true"><use href="#star"/></svg></button>
+        <button type="button" data-t="79.8" data-l="themes" aria-label="Wish 9: themes"><svg width="14" height="14" aria-hidden="true"><use href="#star"/></svg></button>
     </div>
   </div>
 </section>
 
 <section id="faq">
   <div class="wrap">
-    <p class="kicker">// faq</p>
-    <h2>Questions</h2>
+    <div class="sec-head">
+      <h2>The small print, <em>written big.</em></h2>
+    </div>
     <div class="faq">
-      <details>
-        <summary>Is there a subscription?</summary>
-        <p>No. Hoshi is $4.99 once, and every feature is included: Mosh, tmux, Herdr, Live Activities, SFTP, and voice. Updates are free.</p>
-      </details>
-      <details>
-        <summary>What do I need on my server?</summary>
-        <p>Just SSH. For Mosh, install mosh-server (for example with your package manager or <span class="mono">brew install mosh</span>). tmux and Herdr are optional, and Hoshi detects them when you connect.</p>
-      </details>
-      <details>
-        <summary>What is Herdr?</summary>
-        <p><a href="https://herdr.dev">Herdr</a> is an agent multiplexer that runs in your terminal. Hoshi can attach to a Herdr session or jump to a single agent, show what each agent is doing, and let you reply.</p>
-      </details>
-      <details>
-        <summary>Does Hoshi collect any data?</summary>
-        <p>No. There's no account, analytics, advertising, or tracking. Credentials stay in the iOS Keychain, and voice prompts are transcribed on the device. See the <a href="privacy.html">privacy policy</a>.</p>
-      </details>
-      <details>
-        <summary>Does it work on iPad and Mac?</summary>
-        <p>Hoshi is built for iPhone and iPad, with a separate terminal for each session in iPad split view. It also runs on Apple Silicon Macs and Vision Pro as the iPad app.</p>
-      </details>
-      <details>
-        <summary>Can my family use my purchase?</summary>
-        <p>Yes. Hoshi supports Family Sharing, so one purchase covers up to six people.</p>
-      </details>
-      <details>
-        <summary>Where do I report a bug or ask for a feature?</summary>
-        <p>Open an issue on <a href="https://github.com/fcoury/hoshi/issues">GitHub</a>. Leaving a rating on the App Store helps too.</p>
-      </details>
+      <div><h3>Is there a subscription?</h3><p>No. $4.99 once gets you every feature on this page and every update after it.</p></div>
+      <div><h3>Why charge at all if it's open source?</h3><p>Apple charges $99 a year to publish on the App Store. The price covers that. Once it's covered, the price goes down.</p></div>
+      <div><h3>Can I really build it myself?</h3><p>Yes. Clone the repo, run <code>./scripts/bootstrap.sh</code>, and open it in Xcode. You'll need a Mac and a free Apple ID to run it on your phone.</p></div>
+      <div><h3>Does it collect anything?</h3><p>No account, no analytics, no ads. Credentials stay in the iOS Keychain, and Hoshi only talks to your servers.</p></div>
+      <div><h3>Does it work on iPad?</h3><p>Yes. Every session gets its own terminal in split view, and hardware keyboards work as you'd expect.</p></div>
+      <div><h3>I have a wish you didn't list.</h3><p>Open an issue on GitHub, or better, send the pull request. That's what wish nº 1 is for.</p></div>
     </div>
   </div>
 </section>
 
-<section class="final">
+<section class="dawn">
   <div class="wrap">
-    <img class="icon-lg" src="img/icon.png" alt="Hoshi app icon">
-    <h2>Your agents, in your pocket.</h2>
-    <div class="cta-row">
-      <a class="badge-store" href="https://apps.apple.com/app/id6760631255">
-        <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store">
-      </a>
+    <svg width="44" height="44" style="color:var(--star)" aria-hidden="true"><use href="#sparkle"/></svg>
+    <h2>Go on, <em>make a wish.</em></h2>
+    <p>Hoshi is on the App Store for iPhone and iPad. The source is on GitHub for everyone.</p>
+    <div class="ctas" style="justify-content:center">
+      <a class="btn btn-star" href="https://apps.apple.com/app/id6760631255"><svg width="18" height="18" aria-hidden="true"><use href="#star"/></svg> Get Hoshi for $4.99</a>
+      <a class="btn btn-ghost" href="https://github.com/fcoury/hoshi">Star it on GitHub</a>
     </div>
   </div>
+  <footer>
+    <div class="wrap">
+      <span>Hoshi 星 · made by Felipe Coury, for himself first</span>
+      <span><a href="https://github.com/fcoury/hoshi">GitHub</a> · <a href="privacy.html">Privacy</a> · MIT License</span>
+    </div>
+  </footer>
 </section>
 
-<footer>
-  <div class="wrap">
-    <a class="brand" href="#top"><img src="img/icon.png" alt="">Hoshi</a>
-    <a href="https://github.com/fcoury/hoshi">GitHub</a>
-    <a href="privacy.html">Privacy</a>
-    <a href="https://github.com/fcoury/hoshi/issues">Support</a>
-    <span class="spacer">Hoshi (星) means "star" in Japanese.</span>
-  </div>
-</footer>
+</div>
 
+<script>
+(function () {
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* starfield */
+  var c = document.getElementById('sky'), ctx = c.getContext('2d'), stars = [], dpr = Math.min(window.devicePixelRatio || 1, 2);
+  function size() {
+    c.width = innerWidth * dpr; c.height = innerHeight * dpr;
+    var n = Math.round(innerWidth * innerHeight / 5200);
+    stars = [];
+    for (var i = 0; i < n; i++) stars.push({ x: Math.random() * c.width, y: Math.random() * c.height, r: (Math.random() * 1.1 + 0.25) * dpr, p: Math.random() * 6.28, s: Math.random() * 0.02 + 0.004, warm: Math.random() < 0.18 });
+    draw(0);
+  }
+  function draw(t) {
+    ctx.clearRect(0, 0, c.width, c.height);
+    for (var i = 0; i < stars.length; i++) {
+      var s = stars[i], a = 0.35 + 0.65 * Math.abs(Math.sin(s.p + t * s.s));
+      ctx.globalAlpha = reduce ? 0.7 : a;
+      ctx.fillStyle = s.warm ? '#ffdf8a' : '#dfe4ff';
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.283); ctx.fill();
+    }
+  }
+  var frame = 0;
+  function loop() { frame++; draw(frame); requestAnimationFrame(loop); }
+  addEventListener('resize', size);
+  size();
+  if (!reduce) requestAnimationFrame(loop);
+
+  /* copy clone */
+  var copyBtn = document.getElementById('copy-clone');
+  copyBtn.addEventListener('click', function () {
+    var text = 'git clone https://github.com/fcoury/hoshi';
+    var done = function () { copyBtn.textContent = 'copied ✦'; setTimeout(function () { copyBtn.textContent = 'copy'; }, 1600); };
+    try { navigator.clipboard.writeText(text).then(done, function () { copyBtn.textContent = 'select it ↓'; }); } catch (e) { copyBtn.textContent = 'select it ↓'; }
+  });
+
+  /* key sets (defaults from KeyProfile.swift) */
+  var sets = {
+    shell: { title: 'fcoury@devbox ~/hoshi', name: 'Shell keys', match: 'the default set, for everything else', keys: ['Esc', 'Ctrl', 'Opt', 'Tab', '↑', '↓', '←', '→', '/', '-', '|', '^C', 'Paste', 'File', 'Mic'] },
+    tmux: { title: 'tmux · hoshi:1 git', name: 'tmux keys', match: 'switches when the title says tmux · prefix ^B', keys: ['Esc', 'Ctrl', 'Pfx', 'New', '‹Win', 'Win›', 'Split|', 'Split—', 'Zoom', 'Copy', 'Detach', '↑', '↓', '←', '→', '^C', 'Paste'] },
+    vim: { title: 'nvim MoshStateSync.swift', name: 'Vim keys', match: 'switches on vim · nvim · vi · hx · helix', keys: ['Esc', ':', '/', ':w', ':q', 'u', '^R', '^D', '^U', '↑', '↓', '←', '→', 'Ctrl', 'Paste'] },
+    agent: { title: 'claude · ~/hoshi', name: 'Coding Agent keys', match: 'switches on claude · codex · opencode · gemini · aider · amp …', keys: ['Esc', '⇧Tab', '^C', '/', '@', '↑', '↓', '⌥⏎', 'Paste', 'File', 'Mic'] },
+    pager: { title: 'less CHANGELOG.md', name: 'Pager keys', match: 'switches on less · man · htop · btop · journalctl', keys: ['q', '/', 'n', 'N', 'g', 'G', 'PgUp', 'PgDn', 'Space', '↑', '↓'] }
+  };
+  var setBtns = document.querySelectorAll('.sets button');
+  function showSet(id) {
+    var s = sets[id], row = document.getElementById('set-keys');
+    row.innerHTML = '';
+    s.keys.forEach(function (k, i) { var el = document.createElement('span'); el.className = 'key'; el.textContent = k; el.style.animationDelay = (i * 25) + 'ms'; row.appendChild(el); });
+    document.getElementById('set-title').textContent = s.title;
+    document.getElementById('set-name').textContent = s.name;
+    document.getElementById('set-match').textContent = s.match;
+    setBtns.forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.set === id ? 'true' : 'false'); });
+  }
+  setBtns.forEach(function (b) { b.addEventListener('click', function () { showSet(b.dataset.set); }); });
+  showSet('vim');
+
+  /* custom keys */
+  var wishes = ['git st', '^R', 'make test', 'kubectl get po', ':Telescope', 'cargo run', 'npm run dev', 'htop', '⌥←', 'ssh prod'];
+  var wi = 0, addBtn = document.getElementById('add-key');
+  addBtn.addEventListener('click', function () {
+    var el = document.createElement('span'); el.className = 'key mine'; el.textContent = wishes[wi % wishes.length]; wi++;
+    addBtn.parentNode.insertBefore(el, addBtn);
+    var row = document.getElementById('my-keys'); row.scrollLeft = row.scrollWidth;
+  });
+
+  /* themes (colors from TerminalTheme.swift) */
+  var themes = {
+    tokyo: { name: 'Tokyo Night', bg: '#1a1b26', fg: '#a9b1d6', 1: '#f7768e', 2: '#9ece6a', 3: '#e0af68', 4: '#7aa2f7', 5: '#bb9af7', 8: '#565f89', cur: '#c0caf5' },
+    cat: { name: 'Catppuccin Mocha', bg: '#1e1e2e', fg: '#cdd6f4', 1: '#f38ba8', 2: '#a6e3a1', 3: '#f9e2af', 4: '#89b4fa', 5: '#f5c2e7', 8: '#7f849c', cur: '#f5e0dc' },
+    gruv: { name: 'Gruvbox Dark', bg: '#282828', fg: '#ebdbb2', 1: '#fb4934', 2: '#b8bb26', 3: '#fabd2f', 4: '#83a598', 5: '#d3869b', 8: '#928374', cur: '#ebdbb2' },
+    nord: { name: 'Nord', bg: '#2e3440', fg: '#d8dee9', 1: '#bf616a', 2: '#a3be8c', 3: '#ebcb8b', 4: '#81a1c1', 5: '#b48ead', 8: '#616e88', cur: '#88c0d0' },
+    drac: { name: 'Dracula', bg: '#282a36', fg: '#f8f8f2', 1: '#ff5555', 2: '#50fa7b', 3: '#f1fa8c', 4: '#bd93f9', 5: '#ff79c6', 8: '#6272a4', cur: '#f8f8f2' },
+    sol: { name: 'Solarized Light', bg: '#fdf6e3', fg: '#657b83', 1: '#dc322f', 2: '#859900', 3: '#b58900', 4: '#268bd2', 5: '#d33682', 8: '#93a1a1', cur: '#586e75' }
+  };
+  var toy = document.getElementById('theme-toy');
+  function applyTheme(id) {
+    var t = themes[id];
+    toy.style.setProperty('--t-bg', t.bg); toy.style.setProperty('--t-fg', t.fg); toy.style.setProperty('--t-cur', t.cur);
+    [1, 2, 3, 4, 5, 8].forEach(function (n) { toy.style.setProperty('--t-' + n, t[n]); });
+    document.getElementById('tt-theme').textContent = t.name;
+    toy.querySelectorAll('[data-t]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.t === id ? 'true' : 'false'); });
+  }
+  toy.querySelectorAll('[data-t]').forEach(function (b) { b.addEventListener('click', function () { applyTheme(b.dataset.t); }); });
+  toy.querySelectorAll('[data-f]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      toy.style.setProperty('--t-font', b.dataset.f + ', ui-monospace, monospace');
+      document.getElementById('tt-font').textContent = b.textContent;
+      toy.querySelectorAll('[data-f]').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+    });
+  });
+  applyTheme('tokyo');
+
+  /* film */
+  var film = document.getElementById('film-video');
+  var marks = [].slice.call(document.querySelectorAll('#film-chapters button'));
+  function playFilm(t) {
+    film.parentNode.classList.add('playing');
+    film.controls = true;
+    if (t != null) film.currentTime = t;
+    film.play();
+  }
+  document.getElementById('play-film').addEventListener('click', function () { playFilm(); });
+  marks.forEach(function (b) {
+    b.addEventListener('click', function () { playFilm(parseFloat(b.dataset.t)); });
+  });
+  film.addEventListener('timeupdate', function () {
+    var on = null;
+    marks.forEach(function (b) { if (film.currentTime >= parseFloat(b.dataset.t) - 0.2) on = b; });
+    marks.forEach(function (b) { b.classList.toggle('on', b === on); });
+  });
+})();
+</script>
 </body>
 </html>

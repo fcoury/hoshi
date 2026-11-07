@@ -9,12 +9,14 @@ import { IPHONE_SLIDES } from "@/slides/iphone";
 import { IPAD_SLIDES } from "@/slides/ipad";
 import { PREVIEW_CARDS } from "@/slides/preview";
 import { SOCIAL_CARDS } from "@/slides/social";
+import { FILM_STAGES } from "@/slides/film";
 
 const SETS: Record<Device, readonly { id: string; C: () => React.JSX.Element }[]> = {
   iphone: IPHONE_SLIDES,
   ipad: IPAD_SLIDES,
   preview: PREVIEW_CARDS,
   social: SOCIAL_CARDS,
+  film: FILM_STAGES,
 };
 
 export default function Page() {
@@ -48,7 +50,7 @@ function Gallery() {
       {(Object.keys(SETS) as Device[]).map((device) => (
         <section key={device} style={{ marginBottom: 48 }}>
           <h2 style={{ fontSize: 15, fontWeight: 600, opacity: 0.7, marginBottom: 14 }}>
-            {{ iphone: "iPhone 6.9″ (1320×2868)", ipad: "iPad 13″ (2064×2752)", preview: "App Preview cards (886×1920)" }[device]}
+            {{ iphone: "iPhone 6.9″ (1320×2868)", ipad: "iPad 13″ (2064×2752)", preview: "App Preview cards (886×1920)", social: "Social card (1200×630)", film: "Website film stages (1920×1080)" }[device]}
           </h2>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 20 }}>
             {SETS[device].map((s, i) => (
@@ -63,7 +65,7 @@ function Gallery() {
 
 function Thumb({ device, index, id, C }: { device: Device; index: number; id: string; C: () => React.JSX.Element }) {
   const { w, h } = CANVAS[device];
-  const width = device === "ipad" ? 300 : 220;
+  const width = device === "ipad" ? 300 : device === "social" || device === "film" ? 420 : 220;
   const scale = width / w;
   return (
     <a href={`?export=${device}/${id}`} style={{ textDecoration: "none", color: "inherit" }}>

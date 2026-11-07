@@ -79,6 +79,24 @@ app_defaults() {
     "${d[@]}" delete "$BUNDLE_ID" com.hoshi.appearance.fontFamily 2>/dev/null || true
   fi
   "${d[@]}" write "$BUNDLE_ID" com.hoshi.terminal.autoHideHeader -bool false
+  # Key sets and theme live in the app container's plist, which the bundle-ID
+  # domain above doesn't reach for these keys: address it by path, app quit.
+  xcrun simctl terminate "$udid" "$BUNDLE_ID" 2>/dev/null || true
+  local c; c="$(xcrun simctl get_app_container "$udid" "$BUNDLE_ID" data)/Library/Preferences/$BUNDLE_ID"
+  # Key sets start from the built-ins, or from a seed (SHOTS_KEY_SETS=path to
+  # the JSON Hoshi stores, e.g. scripts/screenshots/seeds/key-sets-git-st.json).
+  "${d[@]}" delete "$c" com.hoshi.toolbar.buttons 2>/dev/null || true
+  if [ -n "${SHOTS_KEY_SETS:-}" ]; then
+    "${d[@]}" write "$c" com.hoshi.keyProfiles.v1 -data "$(xxd -p "$SHOTS_KEY_SETS" | tr -d '\n')"
+  else
+    "${d[@]}" delete "$c" com.hoshi.keyProfiles.v1 2>/dev/null || true
+  fi
+  # Theme: SHOTS_THEME (a theme ID), else the app default.
+  if [ -n "${SHOTS_THEME:-}" ]; then
+    "${d[@]}" write "$c" com.hoshi.appearance.themeID "$SHOTS_THEME"
+  else
+    "${d[@]}" delete "$c" com.hoshi.appearance.themeID 2>/dev/null || true
+  fi
 }
 
 # Servers + passwords + pinned host keys, as base64 JSON for ScreenshotSeed.

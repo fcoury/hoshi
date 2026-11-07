@@ -25,6 +25,8 @@ export const CANVAS = {
   preview: { w: 886, h: 1920 },
   // gethoshi.app social card (og:image).
   social: { w: 1200, h: 630 },
+  // gethoshi.app film stages.
+  film: { w: 1920, h: 1080 },
 } as const;
 
 export type Device = keyof typeof CANVAS;

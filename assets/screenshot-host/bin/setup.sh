@@ -33,6 +33,8 @@ session() {
 
 case "$role" in
 devbox)
+  # Takes commit to ~/hoshi on camera; start every run from the clone's state.
+  git -C "$HOME/hoshi" checkout -q master && git -C "$HOME/hoshi" reset -q --hard origin/master
   session hoshi "clear; git --no-pager log --no-merges --color=always --format='%C(yellow)%h%C(reset) %<(23,trunc)%s' -16; echo; git status -sb" "$HOME/hoshi" git
   tmux new-window -t hoshi -n tests -c "$HOME/hoshi"
   tmux new-window -t hoshi -n vim -c "$HOME/hoshi" "vim -c '/func serverIsSilent' -c 'normal! zt' -c 'nohlsearch' Hoshi/Hoshi/Services/Mosh/MoshStateSync.swift"
