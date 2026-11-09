@@ -124,21 +124,21 @@ jobs:
         run: |
           ghostty_sha="$(git rev-parse HEAD:vendor/ghostty)"
           libxev_sha="$(git rev-parse HEAD:vendor/libxev)"
-          notes="$(cat <<EOF
+          xcode_version="$(xcodebuild -version | tr '\n' ' ')"
+          cat > dist/notes.md <<EOF
           Prebuilt GhosttyKit.xcframework for Hoshi contributors, built by this workflow from:
 
           - vendor/ghostty: \`${ghostty_sha}\`
           - vendor/libxev: \`${libxev_sha}\`
-          - Xcode: $(xcodebuild -version | tr '\n' ' ')
+          - Xcode: ${xcode_version}
 
-          You don't need to download this by hand. \`./scripts/bootstrap.sh --prebuilt\` fetches it and checks its SHA-256.
+          You do not need to download this by hand: \`./scripts/bootstrap.sh --prebuilt\` fetches it and checks its SHA-256.
           To verify its build provenance: \`gh attestation verify GhosttyKit.xcframework.zip --repo ${GITHUB_REPOSITORY}\`
           EOF
-          )"
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
             --title "$TAG" \
-            --notes "$notes" \
+            --notes-file dist/notes.md \
             --prerelease \
             --latest=false \
             dist/GhosttyKit.xcframework.zip \
