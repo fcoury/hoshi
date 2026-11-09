@@ -11,7 +11,6 @@ on:
   push:
     branches:
       - master
-      - chore/launch-prep # TEMP: remove before merge
     paths:
       - vendor/**
       - scripts/build-ghosttykit.sh
