@@ -1,0 +1,145 @@
+name: GhosttyKit
+
+# Publishes a prebuilt GhosttyKit.xcframework as a GitHub release so that
+# contributors can run `./scripts/bootstrap.sh --prebuilt` without installing
+# Zig or the Metal toolchain. The release tag comes from
+# scripts/ghosttykit-key.sh, so a new one is published only when the vendored
+# sources or the build scripts change.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - chore/launch-prep # TEMP: remove before merge
+    paths:
+      - vendor/**
+      - scripts/build-ghosttykit.sh
+      - scripts/ghostty-libtool.sh
+      - scripts/ghosttykit-key.sh
+      - .github/workflows/ghosttykit.yml
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: ghosttykit
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Compute release tag
+        id: tag
+        run: echo "tag=$(./scripts/ghosttykit-key.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Check for an existing release
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.tag.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${{ steps.tag.outputs.tag }} already exists; nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install build tools
+        if: steps.existing.outputs.exists != 'true'
+        run: brew install zig@0.15 ripgrep
+
+      - name: Install Metal shader toolchain when required
+        if: steps.existing.outputs.exists != 'true'
+        run: |
+          if ! xcrun --sdk iphoneos metal -v >/dev/null 2>&1; then
+            metal_build="$(
+              xcodebuild -showComponent MetalToolchain -json \
+                | plutil -extract buildVersion raw -
+            )"
+            xcodebuild -downloadComponent MetalToolchain -buildVersion "$metal_build"
+          fi
+
+      # Same key as the CI workflow, so a framework CI already built is reused.
+      - name: Compute GhosttyKit cache key
+        if: steps.existing.outputs.exists != 'true'
+        id: cache-key
+        run: |
+          ghostty_sha="$(git rev-parse HEAD:vendor/ghostty)"
+          libxev_sha="$(git rev-parse HEAD:vendor/libxev)"
+          zig_version="$("$(brew --prefix zig@0.15)/bin/zig" version)"
+          xcode_build="$(xcodebuild -version | awk '/Build version/ { print $3 }')"
+          scripts_hash="$(
+            cat scripts/build-ghosttykit.sh scripts/ghostty-libtool.sh \
+              | shasum -a 256 | cut -c1-16
+          )"
+          echo "key=ghosttykit-v1-${RUNNER_OS}-${RUNNER_ARCH}-xcode${xcode_build}-zig${zig_version}-${ghostty_sha}-${libxev_sha}-${scripts_hash}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore cached GhosttyKit
+        if: steps.existing.outputs.exists != 'true'
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: vendor/ghostty/macos/GhosttyKit.xcframework
+          key: ${{ steps.cache-key.outputs.key }}
+
+      - name: Build and verify GhosttyKit
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          HOSHI_GHOSTTYKIT_PREBUILT: ${{ steps.cache.outputs.cache-hit == 'true' }}
+        run: ./scripts/build-ghosttykit.sh
+
+      - name: Package the framework
+        if: steps.existing.outputs.exists != 'true'
+        run: |
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent \
+            vendor/ghostty/macos/GhosttyKit.xcframework \
+            dist/GhosttyKit.xcframework.zip
+          (cd dist && shasum -a 256 GhosttyKit.xcframework.zip > GhosttyKit.xcframework.zip.sha256)
+          cat dist/GhosttyKit.xcframework.zip.sha256
+          ls -lh dist
+
+      - name: Attest build provenance
+        if: steps.existing.outputs.exists != 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/GhosttyKit.xcframework.zip
+
+      - name: Publish release
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          ghostty_sha="$(git rev-parse HEAD:vendor/ghostty)"
+          libxev_sha="$(git rev-parse HEAD:vendor/libxev)"
+          notes="$(cat <<EOF
+          Prebuilt GhosttyKit.xcframework for Hoshi contributors, built by this workflow from:
+
+          - vendor/ghostty: \`${ghostty_sha}\`
+          - vendor/libxev: \`${libxev_sha}\`
+          - Xcode: $(xcodebuild -version | tr '\n' ' ')
+
+          You don't need to download this by hand. \`./scripts/bootstrap.sh --prebuilt\` fetches it and checks its SHA-256.
+          To verify its build provenance: \`gh attestation verify GhosttyKit.xcframework.zip --repo ${GITHUB_REPOSITORY}\`
+          EOF
+          )"
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --notes "$notes" \
+            --prerelease \
+            --latest=false \
+            dist/GhosttyKit.xcframework.zip \
+            dist/GhosttyKit.xcframework.zip.sha256
