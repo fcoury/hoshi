@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions and ideas
+    url: https://github.com/fcoury/hoshi/discussions
+    about: Ask a question or talk an idea through in GitHub Discussions.

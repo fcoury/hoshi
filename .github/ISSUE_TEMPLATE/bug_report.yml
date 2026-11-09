@@ -1,0 +1,75 @@
+name: Bug report
+description: Something in Hoshi is broken or behaves unexpectedly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. Please leave out hostnames, usernames, keys, tokens, and anything else private.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+      placeholder: |
+        1. Connect to a server over Mosh
+        2. Attach to a tmux session
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: hoshi-version
+    attributes:
+      label: Hoshi version
+      description: App Store or TestFlight version and build, or the commit if you built it yourself.
+      placeholder: 1.2.0 (6)
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      placeholder: iPhone 16 Pro, iPad Air (M2), Simulator, ...
+    validations:
+      required: true
+  - type: input
+    id: ios-version
+    attributes:
+      label: iOS / iPadOS version
+      placeholder: "26.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection type
+      options:
+        - SSH
+        - Mosh
+        - Mosh that fell back to SSH
+        - Not connection related
+    validations:
+      required: true
+  - type: checkboxes
+    id: multiplexer
+    attributes:
+      label: Running inside
+      options:
+        - label: tmux
+        - label: Herdr
+  - type: input
+    id: server-os
+    attributes:
+      label: Server OS
+      placeholder: Ubuntu 24.04, macOS 15, Debian 12, ...
+  - type: input
+    id: mosh-version
+    attributes:
+      label: mosh-server version
+      description: Output of `mosh-server --version` on the server, if you use Mosh.
+      placeholder: "1.4.0"
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, screen recordings, the error Hoshi showed, network conditions (Wi-Fi, cellular, VPN), or the program you were running.
