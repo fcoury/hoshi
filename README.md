@@ -91,7 +91,19 @@ The Mosh client is implemented from scratch in Swift, covering the UDP transport
 
 ## Building
 
-Hoshi requires a full Xcode installation with the iOS SDK, plus
+The quickest way to build Hoshi needs only Xcode, [XcodeGen](https://github.com/yonaskolb/XcodeGen), and ripgrep. It downloads a GhosttyKit framework that this repository's CI built and published:
+
+```bash
+brew install xcodegen ripgrep
+./scripts/bootstrap.sh --prebuilt
+open Hoshi/Hoshi.xcodeproj
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) to send changes back, and [AGENTS.md](AGENTS.md) for the build, test, and code map in detail.
+
+### Building GhosttyKit yourself
+
+If you change `vendor/ghostty`, `vendor/libxev`, or the GhosttyKit build scripts, build the framework locally. Hoshi requires a full Xcode installation with the iOS SDK, plus
 [XcodeGen](https://github.com/yonaskolb/XcodeGen), Zig 0.15.2, and
 ripgrep. Its generated Ghostty framework is not committed, so initialize the
 submodules and build the framework before opening the project.

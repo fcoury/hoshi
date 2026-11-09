@@ -352,7 +352,7 @@ footer a { text-decoration: none; } footer a:hover { text-decoration: underline;
           <span class="wish-no">wish nº 2</span>
           <p class="wish-quote">I paid once and never saw a subscription screen.</p>
           <span class="granted">Granted <span>✦</span></span>
-          <p class="body"><b>$4.99, one time.</b> Every feature is included and updates are free. The price exists to pay Apple's $99 yearly developer fee. Once that's covered, the price comes down. And you can always build it from source for free.</p>
+          <p class="body"><b>$4.99, one time.</b> Every feature is included and updates are free. The price exists to pay Apple's $99 yearly developer fee. Once that's covered, it drops to $1.99. And you can always build it from source for free.</p>
         </div>
         <div class="wish-visual">
           <div class="ticket" role="img" aria-label="Ticket: Hoshi, $4.99, admit one, good forever">
@@ -530,7 +530,7 @@ footer a { text-decoration: none; } footer a:hover { text-decoration: underline;
   <div class="wrap">
     <div class="sec-head">
       <h2>Watch them <em>come true.</em></h2>
-      <p>Ninety seconds, nine wishes, and the real app on a real server. No mockups.</p>
+      <p>A minute and a half, nine wishes, and the real app on a real server. No mockups.</p>
     </div>
     <div class="film">
       <video id="film-video" src="img/film.mp4" poster="img/film-poster.jpg" preload="metadata" playsinline aria-label="The Hoshi film: each of the nine wishes, shown in the app"></video>
@@ -562,9 +562,11 @@ footer a { text-decoration: none; } footer a:hover { text-decoration: underline;
     </div>
     <div class="faq">
       <div><h3>Is there a subscription?</h3><p>No. $4.99 once gets you every feature on this page and every update after it.</p></div>
-      <div><h3>Why charge at all if it's open source?</h3><p>Apple charges $99 a year to publish on the App Store. The price covers that. Once it's covered, the price goes down.</p></div>
-      <div><h3>Can I really build it myself?</h3><p>Yes. Clone the repo, run <code>./scripts/bootstrap.sh</code>, and open it in Xcode. You'll need a Mac and a free Apple ID to run it on your phone.</p></div>
+      <div><h3>Why charge at all if it's open source?</h3><p>Apple charges $99 a year to publish on the App Store. The price covers that. Once it's covered, it drops to $1.99 for good.</p></div>
+      <div><h3>Can I really build it myself?</h3><p>Yes. Clone the repo, run <code>./scripts/bootstrap.sh --prebuilt</code>, and open it in Xcode. You'll need a Mac and a free Apple ID to run it on your phone.</p></div>
       <div><h3>Does it collect anything?</h3><p>No account, no analytics, no ads. Credentials stay in the iOS Keychain, and Hoshi only talks to your servers.</p></div>
+      <div><h3>What do I need?</h3><p>An iPhone or iPad on iOS 18 or later, and a server you can reach over SSH. Mosh is optional; if mosh-server isn't there, Hoshi tells you and uses SSH.</p></div>
+      <div><h3>Can it tell me when an agent is done?</h3><p>Yes. Herdr agents show up as working, waiting, or done, on the Lock Screen too. For other setups there's an optional companion script you run on your own server. <a href="https://github.com/fcoury/hoshi/blob/master/docs/agent-events.md">Here's how.</a></p></div>
       <div><h3>Does it work on iPad?</h3><p>Yes. Every session gets its own terminal in split view, and hardware keyboards work as you'd expect.</p></div>
       <div><h3>I have a wish you didn't list.</h3><p>Open an issue on GitHub, or better, send the pull request. That's what wish nº 1 is for.</p></div>
     </div>
@@ -584,7 +586,7 @@ footer a { text-decoration: none; } footer a:hover { text-decoration: underline;
   <footer>
     <div class="wrap">
       <span>Hoshi 星 · made by Felipe Coury, for himself first</span>
-      <span><a href="https://github.com/fcoury/hoshi">GitHub</a> · <a href="privacy.html">Privacy</a> · MIT License</span>
+      <span><a href="https://github.com/fcoury/hoshi">GitHub</a> · <a href="privacy.html">Privacy</a> · <a href="https://github.com/fcoury/hoshi/blob/master/LICENSE">MIT License</a></span>
     </div>
   </footer>
 </section>
