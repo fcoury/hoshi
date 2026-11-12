@@ -87,7 +87,8 @@ struct TerminalTheme: Identifiable, Equatable {
 
     // All built-in themes
     static let allThemes: [TerminalTheme] = [
-        .nord, .dracula, .solarizedDark, .solarizedLight, .gruvboxDark, .tokyoNight, .catppuccinMocha
+        .nord, .dracula, .solarizedDark, .solarizedLight, .gruvboxDark, .tokyoNight, .catppuccinMocha,
+        .rosePine
     ]
 
     static func theme(for id: String) -> TerminalTheme {
@@ -212,6 +213,26 @@ extension TerminalTheme {
         cursorText: c(0x1A, 0x1B, 0x26),
         selectionBackground: c(0x28, 0x2E, 0x44),
         selectionForeground: c(0xC0, 0xCA, 0xF5)
+    )
+
+    // Official Ghostty palette: https://github.com/rose-pine/ghostty/blob/main/dist/rose-pine
+    static let rosePine = TerminalTheme(
+        id: "rose-pine",
+        name: "Rosé Pine",
+        palette: [
+            // Normal 0-7
+            c(0x26, 0x23, 0x3A), c(0xEB, 0x6F, 0x92), c(0x31, 0x74, 0x8F), c(0xF6, 0xC1, 0x77),
+            c(0x9C, 0xCF, 0xD8), c(0xC4, 0xA7, 0xE7), c(0xEB, 0xBC, 0xBA), c(0xE0, 0xDE, 0xF4),
+            // Bright 8-15
+            c(0x6E, 0x6A, 0x86), c(0xEB, 0x6F, 0x92), c(0x31, 0x74, 0x8F), c(0xF6, 0xC1, 0x77),
+            c(0x9C, 0xCF, 0xD8), c(0xC4, 0xA7, 0xE7), c(0xEB, 0xBC, 0xBA), c(0xE0, 0xDE, 0xF4),
+        ],
+        background: c(0x19, 0x17, 0x24),
+        foreground: c(0xE0, 0xDE, 0xF4),
+        cursorColor: c(0xE0, 0xDE, 0xF4),
+        cursorText: c(0x19, 0x17, 0x24),
+        selectionBackground: c(0x40, 0x3D, 0x52),
+        selectionForeground: c(0xE0, 0xDE, 0xF4)
     )
 
     static let catppuccinMocha = TerminalTheme(
